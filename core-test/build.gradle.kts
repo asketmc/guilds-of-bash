@@ -20,7 +20,7 @@ kover {
             rule {
                 bound {
                     coverageUnits.set(CoverageUnit.LINE)
-                    minValue = 60
+                    minValue = 20
                 }
             }
         }

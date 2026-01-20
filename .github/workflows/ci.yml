@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-coverage:
+    runs-on: ubuntu-latest
+
+    # Prevent infinite loop when the workflow commits the badge
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+
+    permissions:
+      contents: write          # needed only for badge commit on master
+      pull-requests: write     # needed for PR comment
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run tests + generate Kover reports (merged)
+        run: |
+          ./gradlew test koverVerify koverXmlReport koverHtmlReport
+
+      - name: Upload Kover HTML report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kover-html
+          path: build/reports/kover/html
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Kover XML report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kover-xml
+          path: build/reports/kover/xml/report.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Comment coverage in PR
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: mi-kas/kover-report@v1
+        with:
+          path: |
+            ${{ github.workspace }}/build/reports/kover/xml/report.xml
+          title: Code Coverage
+          update-comment: true
+          coverage-counter-type: LINE
+
+      - name: Generate coverage badge (SVG)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        shell: bash
+        run: |
+          python3 - << 'PY'
+          import os, xml.etree.ElementTree as ET
+
+          xml_path = "build/reports/kover/xml/report.xml"
+          tree = ET.parse(xml_path)
+          root = tree.getroot()
+
+          # JaCoCo-style: <counter type="LINE" missed=".." covered=".."/>
+          line = None
+          for c in root.iter("counter"):
+            if c.attrib.get("type") == "LINE":
+              line = c
+              break
+
+          if line is None:
+            raise SystemExit("No LINE counter found in report.xml")
+
+          missed = int(line.attrib.get("missed", "0"))
+          covered = int(line.attrib.get("covered", "0"))
+          total = missed + covered
+          pct = 0 if total == 0 else int(round(covered * 100.0 / total))
+
+          # simple 4-tier color mapping
+          if pct >= 90:
+            color = "#4c1"      # brightgreen
+          elif pct >= 80:
+            color = "#97CA00"   # green
+          elif pct >= 70:
+            color = "#dfb317"   # yellow
+          else:
+            color = "#e05d44"   # red
+
+          label = "coverage"
+          value = f"{pct}%"
+
+          # minimal shields-like svg
+          # widths are approximate but stable enough for README
+          label_w = 70
+          value_w = 50 if pct < 100 else 58
+          total_w = label_w + value_w
+          h = 20
+
+          svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{total_w}" height="{h}" role="img" aria-label="{label}: {value}">
+            <linearGradient id="s" x2="0" y2="100%">
+              <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+              <stop offset="1" stop-opacity=".1"/>
+            </linearGradient>
+            <clipPath id="r">
+              <rect width="{total_w}" height="{h}" rx="3" fill="#fff"/>
+            </clipPath>
+            <g clip-path="url(#r)">
+              <rect width="{label_w}" height="{h}" fill="#555"/>
+              <rect x="{label_w}" width="{value_w}" height="{h}" fill="{color}"/>
+              <rect width="{total_w}" height="{h}" fill="url(#s)"/>
+            </g>
+            <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+              <text x="{label_w/2}" y="14">{label}</text>
+              <text x="{label_w + value_w/2}" y="14">{value}</text>
+            </g>
+          </svg>'''
+
+          os.makedirs("badges", exist_ok=True)
+          with open("badges/coverage.svg", "w", encoding="utf-8") as f:
+            f.write(svg)
+          print(f"Badge generated: {pct}%")
+          PY
+
+      - name: Commit badge
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        shell: bash
+        run: |
+          if git status --porcelain | grep -q "badges/coverage.svg"; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add badges/coverage.svg
+            git commit -m "chore: update coverage badge [skip ci]"
+            git push
+          else
+            echo "No badge changes."
+          fi

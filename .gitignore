@@ -22,3 +22,6 @@ Thumbs.db
 
 # === AI context generated artifacts ===
 /build/ai/
+
+# === CI-generated coverage badge ===
+/badges/

@@ -216,14 +216,3 @@ rootProject.allprojects {
     }
 }
 
-// CI task
-tasks.register("ciTest") {
-    group = "verification"
-    dependsOn(":core-test:test")
-}
-
-subprojects {
-    tasks.matching { it.name == "build" }.configureEach {
-        dependsOn(":core-test:test")
-    }
-}

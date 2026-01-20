@@ -5,6 +5,7 @@ import org.gradle.api.tasks.JavaExec
 plugins {
     kotlin("jvm")
     application
+    id("org.jetbrains.kotlinx.kover")
 }
 
 dependencies {
