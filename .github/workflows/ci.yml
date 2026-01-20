@@ -1,3 +1,4 @@
+# FILE: .github/workflows/ci.yml
 name: CI
 
 on:
@@ -21,13 +22,11 @@ jobs:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
 
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write          # needed only for badge commit on master
+      pull-requests: write     # needed for PR comment
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -38,10 +37,99 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Run tests + generate Kover reports (merged)
         run: |
-          chmod +x ./gradlew
-          ./gradlew test koverVerify koverXmlReport koverHtmlReport
+          ./gradlew test koverXmlReport koverHtmlReport koverVerify
+
+      - name: Normalize Kover merged report locations
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p build/reports/kover/xml
+          mkdir -p build/reports/kover/html
+
+          TARGET_XML="build/reports/kover/xml/report.xml"
+
+          if [[ -f "$TARGET_XML" ]]; then
+            echo "Kover XML already present: $TARGET_XML"
+            exit 0
+          fi
+
+          candidates=()
+
+          if [[ -f "build/reports/kover/report.xml" ]]; then
+            candidates+=("build/reports/kover/report.xml")
+          fi
+
+          while IFS= read -r f; do
+            candidates+=("${f#./}")
+          done < <(
+            find . -type f \( \
+              -path "*/build/reports/kover/xml/*.xml" -o \
+              -path "*/build/reports/kover/*.xml" -o \
+              -path "*/build/reports/kover/*/*.xml" \
+            \) | sort
+          )
+
+          if [[ ${#candidates[@]} -eq 0 ]]; then
+            echo "ERROR: No Kover XML report found anywhere under build/reports/kover" >&2
+            exit 1
+          fi
+
+          pick=""
+
+          for f in "${candidates[@]}"; do
+            if [[ "$f" == "build/reports/kover/xml/report.xml" ]]; then
+              pick="$f"
+              break
+            fi
+          done
+
+          if [[ -z "$pick" ]]; then
+            for f in "${candidates[@]}"; do
+              if [[ "$f" == "build/reports/kover/report.xml" ]]; then
+                pick="$f"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "$pick" ]]; then
+            for f in "${candidates[@]}"; do
+              if [[ "$f" == */build/reports/kover/xml/report.xml ]]; then
+                pick="$f"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "$pick" ]]; then
+            for f in "${candidates[@]}"; do
+              if [[ "$f" == */build/reports/kover/report.xml ]]; then
+                pick="$f"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "$pick" ]]; then
+            pick="${candidates[0]}"
+            for f in "${candidates[@]}"; do
+              if [[ ${#f} -lt ${#pick} ]]; then
+                pick="$f"
+              fi
+            done
+          fi
+
+          echo "Using Kover XML: $pick"
+          cp -f "$pick" "$TARGET_XML"
+
+          test -f "$TARGET_XML"
+          echo "Normalized Kover XML at: $TARGET_XML"
 
       - name: Upload Kover HTML report artifact
         uses: actions/upload-artifact@v4
