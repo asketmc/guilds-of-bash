@@ -21,23 +21,26 @@ jobs:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
 
     permissions:
-      contents: write          # needed only for badge commit on master
-      pull-requests: write     # needed for PR comment
+      contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run tests + generate Kover reports (merged)
         run: |
+          chmod +x ./gradlew
           ./gradlew test koverVerify koverXmlReport koverHtmlReport
 
       - name: Upload Kover HTML report artifact
@@ -77,7 +80,6 @@ jobs:
           tree = ET.parse(xml_path)
           root = tree.getroot()
 
-          # JaCoCo-style: <counter type="LINE" missed=".." covered=".."/>
           line = None
           for c in root.iter("counter"):
             if c.attrib.get("type") == "LINE":
@@ -92,21 +94,18 @@ jobs:
           total = missed + covered
           pct = 0 if total == 0 else int(round(covered * 100.0 / total))
 
-          # simple 4-tier color mapping
           if pct >= 90:
-            color = "#4c1"      # brightgreen
+            color = "#4c1"
           elif pct >= 80:
-            color = "#97CA00"   # green
+            color = "#97CA00"
           elif pct >= 70:
-            color = "#dfb317"   # yellow
+            color = "#dfb317"
           else:
-            color = "#e05d44"   # red
+            color = "#e05d44"
 
           label = "coverage"
           value = f"{pct}%"
 
-          # minimal shields-like svg
-          # widths are approximate but stable enough for README
           label_w = 70
           value_w = 50 if pct < 100 else 58
           total_w = label_w + value_w
