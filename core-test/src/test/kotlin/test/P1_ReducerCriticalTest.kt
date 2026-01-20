@@ -29,7 +29,7 @@ class P1_ReducerCriticalTest {
         val state = initialState(42u)
         val rng = Rng(100L)
         // CloseReturn on non-existent active contract
-        val cmd = CloseReturn(cmdId = 1L, activeContractId = ActiveContractId(999))
+        val cmd = CloseReturn(cmdId = 1L, activeContractId = 999L)
 
         val result = step(state, cmd, rng)
 
@@ -155,7 +155,7 @@ class P1_ReducerCriticalTest {
     fun `InvariantViolated events are inserted before DayEnded`() {
         // Create a state that will violate invariants (negative money)
         var state = initialState(42u).copy(
-            economy = core.state.EconomyState(moneyCopper = -100, trophiesStock = 0)
+            economy = core.state.EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0)
         )
         val rng = Rng(100L)
         val cmd = AdvanceDay(cmdId = 1L)
@@ -177,14 +177,12 @@ class P1_ReducerCriticalTest {
     fun `PostContract validation works`() {
         val state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Try to post a non-existent inbox contract
         val cmd = PostContract(
             cmdId = 1L,
-            inboxId = ContractId(999),
-            rank = Rank.F,
-            fee = 100,
-            salvage = SalvagePolicy.GUILD
+            inboxId = 999L,
+            fee = 100
         )
 
         val result = step(state, cmd, rng)
@@ -197,11 +195,11 @@ class P1_ReducerCriticalTest {
     fun `CloseReturn validation works`() {
         val state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Try to close a non-existent return
         val cmd = CloseReturn(
             cmdId = 1L,
-            activeContractId = ActiveContractId(999)
+            activeContractId = 999L
         )
 
         val result = step(state, cmd, rng)

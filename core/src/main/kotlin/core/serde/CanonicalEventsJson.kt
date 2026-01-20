@@ -31,6 +31,8 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is WipAdvanced -> serializeWipAdvanced(event, sb)
         is ContractResolved -> serializeContractResolved(event, sb)
         is ReturnClosed -> serializeReturnClosed(event, sb)
+        is TrophySold -> serializeTrophySold(event, sb)
+        is StabilityUpdated -> serializeStabilityUpdated(event, sb)
         is DayEnded -> serializeDayEnded(event, sb)
         is CommandRejected -> serializeCommandRejected(event, sb)
         is InvariantViolated -> serializeInvariantViolated(event, sb)
@@ -153,6 +155,20 @@ private fun serializeContractResolved(event: ContractResolved, sb: StringBuilder
 private fun serializeReturnClosed(event: ReturnClosed, sb: StringBuilder) {
     sb.appendCommonFields("ReturnClosed", event)
     sb.appendIntField("activeContractId", event.activeContractId)
+    sb.append('}')
+}
+
+private fun serializeTrophySold(event: TrophySold, sb: StringBuilder) {
+    sb.appendCommonFields("TrophySold", event)
+    sb.appendIntField("amount", event.amount)
+    sb.appendIntField("moneyGained", event.moneyGained)
+    sb.append('}')
+}
+
+private fun serializeStabilityUpdated(event: StabilityUpdated, sb: StringBuilder) {
+    sb.appendCommonFields("StabilityUpdated", event)
+    sb.appendIntField("oldStability", event.oldStability)
+    sb.appendIntField("newStability", event.newStability)
     sb.append('}')
 }
 

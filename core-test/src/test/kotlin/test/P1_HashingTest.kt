@@ -175,8 +175,11 @@ class P1_HashingTest {
             WipAdvanced(day = 1, revision = 1L, cmdId = 1L, seq = 6L, activeContractId = 1, daysRemaining = 1),
             ContractResolved(day = 1, revision = 1L, cmdId = 1L, seq = 7L, activeContractId = 1, outcome = core.primitives.Outcome.SUCCESS, trophiesCount = 0, quality = core.primitives.Quality.OK, reasonTags = intArrayOf()),
             ReturnClosed(day = 1, revision = 1L, cmdId = 1L, seq = 8L, activeContractId = 1),
-            CommandRejected(day = 1, revision = 1L, cmdId = 1L, seq = 9L, cmdType = "Test", reason = RejectReason.NOT_FOUND, detail = "test"),
-            InvariantViolated(day = 1, revision = 1L, cmdId = 1L, seq = 10L, invariantId = core.invariants.InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE, details = "test")
+            TrophySold(day = 1, revision = 1L, cmdId = 1L, seq = 9L, amount = 5, moneyGained = 50),
+            StabilityUpdated(day = 1, revision = 1L, cmdId = 1L, seq = 10L, oldStability = 50, newStability = 51),
+            DayEnded(day = 1, revision = 1L, cmdId = 1L, seq = 11L, snapshot = DaySnapshot(day = 1, revision = 1L, money = 10, trophies = 0, regionStability = 51, guildReputation = 50, inboxCount = 0, boardCount = 0, activeCount = 0, returnsNeedingCloseCount = 0)),
+            CommandRejected(day = 1, revision = 1L, cmdId = 1L, seq = 12L, cmdType = "Test", reason = RejectReason.NOT_FOUND, detail = "test"),
+            InvariantViolated(day = 1, revision = 1L, cmdId = 1L, seq = 13L, invariantId = core.invariants.InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE, details = "test")
         )
 
         val hash = hashEvents(events)

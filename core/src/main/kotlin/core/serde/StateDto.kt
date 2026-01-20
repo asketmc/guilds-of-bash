@@ -48,7 +48,8 @@ data class RegionStateDto(
 @Serializable
 data class EconomyStateDto(
     val moneyCopper: Int,
-    val trophiesStock: Int
+    val trophiesStock: Int,
+    val reservedCopper: Int
 )
 
 @Serializable
@@ -94,6 +95,8 @@ data class ActiveContractDto(
 @Serializable
 data class ReturnPacketDto(
     val activeContractId: Int, // ActiveContractId as raw Int
+    val boardContractId: Int, // ContractId as raw Int
+    val heroIds: List<Int>, // List<HeroId> as List<Int>
     val resolvedDay: Int,
     val outcome: String, // Outcome enum as string
     val trophiesCount: Int,

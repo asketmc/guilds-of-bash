@@ -24,7 +24,7 @@ class P1_InvariantVerificationTest {
     @Test
     fun `verifyInvariants detects negative money`() {
         val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = -100, trophiesStock = 0)
+            economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0)
         )
 
         val violations = verifyInvariants(state)
@@ -35,7 +35,7 @@ class P1_InvariantVerificationTest {
     @Test
     fun `verifyInvariants detects negative trophies`() {
         val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = 0, trophiesStock = -50)
+            economy = EconomyState(moneyCopper = 0, trophiesStock = -50, reservedCopper = 0)
         )
 
         val violations = verifyInvariants(state)
@@ -261,7 +261,7 @@ class P1_InvariantVerificationTest {
     }
 
     @Test
-    fun `verifyInvariants detects return packet without active contract`() {
+    fun `verifyInvariants allows return packet without active contract after resolution`() {
         val state = initialState(42u).copy(
             contracts = ContractState(
                 inbox = emptyList(),
@@ -269,6 +269,8 @@ class P1_InvariantVerificationTest {
                 active = emptyList(),
                 returns = listOf(
                     ReturnPacket(
+                        boardContractId = ContractId(1),
+                        heroIds = listOf(HeroId(1)),
                         activeContractId = ActiveContractId(999),
                         resolvedDay = 1,
                         outcome = Outcome.SUCCESS,
@@ -283,13 +285,13 @@ class P1_InvariantVerificationTest {
 
         val violations = verifyInvariants(state)
 
-        assertTrue(violations.any { it.invariantId == InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE })
+        assertFalse(violations.any { it.invariantId == InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE })
     }
 
     @Test
     fun `verifyInvariants provides stable detail strings`() {
         val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = -100, trophiesStock = 0)
+            economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0)
         )
 
         val violations1 = verifyInvariants(state)

@@ -234,6 +234,24 @@ data class ReturnClosed(
     val activeContractId: Int
 ) : Event
 
+data class TrophySold(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val amount: Int,
+    val moneyGained: Int
+) : Event
+
+data class StabilityUpdated(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val oldStability: Int,
+    val newStability: Int
+) : Event
+
 data class DayEnded(
     override val day: Int,
     override val revision: Long,

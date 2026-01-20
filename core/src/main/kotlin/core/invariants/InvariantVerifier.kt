@@ -14,20 +14,35 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
 
     val activeIds = state.contracts.active.map { it.id.value }
     val maxActiveId = activeIds.maxOrNull() ?: 0
-    val activeIdSet = activeIds.toHashSet()
 
-    val returnsByActiveId = state.contracts.returns.groupBy { it.activeContractId.value }
     val activeByBoardId = state.contracts.active.groupBy { it.boardContractId.value }
+    val returnsByBoardId = state.contracts.returns.groupBy { it.boardContractId.value }
 
     val heroesById = state.heroes.roster.associateBy { it.id.value }
     val maxHeroId = heroesById.keys.maxOrNull() ?: 0
 
+    // Heroes "in flight" usage:
+    // - WIP actives keep heroes ON_MISSION
+    // - returns requiring close keep heroes ON_MISSION until CloseReturn
     val heroUsageCount = mutableMapOf<Int, Int>()
-    state.contracts.active.forEach { active ->
-        active.heroIds.forEach { heroId ->
-            heroUsageCount[heroId.value] = (heroUsageCount[heroId.value] ?: 0) + 1
+
+    state.contracts.active
+        .asSequence()
+        .filter { it.status == ActiveStatus.WIP }
+        .forEach { active ->
+            active.heroIds.forEach { heroId ->
+                heroUsageCount[heroId.value] = (heroUsageCount[heroId.value] ?: 0) + 1
+            }
         }
-    }
+
+    state.contracts.returns
+        .asSequence()
+        .filter { it.requiresPlayerClose }
+        .forEach { ret ->
+            ret.heroIds.forEach { heroId ->
+                heroUsageCount[heroId.value] = (heroUsageCount[heroId.value] ?: 0) + 1
+            }
+        }
 
     // --- 2. Invariants Check (ordered by InvariantId enum) ---
 
@@ -92,48 +107,26 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
     }
 
     // CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE
+    // LOCKED board is valid if it has EXACTLY ONE in-flight contract:
+    // - exactly one WIP active referencing it, OR
+    // - exactly one pending return requiring close referencing it
     state.contracts.board
         .asSequence()
         .filter { it.status == BoardStatus.LOCKED }
         .sortedBy { it.id.value }
         .forEach { board ->
             val actives = activeByBoardId[board.id.value] ?: emptyList()
-            val hasNonClosed = actives.any { it.status != ActiveStatus.CLOSED }
-            if (!hasNonClosed) {
+            val returns = returnsByBoardId[board.id.value] ?: emptyList()
+
+            val wipCount = actives.count { it.status == ActiveStatus.WIP }
+            val pendingReturnCount = returns.count { it.requiresPlayerClose }
+            val totalInFlight = wipCount + pendingReturnCount
+
+            if (totalInFlight != 1) {
                 violations.add(
                     InvariantViolation(
                         InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE,
-                        "boardId=${board.id.value}; expected=lockedBoardHasNonClosedActive"
-                    )
-                )
-            }
-        }
-
-    // CONTRACTS__RETURN_READY_HAS_RETURN_PACKET
-    state.contracts.active
-        .asSequence()
-        .filter { it.status == ActiveStatus.RETURN_READY }
-        .sortedBy { it.id.value }
-        .forEach { active ->
-            if (returnsByActiveId[active.id.value].isNullOrEmpty()) {
-                violations.add(
-                    InvariantViolation(
-                        InvariantId.CONTRACTS__RETURN_READY_HAS_RETURN_PACKET,
-                        "activeId=${active.id.value}; expected=returnReadyHasReturnPacket"
-                    )
-                )
-            }
-        }
-
-    // CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE
-    state.contracts.returns
-        .sortedWith(compareBy<ReturnPacket>({ it.activeContractId.value }, { it.resolvedDay }, { it.trophiesCount }))
-        .forEach { packet ->
-            if (!activeIdSet.contains(packet.activeContractId.value)) {
-                violations.add(
-                    InvariantViolation(
-                        InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE,
-                        "activeId=${packet.activeContractId.value}; expected=returnPacketRefsExistingActive"
+                        "boardId=${board.id.value}; expected=exactlyOneInFlight; wipCount=$wipCount; pendingReturnCount=$pendingReturnCount"
                     )
                 )
             }
@@ -168,6 +161,8 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
         }
 
     // HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT
+    // Interpreted as: every ON_MISSION hero must belong to exactly one "in flight" unit
+    // (either a WIP active or a pending return requiring close).
     state.heroes.roster
         .asSequence()
         .filter { it.status == HeroStatus.ON_MISSION }
@@ -178,16 +173,19 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
                 violations.add(
                     InvariantViolation(
                         InvariantId.HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT,
-                        "heroId=${hero.id.value}; expected=usageCount==1; usageCount=$count"
+                        "heroId=${hero.id.value}; expected=inFlightUsageCount==1; usageCount=$count"
                     )
                 )
             }
         }
 
     // HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION
+    // Interpreted as:
+    // - heroes referenced by WIP actives must be ON_MISSION
+    // - heroes referenced by pending returns must be ON_MISSION until CloseReturn
     state.contracts.active
         .asSequence()
-        .filter { it.status == ActiveStatus.WIP || it.status == ActiveStatus.RETURN_READY }
+        .filter { it.status == ActiveStatus.WIP }
         .sortedBy { it.id.value }
         .forEach { active ->
             active.heroIds
@@ -198,14 +196,41 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
                         violations.add(
                             InvariantViolation(
                                 InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "activeId=${active.id.value}; heroId=${heroId.value}; expected=heroExists"
+                                "source=activeWip; activeId=${active.id.value}; heroId=${heroId.value}; expected=heroExists"
                             )
                         )
                     } else if (hero.status != HeroStatus.ON_MISSION) {
                         violations.add(
                             InvariantViolation(
                                 InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "activeId=${active.id.value}; heroId=${heroId.value}; heroStatus=${hero.status}; expected=ON_MISSION"
+                                "source=activeWip; activeId=${active.id.value}; heroId=${heroId.value}; heroStatus=${hero.status}; expected=ON_MISSION"
+                            )
+                        )
+                    }
+                }
+        }
+
+    state.contracts.returns
+        .asSequence()
+        .filter { it.requiresPlayerClose }
+        .sortedBy { it.activeContractId.value }
+        .forEach { ret ->
+            ret.heroIds
+                .sortedBy { it.value }
+                .forEach { heroId ->
+                    val hero = heroesById[heroId.value]
+                    if (hero == null) {
+                        violations.add(
+                            InvariantViolation(
+                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
+                                "source=returnPending; activeId=${ret.activeContractId.value}; heroId=${heroId.value}; expected=heroExists"
+                            )
+                        )
+                    } else if (hero.status != HeroStatus.ON_MISSION) {
+                        violations.add(
+                            InvariantViolation(
+                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
+                                "source=returnPending; activeId=${ret.activeContractId.value}; heroId=${heroId.value}; heroStatus=${hero.status}; expected=ON_MISSION"
                             )
                         )
                     }
@@ -228,6 +253,27 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
             InvariantViolation(
                 InvariantId.ECONOMY__TROPHIES_NON_NEGATIVE,
                 "trophiesStock=${state.economy.trophiesStock}; expected>=0"
+            )
+        )
+    }
+
+    // ECONOMY__RESERVED_NON_NEGATIVE
+    if (state.economy.reservedCopper < 0) {
+        violations.add(
+            InvariantViolation(
+                InvariantId.ECONOMY__RESERVED_NON_NEGATIVE,
+                "reservedCopper=${state.economy.reservedCopper}; expected>=0"
+            )
+        )
+    }
+
+    // ECONOMY__AVAILABLE_NON_NEGATIVE
+    val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
+    if (availableCopper < 0) {
+        violations.add(
+            InvariantViolation(
+                InvariantId.ECONOMY__AVAILABLE_NON_NEGATIVE,
+                "availableCopper=${availableCopper}; moneyCopper=${state.economy.moneyCopper}; reservedCopper=${state.economy.reservedCopper}; expected=available>=0"
             )
         )
     }

@@ -1,0 +1,38 @@
+# ========================
+# AI context ignore rules
+# ========================
+# Syntax identical to .gitignore
+
+# ---- IDE / VCS metadata ----
+.idea/
+*.iml
+.git/
+.gradle/
+
+# ---- Build outputs ----
+build/
+out/
+**/build/
+**/out/
+
+# ---- Gradle internal caches ----
+**/.gradle/
+
+# ---- OS / temp ----
+.DS_Store
+*.log
+*.tmp
+*.bak
+*.swp
+
+# ---- Generated AI / large docs ----
+*.md
+
+# ---- Optional: if AI context artifacts exist ----
+build/ai/
+**/build/ai/
+
+# ---- External tooling ----
+node_modules/
+dist/
+target/

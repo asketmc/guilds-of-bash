@@ -10,19 +10,7 @@ sealed interface Command {
     val cmdId: Long
 }
 
-data class PostContract(
-    override val cmdId: Long,
-    val inboxId: ContractId,
-    val rank: Rank,
-    val fee: Int,
-    val salvage: SalvagePolicy
-) : Command
-
-data class CloseReturn(
-    override val cmdId: Long,
-    val activeContractId: ActiveContractId
-) : Command
-
-data class AdvanceDay(
-    override val cmdId: Long
-) : Command
+data class PostContract(val inboxId: Long, val fee: Int, override val cmdId: Long): Command
+data class CloseReturn(val activeContractId: Long, override val cmdId: Long): Command
+data class AdvanceDay(override val cmdId: Long): Command
+data class SellTrophies(val amount: Int, override val cmdId: Long): Command

@@ -23,7 +23,8 @@ fun initialState(seed: UInt): GameState {
             stability = 50
         ),
         economy = EconomyState(
-            moneyCopper = 10,
+            moneyCopper = 100,
+            reservedCopper = 0,
             trophiesStock = 0
         ),
         contracts = ContractState(

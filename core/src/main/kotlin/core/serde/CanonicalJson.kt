@@ -82,7 +82,8 @@ fun toDto(region: RegionState): RegionStateDto {
 fun toDto(economy: EconomyState): EconomyStateDto {
     return EconomyStateDto(
         moneyCopper = economy.moneyCopper,
-        trophiesStock = economy.trophiesStock
+        trophiesStock = economy.trophiesStock,
+        reservedCopper = economy.reservedCopper
     )
 }
 
@@ -133,6 +134,8 @@ fun toDto(active: ActiveContract): ActiveContractDto {
 fun toDto(packet: ReturnPacket): ReturnPacketDto {
     return ReturnPacketDto(
         activeContractId = packet.activeContractId.value,
+        boardContractId = packet.boardContractId.value,
+        heroIds = packet.heroIds.map { it.value },
         resolvedDay = packet.resolvedDay,
         outcome = packet.outcome.name,
         trophiesCount = packet.trophiesCount,
@@ -208,7 +211,8 @@ fun fromDto(dto: RegionStateDto): RegionState {
 fun fromDto(dto: EconomyStateDto): EconomyState {
     return EconomyState(
         moneyCopper = dto.moneyCopper,
-        trophiesStock = dto.trophiesStock
+        trophiesStock = dto.trophiesStock,
+        reservedCopper = dto.reservedCopper
     )
 }
 
@@ -259,6 +263,8 @@ fun fromDtoActive(dto: ActiveContractDto): ActiveContract {
 fun fromDtoReturn(dto: ReturnPacketDto): ReturnPacket {
     return ReturnPacket(
         activeContractId = ActiveContractId(dto.activeContractId),
+        boardContractId = ContractId(dto.boardContractId),
+        heroIds = dto.heroIds.map { HeroId(it) },
         resolvedDay = dto.resolvedDay,
         outcome = Outcome.valueOf(dto.outcome),
         trophiesCount = dto.trophiesCount,

@@ -40,6 +40,8 @@ data class ActiveContract(
 
 data class ReturnPacket(
     val activeContractId: ActiveContractId,
+    val boardContractId: ContractId,
+    val heroIds: List<HeroId>,
     val resolvedDay: Int,
     val outcome: Outcome,
     val trophiesCount: Int,

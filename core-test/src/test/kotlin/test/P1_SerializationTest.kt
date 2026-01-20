@@ -71,7 +71,7 @@ class P1_SerializationTest {
 
     @Test
     fun `deserialize validates saveVersion`() {
-        val invalidJson = """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1}},"guild":{"guildRank":1,"reputation":50},"region":{"stability":50},"economy":{"moneyCopper":10,"trophiesStock":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
+        val invalidJson = """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1}},"guild":{"guildRank":1,"reputation":50},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
 
         val exception = assertFails {
             deserialize(invalidJson)
