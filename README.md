@@ -1,3 +1,9 @@
+![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blueviolet)
+![JDK](https://img.shields.io/badge/JDK-17-blue)
+![Gradle](https://img.shields.io/badge/Gradle-8.14-02303A?logo=gradle)
+![Coverage](badges/coverage.svg)
+![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)
+![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 # Guilds of Bash
 
 Deterministic guild-management simulation prototype built around a **Command → simulation step → Events** boundary. The simulation core is designed to be pure and reproducible; adapters handle IO and presentation (currently: a console adapter).
