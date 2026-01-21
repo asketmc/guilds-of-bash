@@ -12,6 +12,7 @@ import kotlin.test.*
  * P1 CRITICAL: Invariant verification tests.
  * State corruption detection is critical for game stability.
  */
+@Smoke
 class P1_004_InvariantVerificationTest {
 
     @Test

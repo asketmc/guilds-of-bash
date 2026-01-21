@@ -524,6 +524,122 @@ private fun handleAdvanceDay(
                     updatedActives.add(active.copy(daysRemaining = 0, status = ActiveStatus.RETURN_READY))
                 }
                 // Otherwise, remove from active list (auto-closed)
+                else {
+                    // Minimal fix: perform auto-close cleanup here (equivalent to handleCloseReturn)
+                    // Build a ReturnPacket representing the auto-closed return
+                    val autoRet = ReturnPacket(
+                        activeContractId = active.id,
+                        boardContractId = active.boardContractId,
+                        heroIds = active.heroIds,
+                        resolvedDay = newDay,
+                        outcome = outcome,
+                        trophiesCount = trophiesCount,
+                        trophiesQuality = trophiesQuality,
+                        reasonTags = emptyList(),
+                        requiresPlayerClose = false,
+                        suspectedTheft = theftOccurred
+                    )
+
+                    // Apply trophy accounting & payout fee (same logic as handleCloseReturn)
+                    val board = workingState.contracts.board.firstOrNull { it.id == autoRet.boardContractId }
+
+                    val trophiesGuildGets = if (board != null) {
+                        when (board.salvage) {
+                            SalvagePolicy.GUILD -> autoRet.trophiesCount
+                            SalvagePolicy.HERO -> 0
+                            SalvagePolicy.SPLIT -> autoRet.trophiesCount / 2
+                        }
+                    } else 0
+
+                    val newTrophiesStock = workingState.economy.trophiesStock + trophiesGuildGets
+
+                    val fee = board?.fee ?: 0
+                    val newReservedCopper = workingState.economy.reservedCopper - fee
+                    val newMoneyCopper = if (autoRet.outcome == Outcome.FAIL) workingState.economy.moneyCopper else workingState.economy.moneyCopper - fee
+
+                    // Update heroes: status to AVAILABLE, historyCompleted++ for involved heroes
+                    val heroIdSet = autoRet.heroIds.map { it.value }.toSet()
+                    val updatedRoster = workingState.heroes.roster.map { hero ->
+                        if (heroIdSet.contains(hero.id.value)) {
+                            hero.copy(
+                                status = HeroStatus.AVAILABLE,
+                                historyCompleted = hero.historyCompleted + 1
+                            )
+                        } else {
+                            hero
+                        }
+                    }
+
+                    // Check if board should be unlocked (LOCKED -> COMPLETED)
+                    val updatedBoard = if (board != null && board.status == BoardStatus.LOCKED) {
+                        // Check if there are any non-CLOSED actives referencing this board
+                        val hasNonClosedActives = updatedActives.any { a ->
+                            a.boardContractId == board.id && a.status != ActiveStatus.CLOSED
+                        }
+
+                        if (!hasNonClosedActives) {
+                            workingState.contracts.board.map { b ->
+                                if (b.id == board.id) b.copy(status = BoardStatus.COMPLETED) else b
+                            }
+                        } else {
+                            workingState.contracts.board
+                        }
+                    } else {
+                        workingState.contracts.board
+                    }
+
+                    // Update guild completed contracts and possibly rank up
+                    val newCompleted = workingState.guild.completedContractsTotal + 1
+                    val (newRank, contractsForNext) = calculateNextRank(newCompleted, workingState.guild.guildRank)
+
+                    var newGuildState = workingState.guild.copy(
+                        completedContractsTotal = newCompleted,
+                        contractsForNextRank = contractsForNext
+                    )
+
+                    if (newRank != workingState.guild.guildRank) {
+                        ctx.emit(
+                            GuildRankUp(
+                                day = workingState.meta.dayIndex,
+                                revision = workingState.meta.revision,
+                                cmdId = cmd.cmdId,
+                                seq = 0L,
+                                oldRank = workingState.guild.guildRank,
+                                newRank = newRank,
+                                completedContracts = newCompleted
+                            )
+                        )
+
+                        newGuildState = newGuildState.copy(guildRank = newRank)
+                    }
+
+                    // Apply updates to workingState
+                    workingState = workingState.copy(
+                        contracts = workingState.contracts.copy(
+                            board = updatedBoard
+                        ),
+                        heroes = workingState.heroes.copy(roster = updatedRoster),
+                        economy = workingState.economy.copy(
+                            trophiesStock = newTrophiesStock,
+                            reservedCopper = newReservedCopper,
+                            moneyCopper = newMoneyCopper
+                        ),
+                        guild = newGuildState
+                    )
+
+                    // Emit ReturnClosed for auto-closed return
+                    ctx.emit(
+                        ReturnClosed(
+                            day = workingState.meta.dayIndex,
+                            revision = workingState.meta.revision,
+                            cmdId = cmd.cmdId,
+                            seq = 0L,
+                            activeContractId = active.id.value
+                        )
+                    )
+                }
+
+                // ...existing code...
             } else {
                 updatedActives.add(active.copy(daysRemaining = newDaysRemaining))
             }

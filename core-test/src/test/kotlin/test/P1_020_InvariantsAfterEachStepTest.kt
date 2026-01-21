@@ -9,6 +9,7 @@ import core.rng.Rng
 import core.state.initialState
 import kotlin.test.*
 
+@Smoke
 /**
  * P1 CRITICAL: Invariants After Each Step Test.
  * Validates that invariants hold after EVERY step in golden scenarios.

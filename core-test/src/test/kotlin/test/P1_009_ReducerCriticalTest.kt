@@ -12,6 +12,7 @@ import kotlin.test.*
 /**
  * P1 CRITICAL: Reducer critical behavior tests.
  */
+@Smoke
 class P1_009_ReducerCriticalTest {
 
     @Test

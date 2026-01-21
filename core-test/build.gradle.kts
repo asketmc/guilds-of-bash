@@ -59,6 +59,22 @@ tasks.register<Test>("testQuarantine") {
     ignoreFailures = true
 }
 
+/**
+ * SMOKE: ultra-fast PR smoke tests (critical P0/P1 tests)
+ * These are annotated with @Smoke and executed via JUnit5 tag "smoke".
+ */
+tasks.register<Test>("smokeTest") {
+    group = "verification"
+    description = "Ultra-fast smoke tests to run in PR checks: includes @Smoke-tagged tests only."
+    useJUnitPlatform {
+        includeTags("smoke")
+        // Keep quarantine/flaky excluded
+        excludeTags("flaky")
+    }
+    // Keep smoke fast; fail fast to surface critical regressions quickly
+    failFast = true
+}
+
 // Configure kover with safer agent arguments location to avoid FileNotFound on Windows
 kover {
     // Keep default reports/verify, but set temporary directory for agent args inside buildDir
