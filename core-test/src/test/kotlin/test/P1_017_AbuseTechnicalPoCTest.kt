@@ -39,8 +39,11 @@ class P1_017_AbuseTechnicalPoCTest {
         assertNoRejections(result2.events, "Second application should also succeed (no replay protection in reducer)")
 
         // Results should be identical (deterministic)
-        assertEquals(result1.state.meta.dayIndex, result2.state.meta.dayIndex,
-            "Both applications produce identical state (deterministic)")
+        assertEquals(
+            result1.state.meta.dayIndex,
+            result2.state.meta.dayIndex,
+            "Both applications produce identical state (deterministic)"
+        )
 
         println("⚠ AB_POC_REPROCESS_DUP: Reducer does NOT prevent replay (adapter responsibility)")
         println("  - This is BY DESIGN: reducer is pure and stateless")
@@ -83,7 +86,11 @@ class P1_017_AbuseTechnicalPoCTest {
         // Create trophies
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(state, PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng).state
+        state = step(
+            state,
+            PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        ).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
 
@@ -126,7 +133,11 @@ class P1_017_AbuseTechnicalPoCTest {
         // Create trophies
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(state, PostContract(inboxId = inboxId, fee = 100, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng).state
+        state = step(
+            state,
+            PostContract(inboxId = inboxId, fee = 100, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        ).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
 
@@ -169,7 +180,11 @@ class P1_017_AbuseTechnicalPoCTest {
 
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(state, PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng).state
+        state = step(
+            state,
+            PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        ).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
         state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
 
@@ -188,20 +203,25 @@ class P1_017_AbuseTechnicalPoCTest {
         // WHEN: Attempt to sell MORE than available
         val excessAmount = trophyStock + 50
         val result = step(state, SellTrophies(amount = excessAmount, cmdId = cmdId++), rng)
-        state = result.state
 
-        // THEN: Should sell only available stock (clamped)
-        assertNoRejections(result.events, "Sell excessive amount should not reject")
+        // THEN: Current semantics (via validateSellTrophies): reject if amount > stock
+        assertSingleRejection(result.events, RejectReason.INVALID_STATE, "Sell excessive amount should reject")
 
-        val trophySoldEvents = result.events.filterIsInstance<TrophySold>()
-        if (trophySoldEvents.isNotEmpty()) {
-            val soldAmount = trophySoldEvents.first().amount
-            assertEquals(trophyStock, soldAmount, "Should sell only available stock (clamped)")
-            assertEquals(0, state.economy.trophiesStock, "Stock should be 0 after selling all available")
-            println("✓ AB_POC_SELL_BOUNDARY: Requested $excessAmount, sold $soldAmount (clamped to stock)")
-        }
+        val rej = result.events.first() as CommandRejected
+        assertTrue(
+            rej.detail.contains("Insufficient trophies", ignoreCase = true) ||
+                    rej.detail.contains("trophies", ignoreCase = true),
+            "Rejection detail should mention trophies insufficiency"
+        )
 
-        assertNoInvariantViolations(result.events, "Sell excessive amount should not violate invariants")
+        // State must be unchanged on rejection
+        assertEquals(trophyStock, result.state.economy.trophiesStock, "Trophy stock must be unchanged on rejection")
+        assertEquals(state.economy.moneyCopper, result.state.economy.moneyCopper, "Money must be unchanged on rejection")
+
+        // No sell event should be emitted on rejection
+        assertTrue(result.events.filterIsInstance<TrophySold>().isEmpty(), "TrophySold must not be emitted on rejection")
+
+        assertNoInvariantViolations(result.events, "Sell excessive amount rejection should not violate invariants")
     }
 
     @Test
@@ -218,8 +238,11 @@ class P1_017_AbuseTechnicalPoCTest {
         assertEquals(state, result.state, "State should be unchanged after rejected command")
 
         // CommandRejected event emitted
-        assertSingleRejection(result.events, RejectReason.NOT_FOUND,
-            "AB_COMMAND_VALIDATION: Invalid command should be rejected")
+        assertSingleRejection(
+            result.events,
+            RejectReason.NOT_FOUND,
+            "AB_COMMAND_VALIDATION: Invalid command should be rejected"
+        )
 
         println("✓ AB_POC_COMMAND_VALIDATION: Rejected commands leave state unchanged")
     }
@@ -236,7 +259,11 @@ class P1_017_AbuseTechnicalPoCTest {
 
         // Post first contract with fee=50 (reserve 50)
         val inbox1 = state.contracts.inbox.first().id.value.toLong()
-        state = step(state, PostContract(inboxId = inbox1, fee = 50, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng).state
+        state = step(
+            state,
+            PostContract(inboxId = inbox1, fee = 50, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        ).state
 
         // Verify: 50 reserved, 50 available
         assertEquals(50, state.economy.reservedCopper, "50 should be reserved")
@@ -244,11 +271,18 @@ class P1_017_AbuseTechnicalPoCTest {
 
         // WHEN: Attempt to post second contract with fee=60 (exceeds available 50)
         val inbox2 = state.contracts.inbox.first().id.value.toLong()
-        val result = step(state, PostContract(inboxId = inbox2, fee = 60, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng)
+        val result = step(
+            state,
+            PostContract(inboxId = inbox2, fee = 60, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        )
 
         // THEN: Command rejected (insufficient available money)
-        assertSingleRejection(result.events, RejectReason.INVALID_STATE,
-            "AB_ESCROW_MANIPULATION: Cannot post contract exceeding available money")
+        assertSingleRejection(
+            result.events,
+            RejectReason.INVALID_STATE,
+            "AB_ESCROW_MANIPULATION: Cannot post contract exceeding available money"
+        )
 
         // State unchanged
         assertEquals(state, result.state, "State should be unchanged after rejection")
