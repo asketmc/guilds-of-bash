@@ -50,17 +50,16 @@ class P1_015_GoldenReplaysTest {
         // Verify final state consistency
         assertEquals(3, result.finalState.meta.dayIndex, "GR1: Should end on day 3")
         assertEquals(0, result.finalState.economy.trophiesStock, "GR1: All trophies sold (or none existed)")
-        // Use TestHelpers convenience property `returns`
         assertEquals(
             0,
-            result.finalState.returns.count { it.requiresPlayerClose },
+            result.finalState.contracts.returns.count { it.requiresPlayerClose },
             "GR1: No pending returns requiring close"
         )
 
         val finalStateHash = hashState(result.finalState)
         assertEquals(64, finalStateHash.length, "GR1: State hash should be 64 chars (SHA-256 hex)")
-        // Use shared pretty-print helper for scenario results
-        printScenarioResult(result)
+        println("GR1 golden state hash: $finalStateHash")
+        println("GR1 RNG draws: ${result.rngDraws}")
     }
 
     @Test
@@ -154,19 +153,23 @@ class P1_015_GoldenReplaysTest {
 
         val result3b = runScenario(scenario3b)
 
-        // Use TestHelpers assertSingleRejection instead of manual filter/assert
-        assertSingleRejection(
-            result3b.allEvents,
+        val rejections = result3b.allEvents.filterIsInstance<CommandRejected>()
+        assertEquals(1, rejections.size, "GR3b: Expected exactly 1 rejection (third post)")
+        assertEquals(
             RejectReason.INVALID_STATE,
+            rejections.first().reason,
             "GR3b: Expected INVALID_STATE for third post (insufficient available money)"
         )
 
-        // Use TestHelpers event-count helper
-        assertEventCount<ContractPosted>(result3b.allEvents, 2, "GR3b: Expected exactly 2 contracts posted successfully")
+        val posted = result3b.allEvents.filterIsInstance<ContractPosted>()
+        assertEquals(2, posted.size, "GR3b: Expected exactly 2 contracts posted successfully")
 
-        // Use economy helpers
-        assertReservedCopper(result3b.finalState, 80, "GR3b: Reserved should be 40+40=80 after two posts")
-        assertAvailableCopper(result3b.finalState, 20, "GR3b: Available money should be 100-80=20 after two posts")
+        assertEquals(80, result3b.finalState.economy.reservedCopper, "GR3b: Reserved should be 40+40=80 after two posts")
+        assertEquals(
+            20,
+            result3b.finalState.economy.moneyCopper - result3b.finalState.economy.reservedCopper,
+            "GR3b: Available money should be 100-80=20 after two posts"
+        )
         assertNoInvariantViolations(result3b.allEvents, "GR3b: Escrow boundary should not violate invariants")
 
         // Scenario 3c: Sell trophies when stock is zero.
@@ -184,8 +187,8 @@ class P1_015_GoldenReplaysTest {
 
         val result3c = runScenario(scenario3c)
 
-        // Use event-absence helper
-        assertEventCount<TrophySold>(result3c.allEvents, 0, "GR3c: No TrophySold event when stock is 0")
+        val trophySold = result3c.allEvents.filterIsInstance<TrophySold>()
+        assertEquals(0, trophySold.size, "GR3c: No TrophySold event when stock is 0")
 
         assertNoRejections(result3c.allEvents, "GR3c: SellTrophies(amount=0) should not be rejected when stock is 0")
         assertNoInvariantViolations(result3c.allEvents, "GR3c: Sell zero trophies should not violate invariants")
@@ -205,8 +208,18 @@ class P1_015_GoldenReplaysTest {
             description = "Hash stability regression check"
         )
 
-        // Use helper that asserts determinism by running the scenario twice and comparing state/events/RNG
-        assertReplayDeterminism(scenario)
+        val result1 = runScenario(scenario)
+        val result2 = runScenario(scenario)
+
+        val hash1 = hashState(result1.finalState)
+        val hash2 = hashState(result2.finalState)
+        assertEquals(hash1, hash2, "State hashes must be identical across runs with same seeds")
+
+        val eventsHash1 = hashEvents(result1.allEvents)
+        val eventsHash2 = hashEvents(result2.allEvents)
+        assertEquals(eventsHash1, eventsHash2, "Event hashes must be identical across runs with same seeds")
+
+        assertEquals(result1.rngDraws, result2.rngDraws, "RNG draws must be identical across runs with same seeds")
     }
 
     @Test
@@ -224,7 +237,6 @@ class P1_015_GoldenReplaysTest {
 
         val result = runScenario(scenario)
         assertTrue(result.rngDraws > 0, "RNG should be used for inbox/hero generation")
-        // prefer the shared pretty-print helper for consistent output
-        printScenarioResult(result)
+        println("RNG draws for GR_rng_stability: ${result.rngDraws}")
     }
 }
