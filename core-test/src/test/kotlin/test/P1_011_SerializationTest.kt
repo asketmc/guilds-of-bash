@@ -16,10 +16,13 @@ class P1_SerializationTest {
 
     @Test
     fun `serialize produces non-empty JSON`() {
+        // GIVEN initial state
         val state = initialState(42u)
 
+        // WHEN serialize
         val json = serialize(state)
 
+        // THEN json non-empty and looks like JSON
         assertTrue(json.isNotEmpty(), "JSON must not be empty")
         assertTrue(json.startsWith("{"), "JSON must start with {")
         assertTrue(json.endsWith("}"), "JSON must end with }")
@@ -39,7 +42,7 @@ class P1_SerializationTest {
     fun `deserialize round-trip preserves state (except arrivalsToday)`() {
         var state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Advance a day to get some data
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
         state = result.state.copy(
@@ -56,7 +59,7 @@ class P1_SerializationTest {
     fun `deserialize sets arrivalsToday to empty`() {
         var state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Advance a day to get arrivals
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
         state = result.state
@@ -71,7 +74,7 @@ class P1_SerializationTest {
 
     @Test
     fun `deserialize validates saveVersion`() {
-        val invalidJson = """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1}},"guild":{"guildRank":1,"reputation":50},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
+        val invalidJson = """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":0,"taxAmountDue":0,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":5,"proofPolicy":"LENIENT"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
 
         val exception = assertFails {
             deserialize(invalidJson)
@@ -85,7 +88,7 @@ class P1_SerializationTest {
     fun `serialize preserves value classes as raw int`() {
         var state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Create some contracts and heroes
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
         state = result.state
@@ -126,7 +129,7 @@ class P1_SerializationTest {
     fun `deserialize handles populated collections`() {
         var state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Advance multiple days to get diverse data
         for (i in 1..3) {
             val result = step(state, AdvanceDay(cmdId = i.toLong()), rng)
@@ -148,7 +151,7 @@ class P1_SerializationTest {
     fun `serialize handles all enum types correctly`() {
         var state = initialState(42u)
         val rng = Rng(100L)
-        
+
         // Create diverse state with different enums
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
         state = result.state

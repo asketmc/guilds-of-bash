@@ -1,8 +1,12 @@
 package test
 
+// TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
+
 import core.*
 import core.hash.hashEvents
 import core.hash.hashState
+import core.invariants.InvariantId
+import core.primitives.*
 import core.rng.Rng
 import core.state.initialState
 import kotlin.test.*
@@ -16,7 +20,6 @@ class P1_HashingTest {
     @Test
     fun `hashState produces 64-character lowercase hex`() {
         val state = initialState(42u)
-
         val hash = hashState(state)
 
         assertEquals(64, hash.length, "SHA-256 hex must be 64 characters")
@@ -37,7 +40,7 @@ class P1_HashingTest {
     fun `hashState changes when state changes`() {
         val state1 = initialState(42u)
         val rng = Rng(100L)
-        
+
         val result = step(state1, AdvanceDay(cmdId = 1L), rng)
         val state2 = result.state
 
@@ -62,7 +65,7 @@ class P1_HashingTest {
     fun `hashEvents produces 64-character lowercase hex`() {
         val state = initialState(42u)
         val rng = Rng(100L)
-        
+
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
 
         val hash = hashEvents(result.events)
@@ -75,7 +78,7 @@ class P1_HashingTest {
     fun `hashEvents is deterministic`() {
         val state = initialState(42u)
         val rng = Rng(100L)
-        
+
         val result = step(state, AdvanceDay(cmdId = 1L), rng)
 
         val hash1 = hashEvents(result.events)
@@ -88,7 +91,7 @@ class P1_HashingTest {
     fun `hashEvents changes when events change`() {
         val state = initialState(42u)
         val rng = Rng(100L)
-        
+
         val result1 = step(state, AdvanceDay(cmdId = 1L), rng)
         val result2 = step(result1.state, AdvanceDay(cmdId = 2L), rng)
 
@@ -103,7 +106,7 @@ class P1_HashingTest {
         val state = initialState(42u)
         val rng1 = Rng(100L)
         val rng2 = Rng(100L)
-        
+
         val result1 = step(state, AdvanceDay(cmdId = 1L), rng1)
         val result2 = step(state, AdvanceDay(cmdId = 1L), rng2)
 
@@ -139,9 +142,9 @@ class P1_HashingTest {
     fun `hashEvents order matters`() {
         val event1 = DayStarted(day = 1, revision = 1L, cmdId = 1L, seq = 1L)
         val event2 = DayEnded(
-            day = 1, 
-            revision = 1L, 
-            cmdId = 1L, 
+            day = 1,
+            revision = 1L,
+            cmdId = 1L,
             seq = 2L,
             snapshot = DaySnapshot(
                 day = 1,
@@ -179,7 +182,7 @@ class P1_HashingTest {
             StabilityUpdated(day = 1, revision = 1L, cmdId = 1L, seq = 10L, oldStability = 50, newStability = 51),
             DayEnded(day = 1, revision = 1L, cmdId = 1L, seq = 11L, snapshot = DaySnapshot(day = 1, revision = 1L, money = 10, trophies = 0, regionStability = 51, guildReputation = 50, inboxCount = 0, boardCount = 0, activeCount = 0, returnsNeedingCloseCount = 0)),
             CommandRejected(day = 1, revision = 1L, cmdId = 1L, seq = 12L, cmdType = "Test", reason = RejectReason.NOT_FOUND, detail = "test"),
-            InvariantViolated(day = 1, revision = 1L, cmdId = 1L, seq = 13L, invariantId = core.invariants.InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE, details = "test")
+            InvariantViolated(day = 1, revision = 1L, cmdId = 1L, seq = 13L, invariantId = InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE, details = "test")
         )
 
         val hash = hashEvents(events)

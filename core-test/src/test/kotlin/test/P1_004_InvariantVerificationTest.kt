@@ -1,5 +1,7 @@
 package test
 
+// TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
+
 import core.invariants.InvariantId
 import core.invariants.verifyInvariants
 import core.primitives.*
@@ -10,14 +12,17 @@ import kotlin.test.*
  * P1 CRITICAL: Invariant verification tests.
  * State corruption detection is critical for game stability.
  */
-class P1_InvariantVerificationTest {
+class P1_004_InvariantVerificationTest {
 
     @Test
     fun `verifyInvariants returns empty list for valid initial state`() {
+        // GIVEN: fresh initial state
         val state = initialState(42u)
 
+        // WHEN: verifyInvariants
         val violations = verifyInvariants(state)
 
+        // THEN: no violations
         assertTrue(violations.isEmpty(), "Initial state must have no violations")
     }
 
@@ -62,10 +67,10 @@ class P1_InvariantVerificationTest {
     @Test
     fun `verifyInvariants detects reputation out of range`() {
         val stateBelow = initialState(42u).copy(
-            guild = GuildState(guildRank = 1, reputation = -1)
+            guild = GuildState(guildRank = 1, reputation = -1, completedContractsTotal = 0, contractsForNextRank = 1)
         )
         val stateAbove = initialState(42u).copy(
-            guild = GuildState(guildRank = 1, reputation = 101)
+            guild = GuildState(guildRank = 1, reputation = 101, completedContractsTotal = 0, contractsForNextRank = 1)
         )
 
         val violationsBelow = verifyInvariants(stateBelow)
@@ -125,6 +130,7 @@ class P1_InvariantVerificationTest {
                         title = "Test",
                         rankSuggested = Rank.F,
                         feeOffered = 0,
+                        salvage = SalvagePolicy.GUILD,
                         baseDifficulty = 1,
                         proofHint = "proof"
                     )
@@ -277,7 +283,8 @@ class P1_InvariantVerificationTest {
                         trophiesCount = 0,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     )
                 )
             )

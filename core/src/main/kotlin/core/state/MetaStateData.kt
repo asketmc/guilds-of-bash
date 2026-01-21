@@ -5,7 +5,13 @@ data class MetaState(
     val seed: UInt,
     val dayIndex: Int,
     val revision: Long,
-    val ids: IdCounters
+    val ids: IdCounters,
+
+    // Tax system (Phase 2)
+    val taxDueDay: Int,
+    val taxAmountDue: Int,
+    val taxPenalty: Int,
+    val taxMissedCount: Int
 )
 
 data class IdCounters(

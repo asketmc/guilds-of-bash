@@ -115,8 +115,8 @@ fun verifyInvariants(state: GameState): List<InvariantViolation> {
         .filter { it.status == BoardStatus.LOCKED }
         .sortedBy { it.id.value }
         .forEach { board ->
-            val actives = activeByBoardId[board.id.value] ?: emptyList()
-            val returns = returnsByBoardId[board.id.value] ?: emptyList()
+            val actives = activeByBoardId[board.id.value].orEmpty()
+            val returns = returnsByBoardId[board.id.value].orEmpty()
 
             val wipCount = actives.count { it.status == ActiveStatus.WIP }
             val pendingReturnCount = returns.count { it.requiresPlayerClose }

@@ -24,7 +24,13 @@ data class MetaStateDto(
     val seed: UInt,
     val dayIndex: Int,
     val revision: Long,
-    val ids: IdCountersDto
+    val ids: IdCountersDto,
+
+    // Tax fields
+    val taxDueDay: Int,
+    val taxAmountDue: Int,
+    val taxPenalty: Int,
+    val taxMissedCount: Int
 )
 
 @Serializable
@@ -37,7 +43,14 @@ data class IdCountersDto(
 @Serializable
 data class GuildStateDto(
     val guildRank: Int,
-    val reputation: Int
+    val reputation: Int,
+
+    // Rank progression
+    val completedContractsTotal: Int,
+    val contractsForNextRank: Int,
+
+    // Proof validation policy (Phase 3)
+    val proofPolicy: String = "FAST"
 )
 
 @Serializable
@@ -67,6 +80,7 @@ data class ContractDraftDto(
     val title: String,
     val rankSuggested: String, // Rank enum as string
     val feeOffered: Int,
+    val salvage: String, // SalvagePolicy enum as string
     val baseDifficulty: Int,
     val proofHint: String
 )
@@ -79,6 +93,7 @@ data class BoardContractDto(
     val rank: String, // Rank enum as string
     val fee: Int,
     val salvage: String, // SalvagePolicy enum as string
+    val baseDifficulty: Int,
     val status: String // BoardStatus enum as string
 )
 
@@ -102,7 +117,8 @@ data class ReturnPacketDto(
     val trophiesCount: Int,
     val trophiesQuality: String, // Quality enum as string
     val reasonTags: List<String>,
-    val requiresPlayerClose: Boolean
+    val requiresPlayerClose: Boolean,
+    val suspectedTheft: Boolean
 )
 
 @Serializable

@@ -1,0 +1,85 @@
+> Task :core:checkKotlinGradlePluginConfigurationErrors
+> Task :core:compileKotlin UP-TO-DATE
+> Task :core:compileJava NO-SOURCE
+> Task :core:processResources NO-SOURCE
+> Task :core:classes UP-TO-DATE
+> Task :core:jar UP-TO-DATE
+> Task :core-test:checkKotlinGradlePluginConfigurationErrors
+> Task :core-test:compileKotlin NO-SOURCE
+> Task :core-test:compileJava NO-SOURCE
+> Task :core-test:processResources NO-SOURCE
+> Task :core-test:classes UP-TO-DATE
+> Task :core-test:compileTestKotlin UP-TO-DATE
+> Task :core-test:compileTestJava NO-SOURCE
+> Task :core-test:processTestResources NO-SOURCE
+> Task :core-test:testClasses UP-TO-DATE
+
+> Task :core-test:pitest FAILED
+03:17:02 PIT >> INFO : Project base directory is null
+03:17:02 PIT >> INFO : ---------------------------------------------------------------------------
+03:17:02 PIT >> INFO : Enabled (+) and disabled (-) features.
+03:17:02 PIT >> INFO : -----------------------------------------
+03:17:02 PIT >> INFO : +fann           Filters mutations in classes and methods with matching annotations of class or runtime retention
+03:17:02 PIT >> INFO :   [annotation]    Annotation to avoid (full package name not required)
+03:17:02 PIT >> INFO : +fassert        Filters mutations in compiler generated code for assertions
+03:17:02 PIT >> INFO : +fenum          Filters junk mutations in enums
+03:17:02 PIT >> INFO : +feswitch       Filters mutations in switch statements on enums
+03:17:02 PIT >> INFO : +ffblock        Filters mutations in code duplicated by finally block inlining
+03:17:02 PIT >> INFO : +ffeach         Filters mutations in compiler generated code that implements for each loops
+03:17:02 PIT >> INFO : +ffloop         Filters any mutations to increments in for loops as they may cause timeouts
+03:17:02 PIT >> INFO : +fgroovy        Filters out junk mutations in groovy code
+03:17:02 PIT >> INFO : +finfinc        Filters mutations to increments that may cause infinite loops
+03:17:02 PIT >> INFO : +finfit         Filters mutations that may cause infinite loops by removing calls to iterator.next
+03:17:02 PIT >> INFO : +finull         Filters mutations in compiler generated code that checks for null by calling getClass
+03:17:02 PIT >> INFO : +fkotlin        Filters out junk mutations in bytecode created by compiler for kotlin language features
+03:17:02 PIT >> INFO : +flogcall       Filters mutations in code that makes calls to logging frameworks
+03:17:02 PIT >> INFO : +fmrnull        Filters mutations in compiler generated code that inserts Objects.requireNonNull for method references
+03:17:02 PIT >> INFO : +frecord        Filters mutations in compiler generated record code
+03:17:02 PIT >> INFO : +fretequiv      Filters return vals mutants with bytecode equivalent to the unmutated class
+03:17:02 PIT >> INFO : +fsequivdiv     Filters equivalent mutations of the form x * -1 -> x / -1
+03:17:02 PIT >> INFO : +fsequivequals  Filters equivalent mutations that affect only performance in short cutting equals methods
+03:17:02 PIT >> INFO : +fstati         Filters mutations in static initializers and code called only from them
+03:17:02 PIT >> INFO : +fstrswitch     Filters mutations in compiler generated code for string switch statements
+03:17:02 PIT >> INFO : +ftrywr         Filters mutations in code generated for try with resources statements
+03:17:02 PIT >> INFO : +macos_focus    Auto add java.awt.headless=true to keep keyboard focus on Mac OS
+03:17:02 PIT >> INFO : -auto_threads   Auto set number of threads based on machine
+03:17:02 PIT >> INFO : -classlimit     Limits the maximum number of mutations per class
+03:17:02 PIT >> INFO :   [limit]         Integer value for maximum mutations to create per class
+03:17:02 PIT >> INFO : -export         Exports mutants bytecode and other details to disk
+03:17:02 PIT >> INFO : -nofirstline    Filters mutants with line number <= 1
+03:17:02 PIT >> INFO : ---------------------------------------------------------------------------
+03:17:03 PIT >> FINE : Running report with ReportOptions[targetClasses=[core.*], excludedMethods=[], excludedClasses=[core.serde.*, core.state.*Dto, *.Main*], excludedTestClasses=[], codePaths=[C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\java\main, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\kotlin\main], reportDir='C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\reports\pitest', historyInputLocation=null, historyOutputLocation=null, sourceDirs=[C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\main\resources, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\main\java, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\main\kotlin], classPathElements=[C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest-junit5-plugin\1.2.1\9991fc6c635df117dcf772ee9a4b4158030491f3\pitest-junit5-plugin-1.2.1.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest\1.15.0\46e117b5f3edb5af7734607277a8bcf378ef79f5\pitest-1.15.0.jar, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\java\test, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\kotlin\test, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\resources\test, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\java\main, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\classes\kotlin\main, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\build\resources\main, C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\build\libs\core.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-test-junit5\1.9.23\2e91005f3f1e9ccf31ebe498dce63199963ff1f1\kotlin-test-junit5-1.9.23.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-test\1.9.23\c0bfb6d288568761c098f08b74d078175a9aa40b\kotlin-test-1.9.23.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-serialization-core-jvm\1.6.3\6b6c17d0312ba7192893adea9d52959941d0119b\kotlinx-serialization-core-jvm-1.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlinx\kotlinx-serialization-json-jvm\1.6.3\2241746853abf04073e3ab0dcd9e6729d363b313\kotlinx-serialization-json-jvm-1.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains.kotlin\kotlin-stdlib\1.9.23\dbaadea1f5e68f790d242a91a38355a83ec38747\kotlin-stdlib-1.9.23.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.jupiter\junit-jupiter-engine\5.6.3\234f250d1608684c4436d72214e7530f23cb8a03\junit-jupiter-engine-5.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-engine\1.6.3\a926b9bbc7fe67c5795ee1f00cc1b618b313e5ce\junit-platform-engine-1.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.jupiter\junit-jupiter-api\5.6.3\73ea5e2b7f112616315d3e2325a98e6e93c2813a\junit-jupiter-api-5.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-commons\1.6.3\7ce526bbb9e6202e8a30140a50bfff644fddd10e\junit-platform-commons-1.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-launcher\1.6.3\f55993de89a3b144d3e16fcda42a0687d4bf5629\junit-platform-launcher-1.6.3.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.jetbrains\annotations\13.0\919f0dfe192fb4e063e7dacadee7f8bb9a2672a9\annotations-13.0.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.apiguardian\apiguardian-api\1.1.0\fc9dff4bb36d627bdc553de77e1f17efd790876c\apiguardian-api-1.1.0.jar, C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.opentest4j\opentest4j\1.2.0\28c11eb91f9b6d8e200631d46e20a7f407f2a046\opentest4j-1.2.0.jar], mutators=[STRONGER], features=[], jvmArgs=[-Djava.awt.headless=true], argLine=null, numberOfThreads=8, timeoutFactor=1.5, timeoutConstant=3000, targetTests=[^test\..*$], loggingClasses=[], verbosity=VERBOSE, failWhenNoMutations=true, skipFailingTests=false, outputs=[HTML, XML], groupConfig=TestGroupConfig [excludedGroups=[], includedGroups=[]], fullMutationMatrix=false, mutationUnitSize=0, shouldCreateTimestampedReports=false, detectInlinedCode=true, exportLineCoverage=false, mutationThreshold=60, coverageThreshold=20, testStrengthThreshold=0, mutationEngine='gregor', javaExecutable='null', includeLaunchClasspath=false, properties={}, maxSurvivors=-1, excludedRunners=[], includedTestMethods=[], testPlugin='', useClasspathJar=false, projectBase=null, inputEncoding=windows-1251, outputEncoding=windows-1251, reportCoverage=true]
+03:17:03 PIT >> FINE : System class path is C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest-junit5-plugin\1.2.1\9991fc6c635df117dcf772ee9a4b4158030491f3\pitest-junit5-plugin-1.2.1.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest-command-line\1.15.0\519ee413fd060273d10215b1a56da2021f0f0aba\pitest-command-line-1.15.0.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-engine\1.9.2\40aeef2be7b04f96bb91e8b054affc28b7c7c935\junit-platform-engine-1.9.2.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-commons\1.9.2\6f9f8621d8230cd38aa42e58ccbc0c00569131ce\junit-platform-commons-1.9.2.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.junit.platform\junit-platform-launcher\1.9.2\38e0bfad8c57d4cd1a8f27926c25ffe9543068d6\junit-platform-launcher-1.9.2.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest-entry\1.15.0\3ce3939c47ce1348e65c3e6b9bce1fd78f592096\pitest-entry-1.15.0.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.pitest\pitest\1.15.0\46e117b5f3edb5af7734607277a8bcf378ef79f5\pitest-1.15.0.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.apache.commons\commons-text\1.10.0\3363381aef8cef2dbc1023b3e3a9433b08b64e01\commons-text-1.10.0.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.opentest4j\opentest4j\1.2.0\28c11eb91f9b6d8e200631d46e20a7f407f2a046\opentest4j-1.2.0.jar;C:\Users\Leopard\.gradle\caches\modules-2\files-2.1\org.apache.commons\commons-lang3\3.12.0\c6842c86792ff03b9f1d1fe2aab8dc23aa6c6f0e\commons-lang3-3.12.0.jar
+03:17:03 PIT >> FINE : Maximum available memory is 16360 mb
+03:17:03 PIT >> INFO : Created 0 mutation test units in pre scan
+Exception in thread "main" org.pitest.help.PitHelpError: No mutations found. This probably means there is an issue with either the supplied classpath or filters.
+See https://pitest.org for more details.
+	at org.pitest.mutationtest.tooling.MutationCoverage.checkMutationsFound(MutationCoverage.java:364)
+	at org.pitest.mutationtest.tooling.MutationCoverage.runReport(MutationCoverage.java:129)
+	at org.pitest.mutationtest.tooling.EntryPoint.execute(EntryPoint.java:136)
+	at org.pitest.mutationtest.tooling.EntryPoint.execute(EntryPoint.java:63)
+	at org.pitest.mutationtest.commandline.MutationCoverageReport.runReport(MutationCoverageReport.java:98)
+	at org.pitest.mutationtest.commandline.MutationCoverageReport.main(MutationCoverageReport.java:45)
+
+[Incubating] Problems report is available at: file:///C:/Users/Leopard/IdeaProjects/Guilds-of-Bash/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core-test:pitest'.
+> Process 'command 'C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot\bin\java.exe'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 2s
+6 actionable tasks: 3 executed, 3 up-to-date

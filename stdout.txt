@@ -1,0 +1,65 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :detekt NO-SOURCE
+
+> Task :adapter-console:detekt
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\adapter-console\src\main\kotlin\console\Main.kt:16:5: The function main is too long (77). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\adapter-console\src\main\kotlin\console\Main.kt:16:5: The function main appears to be too complex based on Cyclomatic Complexity (complexity: 42). Defined complexity threshold for methods is set to '15' [CyclomaticComplexMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\adapter-console\src\test\kotlin\console\P1_ConsoleMainSmokeTest.kt:9:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\adapter-console\src\main\kotlin\console\Main.kt:25:5: The loop contains more than one break or continue statement. The code should be refactored to increase readability. [LoopWithTooManyJumpStatements]
+
+
+> Task :core:detekt
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\invariants\InvariantVerifier.kt:6:5: The function verifyInvariants is too long (238). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\invariants\InvariantVerifier.kt:6:5: The function verifyInvariants appears to be too complex based on Cyclomatic Complexity (complexity: 40). Defined complexity threshold for methods is set to '15' [CyclomaticComplexMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\Reducer.kt:473:13: The function handleCloseReturn is too long (67). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\Reducer.kt:97:13: The function handleAdvanceDay is too long (268). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\Reducer.kt:97:13: The function handleAdvanceDay appears to be too complex based on Cyclomatic Complexity (complexity: 22). Defined complexity threshold for methods is set to '15' [CyclomaticComplexMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\Reducer.kt:97:13: Function handleAdvanceDay is nested too deeply. [NestedBlockDepth]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\invariants\InvariantViolationModel.kt:3:12: The file name 'InvariantViolationModel' does not match the name of the single top-level declaration 'InvariantViolation'. [MatchingDeclarationName]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\state\EconomyStateData.kt:3:12: The file name 'EconomyStateData' does not match the name of the single top-level declaration 'EconomyState'. [MatchingDeclarationName]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\state\RegionStateData.kt:3:12: The file name 'RegionStateData' does not match the name of the single top-level declaration 'RegionState'. [MatchingDeclarationName]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\CommandValidation.kt:72:13: Function validatePostContract has 4 return statements which exceeds the limit of 2. [ReturnCount]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\CommandValidation.kt:113:13: Function validateCloseReturn has 4 return statements which exceeds the limit of 2. [ReturnCount]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\CommandValidation.kt:145:13: Function validateSellTrophies has 3 return statements which exceeds the limit of 2. [ReturnCount]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\CommandValidation.kt:156:2: The file C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\CommandValidation.kt is not ending with a new line. [NewLineAtEndOfFile]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\Reducer.kt:568:13: Function handleSellTrophies has 3 return statements which exceeds the limit of 2. [ReturnCount]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\serde\CanonicalEventsJson.kt:71:27: Private function `appendLongField` is unused. [UnusedPrivateMember]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core\src\main\kotlin\core\serde\CanonicalJson.kt:36:9: Use require() instead of throwing an IllegalArgumentException. [UseRequire]
+
+
+> Task :core-test:detekt
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_FeeEscrowTest.kt:101:9: The function close pays out from escrow is too long (68). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_InvariantLockedBoardTest.kt:115:9: The function multiple actives on same board unlocks only when all closed is too long (107). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_InvariantLockedBoardTest.kt:18:9: The function closing last return unlocks board and no invariant violation is too long (81). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_InvariantLockedBoardTest.kt:237:9: The function multiple actives on same board triggers invariant violation is too long (86). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_PoCScenarioTest.kt:18:9: The function poc scenario basic contract flow end to end is too long (81). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_TrophyPipelineTest.kt:94:9: The function close deposits trophies to stock is too long (70). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_TrophyPipelineTest.kt:16:9: The function resolve creates return with nonnegative trophies is too long (63). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_TrophyPipelineTest.kt:201:9: The function multiple contracts generate independent trophy counts is too long (82). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_TrophyPipelineTest.kt:295:9: The function end to end trophy flow from resolve to sell is too long (68). The maximum length is 60. [LongMethod]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\PlaceholderTest.kt:6:23: This empty block of code can be removed. [EmptyFunctionBlock]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_CommandValidationTest.kt:12:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_FeeEscrowTest.kt:13:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_GameStateInitializationTest.kt:10:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_HashingTest.kt:14:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_InvariantLockedBoardTest.kt:15:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_InvariantVerificationTest.kt:13:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_PoCScenarioTest.kt:15:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_ReducerCriticalTest.kt:13:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_SellTrophiesTest.kt:12:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_SerializationTest.kt:15:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_StabilityUpdatedTest.kt:13:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+C:\Users\Leopard\IdeaProjects\Guilds-of-Bash\core-test\src\test\kotlin\test\P1_TrophyPipelineTest.kt:13:7: Class and Object names should match the pattern: [A-Z][a-zA-Z0-9]* [ClassNaming]
+
+
+[Incubating] Problems report is available at: file:///C:/Users/Leopard/IdeaProjects/Guilds-of-Bash/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 26s
+3 actionable tasks: 3 executed

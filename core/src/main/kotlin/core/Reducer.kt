@@ -5,9 +5,13 @@ import core.primitives.*
 import core.rng.Rng
 import core.state.*
 
-private const val N_INBOX = 2
-private const val N_HEROES = 2
+private const val DEFAULT_N_INBOX = 2
+private const val DEFAULT_N_HEROES = 2
 private const val DAYS_REMAINING_INIT = 2
+private const val TAX_INTERVAL_DAYS = 7
+private const val TAX_BASE_AMOUNT = 10
+private const val TAX_PENALTY_PERCENT = 10
+private const val TAX_MAX_MISSED = 3
 
 data class StepResult(
     val state: GameState,
@@ -26,6 +30,46 @@ class SeqContext {
         events.add(withSeq)
         return withSeq
     }
+}
+
+// Simple handler for SellTrophies (keeps previous semantics)
+@Suppress("UNUSED_PARAMETER", "ReturnCount")
+private fun handleSellTrophies(
+    state: GameState,
+    cmd: SellTrophies,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    val total = state.economy.trophiesStock
+
+    if (total <= 0) {
+        return state
+    }
+
+    val amountToSell = if (cmd.amount <= 0) total else minOf(cmd.amount, total)
+    if (amountToSell <= 0) return state
+
+    val moneyGained = amountToSell
+
+    val newState = state.copy(
+        economy = state.economy.copy(
+            trophiesStock = total - amountToSell,
+            moneyCopper = state.economy.moneyCopper + moneyGained
+        )
+    )
+
+    ctx.emit(
+        TrophySold(
+            day = newState.meta.dayIndex,
+            revision = newState.meta.revision,
+            cmdId = cmd.cmdId,
+            seq = 0L,
+            amount = amountToSell,
+            moneyGained = moneyGained
+        )
+    )
+
+    return newState
 }
 
 /**
@@ -64,6 +108,12 @@ fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
         is PostContract -> handlePostContract(stateWithRevision, cmd, rng, seqCtx)
         is CloseReturn -> handleCloseReturn(stateWithRevision, cmd, rng, seqCtx)
         is SellTrophies -> handleSellTrophies(stateWithRevision, cmd, rng, seqCtx)
+        is PayTax -> handlePayTax(stateWithRevision, cmd, rng, seqCtx)
+        is SetProofPolicy -> handleSetProofPolicy(stateWithRevision, cmd, rng, seqCtx)
+        is CreateContract -> handleCreateContract(stateWithRevision, cmd, rng, seqCtx)
+        is UpdateContractTerms -> handleUpdateContractTerms(stateWithRevision, cmd, rng, seqCtx)
+        is CancelContract -> handleCancelContract(stateWithRevision, cmd, rng, seqCtx)
+        else -> stateWithRevision
     }
 
     // Verify invariants and insert before last event if it's DayEnded
@@ -117,15 +167,25 @@ private fun handleAdvanceDay(
         )
     )
 
-    // K9.2 — Inbox generation (fixed N=2)
+    // Determine N_INBOX/N_HEROES based on guild rank
+    val rankOrdinal = workingState.guild.guildRank.coerceIn(1, RANK_THRESHOLDS.size)
+    val rankThreshold = RANK_THRESHOLDS.firstOrNull { it.rankOrdinal == rankOrdinal }
+    val nInbox = rankThreshold?.inboxMultiplier?.times(2) ?: DEFAULT_N_INBOX
+    val nHeroes = rankThreshold?.heroesMultiplier?.times(2) ?: DEFAULT_N_HEROES
+
+    // K9.2 — Inbox generation (dynamic N)
     run {
-        val newDrafts = ArrayList<ContractDraft>(N_INBOX)
-        val contractIds = IntArray(N_INBOX)
+        val newDrafts = ArrayList<ContractDraft>(nInbox)
+        val contractIds = IntArray(nInbox)
         var nextContractId = workingState.meta.ids.nextContractId
 
-        for (i in 0 until N_INBOX) {
+        for (i in 0 until nInbox) {
             val draftId = nextContractId++
             contractIds[i] = draftId
+
+            val threatLevel = calculateThreatLevel(workingState.region.stability)
+            val baseDifficulty = calculateBaseDifficulty(threatLevel, rng)
+
             newDrafts.add(
                 ContractDraft(
                     id = ContractId(draftId),
@@ -133,7 +193,8 @@ private fun handleAdvanceDay(
                     title = "Request #$draftId",
                     rankSuggested = Rank.F,
                     feeOffered = 0,
-                    baseDifficulty = 1,
+                    salvage = SalvagePolicy.GUILD,
+                    baseDifficulty = baseDifficulty,
                     proofHint = "proof"
                 )
             )
@@ -154,19 +215,19 @@ private fun handleAdvanceDay(
                 revision = workingState.meta.revision,
                 cmdId = cmd.cmdId,
                 seq = 0L,
-                count = N_INBOX,
+                count = nInbox,
                 contractIds = contractIds
             )
         )
     }
 
-    // K9.3 — Hero arrivals (fixed N=2)
+    // K9.3 — Hero arrivals (dynamic N)
     run {
-        val newHeroes = ArrayList<Hero>(N_HEROES)
-        val heroIdsRaw = IntArray(N_HEROES)
+        val newHeroes = ArrayList<Hero>(nHeroes)
+        val heroIdsRaw = IntArray(nHeroes)
         var nextHeroId = workingState.meta.ids.nextHeroId
 
-        for (i in 0 until N_HEROES) {
+        for (i in 0 until nHeroes) {
             val heroId = nextHeroId++
             heroIdsRaw[i] = heroId
             newHeroes.add(
@@ -200,13 +261,13 @@ private fun handleAdvanceDay(
                 revision = workingState.meta.revision,
                 cmdId = cmd.cmdId,
                 seq = 0L,
-                count = N_HEROES,
+                count = nHeroes,
                 heroIds = heroIdsRaw
             )
         )
     }
 
-    // K9.4 — Pickup (arrivals take OPEN board contracts)
+    // K9.4 — Pickup (arrivals evaluate and take contracts based on attractiveness)
     run {
         val arrivingHeroIds = workingState.heroes.arrivalsToday.sortedBy { it.value }
         var nextActiveContractId = workingState.meta.ids.nextActiveContractId
@@ -215,30 +276,57 @@ private fun handleAdvanceDay(
         val updatedRoster = workingState.heroes.roster.toMutableList()
         val newActiveContracts = mutableListOf<ActiveContract>()
 
-        // Precompute open board indices in sorted order to avoid sorting per hero (O(B log B) once)
-        val openIndices = updatedBoard
-            .withIndex()
-            .filter { it.value.status == BoardStatus.OPEN }
-            .sortedBy { it.value.id.value }
-            .map { it.index }
-
-        // Build map from HeroId to roster index to avoid repeated indexOfFirst scans
+        // Build map from HeroId to roster index for O(1) lookups
         val rosterIndexById = updatedRoster.mapIndexed { idx, h -> h.id to idx }.toMap().toMutableMap()
 
-        var openPos = 0
-
+        @Suppress("LoopWithTooManyJumpStatements")
         for (heroId in arrivingHeroIds) {
-            val openIdx = if (openPos < openIndices.size) openIndices[openPos++ ] else null
+            val heroIndex = rosterIndexById[heroId] ?: continue
+            val hero = updatedRoster[heroIndex]
 
-            if (openIdx == null) continue
+            // Find all OPEN contracts and evaluate them
+            val openContractsWithScores = updatedBoard
+                .withIndex()
+                .filter { it.value.status == BoardStatus.OPEN }
+                .map { (idx, board) ->
+                    val attractiveness = evaluateContractForHero(hero, board, board.baseDifficulty)
+                    Triple(idx, board, attractiveness.score)
+                }
+                .sortedByDescending { it.third }  // Best score first
 
-            val selectedBoard = updatedBoard[openIdx]
+            if (openContractsWithScores.isEmpty()) {
+                // No contracts available - hero does nothing this day
+                continue
+            }
+
+            val (bestIdx, bestBoard, bestScore) = openContractsWithScores.first()
+
+            if (bestScore < 0) {
+                // Hero refuses - contract too risky or unprofitable
+                ctx.emit(
+                    HeroDeclined(
+                        day = newDay,
+                        revision = workingState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        heroId = heroId.value,
+                        boardContractId = bestBoard.id.value,
+                        reason = when {
+                            bestScore < -30 -> "unprofitable"
+                            else -> "too_risky"
+                        }
+                    )
+                )
+                continue
+            }
+
+            // Hero takes the contract
             val activeId = nextActiveContractId++
 
             newActiveContracts.add(
                 ActiveContract(
                     id = ActiveContractId(activeId),
-                    boardContractId = selectedBoard.id,
+                    boardContractId = bestBoard.id,
                     takenDay = newDay,
                     daysRemaining = DAYS_REMAINING_INIT,
                     heroIds = listOf(heroId),
@@ -247,14 +335,10 @@ private fun handleAdvanceDay(
             )
 
             // Mark board as locked
-            updatedBoard[openIdx] = selectedBoard.copy(status = BoardStatus.LOCKED)
+            updatedBoard[bestIdx] = bestBoard.copy(status = BoardStatus.LOCKED)
 
-            // Update hero status using precomputed index map
-            val heroIndex = rosterIndexById[heroId]
-            if (heroIndex != null) {
-                updatedRoster[heroIndex] = updatedRoster[heroIndex].copy(status = HeroStatus.ON_MISSION)
-                // index map remains valid since we only update elements in-place
-            }
+            // Update hero status
+            updatedRoster[heroIndex] = updatedRoster[heroIndex].copy(status = HeroStatus.ON_MISSION)
 
             ctx.emit(
                 ContractTaken(
@@ -263,7 +347,7 @@ private fun handleAdvanceDay(
                     cmdId = cmd.cmdId,
                     seq = 0L,
                     activeContractId = activeId,
-                    boardContractId = selectedBoard.id.value,
+                    boardContractId = bestBoard.id.value,
                     heroIds = intArrayOf(heroId.value),
                     daysRemaining = DAYS_REMAINING_INIT
                 )
@@ -311,19 +395,81 @@ private fun handleAdvanceDay(
             )
 
             if (newDaysRemaining == 0) {
-                val outcome = Outcome.SUCCESS
-                val requiresPlayerClose = true
-
-                // Generate trophies based on outcome
-                val trophiesCount = if (outcome == Outcome.SUCCESS) {
-                    1 + rng.nextInt(3) // [1..3]: nextInt(3) gives [0,1,2], then +1
-                } else {
-                    0 // FAILURE gives 0 trophies
+                val heroId = active.heroIds.firstOrNull()
+                val hero = if (heroId != null) workingState.heroes.roster.firstOrNull { it.id == heroId } else null
+                val boardContract = workingState.contracts.board.firstOrNull { it.id == active.boardContractId }
+                val contractDifficulty = boardContract?.baseDifficulty ?: 1
+                val outcome = resolveOutcome(hero, contractDifficulty, rng)
+                val requiresPlayerClose = (outcome == Outcome.PARTIAL)
+                val baseTrophiesCount = when (outcome) {
+                    Outcome.SUCCESS -> 1 + rng.nextInt(3)
+                    Outcome.PARTIAL -> 1
+                    else -> 0
                 }
 
                 // Generate trophy quality
                 val qualities = Quality.entries.toTypedArray()
                 val trophiesQuality = qualities[rng.nextInt(qualities.size)]
+
+                // === THEFT LOGIC ===
+                // Find board contract to check salvage policy and fee
+                val boardContractForTheft = workingState.contracts.board.firstOrNull { it.id == active.boardContractId }
+
+                // Get hero traits for theft calculation
+                val heroIdForTheft = active.heroIds.firstOrNull()
+                val heroForTheft = if (heroIdForTheft != null) {
+                    workingState.heroes.roster.firstOrNull { it.id == heroIdForTheft }
+                } else null
+
+                val (trophiesCount, theftOccurred) = if (heroForTheft != null && boardContractForTheft != null && baseTrophiesCount > 0) {
+                    // Calculate theft chance based on salvage policy and payment
+                    val theftChance = when {
+                        // Worst case: GUILD takes all + no fee = high theft motivation
+                        boardContractForTheft.salvage == SalvagePolicy.GUILD && boardContractForTheft.fee == 0 -> {
+                            heroForTheft.traits.greed // 0-100%
+                        }
+                        // Medium case: GUILD takes all but there's a fee
+                        boardContractForTheft.salvage == SalvagePolicy.GUILD && boardContractForTheft.fee > 0 -> {
+                            (heroForTheft.traits.greed - boardContractForTheft.fee / 2).coerceAtLeast(0)
+                        }
+                        // HERO gets trophies anyway - no theft needed
+                        boardContractForTheft.salvage == SalvagePolicy.HERO -> 0
+                        // SPLIT is fair - low theft chance
+                        boardContractForTheft.salvage == SalvagePolicy.SPLIT -> {
+                            ((heroForTheft.traits.greed - heroForTheft.traits.honesty) / 2).coerceAtLeast(0)
+                        }
+                        else -> 0
+                    }
+
+                    val theftRoll = rng.nextInt(100)
+                    if (theftRoll < theftChance) {
+                        // Hero steals portion of trophies
+                        val stolenAmount = (baseTrophiesCount + 1) / 2 // Steal ~50%
+                        val reportedAmount = baseTrophiesCount - stolenAmount
+                        Pair(reportedAmount.coerceAtLeast(0), true)
+                    } else {
+                        Pair(baseTrophiesCount, false)
+                    }
+                } else {
+                    Pair(baseTrophiesCount, false)
+                }
+                // === END THEFT LOGIC ===
+
+                // Emit theft event if detected
+                if (theftOccurred && heroId != null) {
+                    ctx.emit(
+                        TrophyTheftSuspected(
+                            day = newDay,
+                            revision = workingState.meta.revision,
+                            cmdId = cmd.cmdId,
+                            seq = 0L,
+                            activeContractId = active.id.value,
+                            heroId = heroId.value,
+                            expectedTrophies = baseTrophiesCount,
+                            reportedTrophies = trophiesCount
+                        )
+                    )
+                }
 
                 newReturns.add(
                     ReturnPacket(
@@ -335,7 +481,8 @@ private fun handleAdvanceDay(
                         trophiesCount = trophiesCount,
                         trophiesQuality = trophiesQuality,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = requiresPlayerClose
+                        requiresPlayerClose = requiresPlayerClose,
+                        suspectedTheft = theftOccurred
                     )
                 )
 
@@ -429,6 +576,75 @@ private fun handleAdvanceDay(
         )
     )
 
+    // TAX: check if tax due and not paid
+    run {
+        if (newDay >= workingState.meta.taxDueDay) {
+            // Tax due today - check if player paid (we don't track 'paid' flag; assume amountDue must be cleared by PayTax)
+            val amountDue = workingState.meta.taxAmountDue + workingState.meta.taxPenalty
+            // For simplicity: if player didn't reduce taxAmountDue to 0, count as missed
+            if (amountDue > 0) {
+                val penaltyAdded = (amountDue * TAX_PENALTY_PERCENT) / 100
+                val newTaxPenalty = workingState.meta.taxPenalty + penaltyAdded
+                val newMissed = workingState.meta.taxMissedCount + 1
+
+                val afterMissedState = workingState.copy(
+                    meta = workingState.meta.copy(
+                        taxPenalty = newTaxPenalty,
+                        taxMissedCount = newMissed,
+                        taxDueDay = workingState.meta.taxDueDay + TAX_INTERVAL_DAYS,
+                        taxAmountDue = calculateTaxAmount(workingState.guild.guildRank, TAX_BASE_AMOUNT)
+                    )
+                )
+
+                ctx.emit(
+                    TaxMissed(
+                        day = newDay,
+                        revision = afterMissedState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        amountDue = amountDue,
+                        penaltyAdded = penaltyAdded,
+                        missedCount = newMissed
+                    )
+                )
+
+                // If missed limit reached -> GuildShutdown
+                if (newMissed >= TAX_MAX_MISSED) {
+                    ctx.emit(
+                        GuildShutdown(
+                            day = newDay,
+                            revision = afterMissedState.meta.revision,
+                            cmdId = cmd.cmdId,
+                            seq = 0L,
+                            reason = "tax_evasion"
+                        )
+                    )
+                }
+
+                workingState = afterMissedState
+            } else {
+                // Tax considered paid; schedule next
+                workingState = workingState.copy(
+                    meta = workingState.meta.copy(
+                        taxDueDay = workingState.meta.taxDueDay + TAX_INTERVAL_DAYS,
+                        taxAmountDue = calculateTaxAmount(workingState.guild.guildRank, TAX_BASE_AMOUNT)
+                    )
+                )
+
+                ctx.emit(
+                    TaxDue(
+                        day = newDay,
+                        revision = workingState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        amountDue = workingState.meta.taxAmountDue,
+                        dueDay = workingState.meta.taxDueDay
+                    )
+                )
+            }
+        }
+    }
+
     return workingState
 }
 
@@ -449,7 +665,8 @@ private fun handlePostContract(
         title = draft.title,
         rank = draft.rankSuggested,
         fee = fee,
-        salvage = SalvagePolicy.GUILD,
+        salvage = cmd.salvage,  // Use player's choice
+        baseDifficulty = draft.baseDifficulty,
         status = BoardStatus.OPEN
     )
 
@@ -473,14 +690,14 @@ private fun handlePostContract(
             fromInboxId = draft.id.value,
             rank = draft.rankSuggested,
             fee = fee,
-            salvage = SalvagePolicy.GUILD
+            salvage = cmd.salvage
         )
     )
 
     return newState
 }
 
-@Suppress("UNUSED_PARAMETER")
+@Suppress("UNUSED_PARAMETER", "ReturnCount")
 private fun handleCloseReturn(
     state: GameState,
     cmd: CloseReturn,
@@ -492,7 +709,13 @@ private fun handleCloseReturn(
 
     // Find board contract for salvage policy and fee payout
     val board = state.contracts.board.firstOrNull { it.id == ret.boardContractId }
-    val fee = board?.fee ?: 0
+    val policy = state.guild.proofPolicy
+    if (policy == ProofPolicy.STRICT) {
+        if (ret.trophiesQuality.name == "DAMAGED" || ret.suspectedTheft) {
+            // Reject proof, keep contract in RETURN_READY
+            return state
+        }
+    }
 
     // Update heroes: status to AVAILABLE, historyCompleted++
     val heroIdSet = ret.heroIds.map { it.value }.toSet()
@@ -521,12 +744,19 @@ private fun handleCloseReturn(
 
     // Apply salvage/trophy accounting & payout fee
     var newTrophiesStock = state.economy.trophiesStock
-    if (board != null && board.salvage != SalvagePolicy.HERO) {
-        newTrophiesStock += ret.trophiesCount
+    if (board != null) {
+        val trophiesGuildGets = when (board.salvage) {
+            SalvagePolicy.GUILD -> ret.trophiesCount  // Guild gets all
+            SalvagePolicy.HERO -> 0  // Hero keeps all
+            SalvagePolicy.SPLIT -> ret.trophiesCount / 2  // 50/50 split
+        }
+        newTrophiesStock += trophiesGuildGets
     }
 
+    val fee = board?.fee ?: 0
     val newReservedCopper = state.economy.reservedCopper - fee
-    val newMoneyCopper = state.economy.moneyCopper - fee
+    // For failed returns we refund the fee (do not deduct money); otherwise pay out the fee
+    val newMoneyCopper = if (ret.outcome == Outcome.FAIL) state.economy.moneyCopper else state.economy.moneyCopper - fee
 
     // Check if board should be unlocked (LOCKED -> COMPLETED)
     // Board should only unlock when ALL actives referencing it are CLOSED
@@ -548,6 +778,33 @@ private fun handleCloseReturn(
         state.contracts.board
     }
 
+    // Update guild completed contracts and possibly rank up
+    val newCompleted = state.guild.completedContractsTotal + 1
+    val (newRank, contractsForNext) = calculateNextRank(newCompleted, state.guild.guildRank)
+
+    var newGuildState = state.guild.copy(
+        completedContractsTotal = newCompleted,
+        contractsForNextRank = contractsForNext
+    )
+
+    val seqEventsBefore = ctx.events.size
+    if (newRank != state.guild.guildRank) {
+        // Emit RankUp event
+        ctx.emit(
+            GuildRankUp(
+                day = state.meta.dayIndex,
+                revision = state.meta.revision,
+                cmdId = cmd.cmdId,
+                seq = 0L,
+                oldRank = state.guild.guildRank,
+                newRank = newRank,
+                completedContracts = newCompleted
+            )
+        )
+
+        newGuildState = newGuildState.copy(guildRank = newRank)
+    }
+
     val newState = state.copy(
         contracts = state.contracts.copy(
             board = updatedBoard,
@@ -559,7 +816,8 @@ private fun handleCloseReturn(
             trophiesStock = newTrophiesStock,
             reservedCopper = newReservedCopper,
             moneyCopper = newMoneyCopper
-        )
+        ),
+        guild = newGuildState
     )
 
     ctx.emit(
@@ -575,52 +833,72 @@ private fun handleCloseReturn(
     return newState
 }
 
-@Suppress("UNUSED_PARAMETER")
-private fun handleSellTrophies(
+// New handler: PayTax
+@Suppress("UNUSED_PARAMETER", "ReturnCount")
+private fun handlePayTax(
     state: GameState,
-    cmd: SellTrophies,
+    cmd: PayTax,
     rng: Rng,
     ctx: SeqContext
 ): GameState {
-    val total = state.economy.trophiesStock
+    if (cmd.amount <= 0) return state
 
-    if (total <= 0) {
-        return state
-    }
+    val available = state.economy.moneyCopper
+    if (available < cmd.amount) return state
 
-    val amountToSell = if (cmd.amount <= 0) {
-        total
-    } else {
-        minOf(cmd.amount, total)
-    }
+    // Deduct money
+    val afterMoney = available - cmd.amount
 
-    if (amountToSell <= 0) {
-        return state
-    }
+    // Apply to penalty first then to amountDue
+    var remaining = cmd.amount
+    var taxAmt = state.meta.taxAmountDue
+    var penalty = state.meta.taxPenalty
 
-    val moneyGained = amountToSell
+    val applyToPenalty = minOf(remaining, penalty)
+    penalty -= applyToPenalty
+    remaining -= applyToPenalty
+
+    val applyToTax = minOf(remaining, taxAmt)
+    taxAmt -= applyToTax
+    remaining -= applyToTax
+
+    val isPartial = (taxAmt + penalty) > 0
 
     val newState = state.copy(
         economy = state.economy.copy(
-            trophiesStock = total - amountToSell,
-            moneyCopper = state.economy.moneyCopper + moneyGained
+            moneyCopper = afterMoney
+        ),
+        meta = state.meta.copy(
+            taxAmountDue = taxAmt,
+            taxPenalty = penalty
         )
     )
 
     ctx.emit(
-        TrophySold(
+        TaxPaid(
             day = newState.meta.dayIndex,
             revision = newState.meta.revision,
             cmdId = cmd.cmdId,
             seq = 0L,
-            amount = amountToSell,
-            moneyGained = moneyGained
+            amountPaid = cmd.amount,
+            amountDue = taxAmt + penalty,
+            isPartialPayment = isPartial
         )
     )
+
+    // If fully paid, reset missed count
+    if (!isPartial) {
+        return newState.copy(
+            meta = newState.meta.copy(
+                taxMissedCount = 0
+            )
+        )
+    }
 
     return newState
 }
 
+// assignSeq must cover new events
 private fun assignSeq(event: Event, seq: Long): Event {
     return when (event) {
         is DayStarted -> event.copy(seq = seq)
@@ -636,5 +914,242 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is DayEnded -> event.copy(seq = seq)
         is CommandRejected -> event.copy(seq = seq)
         is InvariantViolated -> event.copy(seq = seq)
+        is HeroDeclined -> event.copy(seq = seq)
+        is TrophyTheftSuspected -> event.copy(seq = seq)
+        is TaxDue -> event.copy(seq = seq)
+        is TaxPaid -> event.copy(seq = seq)
+        is TaxMissed -> event.copy(seq = seq)
+        is GuildShutdown -> event.copy(seq = seq)
+        is GuildRankUp -> event.copy(seq = seq)
+        is ProofPolicyChanged -> event.copy(seq = seq)
+        is ContractDraftCreated -> event.copy(seq = seq)
+        is ContractTermsUpdated -> event.copy(seq = seq)
+        is ContractCancelled -> event.copy(seq = seq)
+        else -> event
+    }
+}
+
+private fun resolveOutcome(hero: core.state.Hero?, contractDifficulty: Int, rng: Rng): Outcome {
+    val heroPower = calculateHeroPower(hero)
+    val successChance = ((heroPower - contractDifficulty + 5) * 20).coerceIn(10, 90)
+    val roll = rng.nextInt(100)
+    return when {
+        roll < successChance -> Outcome.SUCCESS
+        roll < successChance + 30 -> Outcome.PARTIAL
+        else -> Outcome.FAIL
+    }
+}
+
+@Suppress("UNUSED_PARAMETER")
+private fun handleSetProofPolicy(
+    state: GameState,
+    cmd: SetProofPolicy,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    val oldPolicy = state.guild.proofPolicy
+    ctx.emit(
+        ProofPolicyChanged(
+            day = state.meta.dayIndex,
+            revision = state.meta.revision,
+            cmdId = cmd.cmdId,
+            seq = 0L,
+            oldPolicy = oldPolicy.ordinal,
+            newPolicy = cmd.policy.ordinal
+        )
+    )
+    return state.copy(guild = state.guild.copy(proofPolicy = cmd.policy))
+}
+
+// R1: Lifecycle command handlers
+
+@Suppress("UNUSED_PARAMETER")
+private fun handleCreateContract(
+    state: GameState,
+    cmd: CreateContract,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    val newId = state.meta.ids.nextContractId
+
+    val draft = ContractDraft(
+        id = ContractId(newId),
+        title = cmd.title,
+        createdDay = state.meta.dayIndex,
+        rankSuggested = cmd.rank,
+        feeOffered = cmd.reward,
+        salvage = cmd.salvage,
+        baseDifficulty = cmd.difficulty,
+        proofHint = "proof"
+    )
+
+    ctx.emit(
+        ContractDraftCreated(
+            day = state.meta.dayIndex,
+            revision = state.meta.revision,
+            cmdId = cmd.cmdId,
+            seq = 0L,
+            draftId = newId,
+            title = cmd.title,
+            rank = cmd.rank,
+            difficulty = cmd.difficulty,
+            reward = cmd.reward,
+            salvage = cmd.salvage
+        )
+    )
+
+    return state.copy(
+        contracts = state.contracts.copy(
+            inbox = state.contracts.inbox + draft
+        ),
+        meta = state.meta.copy(
+            ids = state.meta.ids.copy(nextContractId = newId + 1)
+        )
+    )
+}
+
+@Suppress("UNUSED_PARAMETER")
+private fun handleUpdateContractTerms(
+    state: GameState,
+    cmd: UpdateContractTerms,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    // Find contract in inbox or board
+    val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
+    val boardContract = state.contracts.board.firstOrNull { it.id.value.toLong() == cmd.contractId }
+
+    return when {
+        inboxContract != null -> {
+            val resolvedNewFee = cmd.newFee ?: inboxContract.feeOffered
+            val resolvedNewSalvage = cmd.newSalvage ?: inboxContract.salvage
+
+            val updatedDraft = inboxContract.copy(
+                feeOffered = resolvedNewFee,
+                salvage = resolvedNewSalvage
+            )
+
+            ctx.emit(
+                ContractTermsUpdated(
+                    day = state.meta.dayIndex,
+                    revision = state.meta.revision,
+                    cmdId = cmd.cmdId,
+                    seq = 0L,
+                    contractId = inboxContract.id.value, // use actual contract id from inboxContract
+                    location = "inbox",
+                    oldFee = inboxContract.feeOffered,
+                    newFee = cmd.newFee,
+                    oldSalvage = inboxContract.salvage,
+                    newSalvage = cmd.newSalvage
+                )
+            )
+
+            val updatedInbox = state.contracts.inbox.map {
+                if (it.id.value.toLong() == cmd.contractId) updatedDraft else it
+            }
+
+            state.copy(
+                contracts = state.contracts.copy(inbox = updatedInbox)
+            )
+        }
+        boardContract != null -> {
+            // Update board contract with escrow adjustment
+            val oldFee = boardContract.fee
+            val newFee = cmd.newFee ?: oldFee
+            val feeDelta = newFee - oldFee
+
+            val updatedBoard = boardContract.copy(
+                fee = newFee,
+                salvage = cmd.newSalvage ?: boardContract.salvage
+            )
+
+            ctx.emit(
+                ContractTermsUpdated(
+                    day = state.meta.dayIndex,
+                    revision = state.meta.revision,
+                    cmdId = cmd.cmdId,
+                    seq = 0L,
+                    contractId = boardContract.id.value, // use actual board contract id
+                    location = "board",
+                    oldFee = oldFee,
+                    newFee = cmd.newFee,
+                    oldSalvage = boardContract.salvage,
+                    newSalvage = cmd.newSalvage
+                )
+            )
+
+            val updatedBoardList = state.contracts.board.map {
+                if (it.id.value.toLong() == cmd.contractId) updatedBoard else it
+            }
+
+            // Adjust escrow
+            val newReserved = state.economy.reservedCopper + feeDelta
+
+            state.copy(
+                contracts = state.contracts.copy(board = updatedBoardList),
+                economy = state.economy.copy(reservedCopper = newReserved)
+            )
+        }
+        else -> state // Should never happen due to validation
+    }
+}
+
+@Suppress("UNUSED_PARAMETER")
+private fun handleCancelContract(
+    state: GameState,
+    cmd: CancelContract,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    // Find contract in inbox or board
+    val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
+    val boardContract = state.contracts.board.firstOrNull { it.id.value.toLong() == cmd.contractId }
+
+    return when {
+        inboxContract != null -> {
+            // Remove from inbox (no escrow to refund)
+            ctx.emit(
+                ContractCancelled(
+                    day = state.meta.dayIndex,
+                    revision = state.meta.revision,
+                    cmdId = cmd.cmdId,
+                    seq = 0L,
+                    contractId = inboxContract.id.value, // use actual inbox id
+                    location = "inbox",
+                    refundedCopper = 0
+                )
+            )
+
+            val updatedInbox = state.contracts.inbox.filter { it.id.value.toLong() != cmd.contractId }
+
+            state.copy(
+                contracts = state.contracts.copy(inbox = updatedInbox)
+            )
+        }
+        boardContract != null -> {
+            // Remove from board and refund escrow
+            val refundAmount = boardContract.fee
+
+            ctx.emit(
+                ContractCancelled(
+                    day = state.meta.dayIndex,
+                    revision = state.meta.revision,
+                    cmdId = cmd.cmdId,
+                    seq = 0L,
+                    contractId = boardContract.id.value, // use actual board id
+                    location = "board",
+                    refundedCopper = refundAmount
+                )
+            )
+
+            val updatedBoard = state.contracts.board.filter { it.id.value.toLong() != cmd.contractId }
+            val newReserved = (state.economy.reservedCopper - refundAmount).coerceAtLeast(0) // prevent negative
+
+            state.copy(
+                contracts = state.contracts.copy(board = updatedBoard),
+                economy = state.economy.copy(reservedCopper = newReserved)
+            )
+        }
+        else -> state // Should never happen due to validation
     }
 }
