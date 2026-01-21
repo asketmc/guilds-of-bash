@@ -2,8 +2,11 @@ import org.gradle.api.tasks.JavaExec
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
-    id("gob.kotlin-application")
-    id("com.gradleup.shadow")
+    kotlin("jvm")
+    application
+    id("org.jetbrains.kotlinx.kover")
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+    // detekt применяется и настраивается в root build.gradle.kts
 }
 
 dependencies {
