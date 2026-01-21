@@ -7,8 +7,6 @@
 # Guilds of Bash
 
 [![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
-[![Coverage](https://raw.githubusercontent.com/asketmc/guilds-of-bash/master/badges/coverage.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
-
 <details>
   <summary><strong>Coverage details</strong> (from CI / Kover)</summary>
 
