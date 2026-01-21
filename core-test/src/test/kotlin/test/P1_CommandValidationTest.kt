@@ -148,7 +148,7 @@ class P1_CommandValidationTest {
         val result = canApply(state, cmd)
 
         assertTrue(result is ValidationResult.Rejected, "Should reject CloseReturn on WIP contract")
-        // Исправлено: ожидаем причину NOT_FOUND, если return packet не найден
+        // NOTE: Expect NOT_FOUND when the associated return packet is absent
         assertEquals(RejectReason.NOT_FOUND, (result.reason))
         assertTrue(result.detail.contains("status") || result.detail.contains("not found"))
     }

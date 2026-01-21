@@ -1,38 +1,34 @@
-# ========================
-# AI context ignore rules
-# ========================
-# Syntax identical to .gitignore
-
-# ---- IDE / VCS metadata ----
+# IDE / VCS
 .idea/
 *.iml
 .git/
 .gradle/
 
-# ---- Build outputs ----
-build/
-out/
-**/build/
-**/out/
-
-# ---- Gradle internal caches ----
-**/.gradle/
-
-# ---- OS / temp ----
+# OS junk
 .DS_Store
-*.log
 *.tmp
 *.bak
 *.swp
 
-# ---- Generated AI / large docs ----
+# Large generated docs
 *.md
 
-# ---- Optional: if AI context artifacts exist ----
-build/ai/
-**/build/ai/
+# Build — ignore all build directories
+build/
+out/
 
-# ---- External tooling ----
+# ..but not reports, test results, logs, ai
+!build/reports/
+!build/test-results/
+!build/logs/
+!build/ai/
+
+!**/build/reports/
+!**/build/test-results/
+!**/build/logs/
+!**/build/ai/
+
+# External tooling
 node_modules/
 dist/
 target/

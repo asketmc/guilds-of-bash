@@ -215,12 +215,20 @@ private fun handleAdvanceDay(
         val updatedRoster = workingState.heroes.roster.toMutableList()
         val newActiveContracts = mutableListOf<ActiveContract>()
 
+        // Precompute open board indices in sorted order to avoid sorting per hero (O(B log B) once)
+        val openIndices = updatedBoard
+            .withIndex()
+            .filter { it.value.status == BoardStatus.OPEN }
+            .sortedBy { it.value.id.value }
+            .map { it.index }
+
+        // Build map from HeroId to roster index to avoid repeated indexOfFirst scans
+        val rosterIndexById = updatedRoster.mapIndexed { idx, h -> h.id to idx }.toMap().toMutableMap()
+
+        var openPos = 0
+
         for (heroId in arrivingHeroIds) {
-            val openIdx = updatedBoard
-                .withIndex()
-                .sortedBy { it.value.id.value }
-                .firstOrNull { it.value.status == BoardStatus.OPEN }
-                ?.index
+            val openIdx = if (openPos < openIndices.size) openIndices[openPos++ ] else null
 
             if (openIdx == null) continue
 
@@ -238,11 +246,14 @@ private fun handleAdvanceDay(
                 )
             )
 
+            // Mark board as locked
             updatedBoard[openIdx] = selectedBoard.copy(status = BoardStatus.LOCKED)
 
-            val heroIndex = updatedRoster.indexOfFirst { it.id == heroId }
-            if (heroIndex >= 0) {
+            // Update hero status using precomputed index map
+            val heroIndex = rosterIndexById[heroId]
+            if (heroIndex != null) {
                 updatedRoster[heroIndex] = updatedRoster[heroIndex].copy(status = HeroStatus.ON_MISSION)
+                // index map remains valid since we only update elements in-place
             }
 
             ctx.emit(

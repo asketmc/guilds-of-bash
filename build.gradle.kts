@@ -3,12 +3,18 @@ import java.security.MessageDigest
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     kotlin("jvm") version "1.9.23" apply false
+    kotlin("plugin.serialization") version "1.9.23" apply false
 
     // === KOVER ROOT AGGREGATOR ===
     id("org.jetbrains.kotlinx.kover") version "0.8.3"
+
+    // === DETEKT (static analysis for Kotlin) ===
+    id("io.gitlab.arturbosch.detekt") version "1.23.7"
 }
 
 repositories {
@@ -21,9 +27,108 @@ dependencies {
     kover(project(":core-test"))
 }
 
+// --- Repositories for all subprojects ---
 subprojects {
     repositories {
         mavenCentral()
+    }
+}
+
+// --- Java/Kotlin toolchain alignment (Java 17) ---
+subprojects {
+    // Java toolchain for any Java/Groovy plugins
+    plugins.withId("java") {
+        extensions.configure<JavaPluginExtension>("java") {
+            toolchain {
+                languageVersion.set(JavaLanguageVersion.of(17))
+            }
+        }
+    }
+
+    // Kotlin JVM target
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+}
+
+// --- Detekt: apply + configure once for Kotlin modules ---
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        apply(plugin = "io.gitlab.arturbosch.detekt")
+
+        extensions.configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension>("detekt") {
+            buildUponDefaultConfig = true
+            config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+            baseline = rootProject.file("config/detekt/detekt-baseline.xml")
+
+            // Анализируем Kotlin исходники проекта, исключая сгенерённое/сборочное.
+            source.setFrom(
+                files(
+                    "src/main/kotlin",
+                    "src/test/kotlin"
+                ).filter { it.exists() }
+            )
+            // NOTE: removed incorrect `exclude(...)` calls from DetektExtension scope.
+        }
+
+        tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+            jvmTarget = "17"
+            ignoreFailures = true // adoption mode; позже можно ужесточить
+
+            reports {
+                xml.required.set(true)
+                html.required.set(true)
+                txt.required.set(false)
+            }
+
+            include("**/*.kt")
+            exclude("**/build/**")
+            exclude("**/*.kts")
+        }
+
+
+        // Чтобы detekt запускался вместе с check
+        tasks.named("check") {
+            dependsOn(tasks.withType<io.gitlab.arturbosch.detekt.Detekt>())
+        }
+    }
+}
+
+// Detekt configuration for the root project (applies to subprojects)
+// We configure sensible defaults and generate HTML/XML reports under build/reports/detekt
+// Limit detekt root sources to production sources only (avoid build scripts)
+val detektSourceFiles = files(rootProject.subprojects.mapNotNull { p ->
+    val f = file("${p.projectDir}/src/main/kotlin")
+    if (f.exists()) f else null
+})
+
+detekt {
+    toolVersion = "1.23.7"
+    buildUponDefaultConfig = true
+    config.setFrom("config/detekt/detekt.yml")
+    baseline = file("config/detekt/detekt-baseline.xml")
+}
+
+// Root-level detekt task (if executed) should not scan build scripts
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    include("**/*.kt")
+    exclude("**/build/**")
+    exclude("**/*.kts")
+    ignoreFailures = true
+}
+
+// Ensure kover's agent args file directory exists before any Test task runs (fixes Windows FileNotFoundException)
+subprojects {
+    tasks.withType<Test>().configureEach {
+        doFirst {
+            val koverTmp = file("${buildDir}/tmp/test")
+            if (!koverTmp.exists()) {
+                logger.lifecycle("Creating directory for kover agent args: ${koverTmp.absolutePath}")
+                koverTmp.mkdirs()
+            }
+        }
     }
 }
 
@@ -69,7 +174,7 @@ val aiDeclLineRegex = Regex(
 )
 
 val aiSymbolDeclRegex = Regex(
-    """^\s*(?:public|private|protected|internal\s+)?(?:[A-Za-z]+\s+)*?(class|interface|object|fun|typealias)\s+([A-Za-z_][A-Za-z0-9_]*)\b"""
+    """^\s*(?:public|private|protected|internal\s+)?(?:[A-Za-z]+\s+)*?(class|interface|object|fun|typealias)\s+([A-ZaZ_][A-Zael0-9_]*)\b"""
 )
 
 val aiEntrypointRegex = Regex("""\bfun\s+main\s*\(""")
@@ -92,127 +197,9 @@ fun readAiManifest(file: File): Pair<String, Map<String,String>>? {
         val line = lines[i]
         if (line.isBlank()) continue
         val parts = line.split('\t')
-        if (parts.size == 2) hashes[parts[0]] = parts[1]
+        if (parts.size == 2) {
+            hashes[parts[0]] = parts[1]
+        }
     }
     return global to hashes
 }
-
-fun buildFileBlock(file: File, rel: String): String {
-    val bytes = file.readBytes()
-    val hash = sha256Hex(bytes)
-    val text = runCatching { bytes.toString(Charsets.UTF_8) }.getOrElse { "" }
-
-    val sb = StringBuilder()
-    sb.appendLine()
-    sb.appendLine("== $rel (sha256=$hash) ==")
-
-    if (text.isBlank()) {
-        sb.appendLine("<non-utf8-or-empty>")
-        return sb.toString()
-    }
-
-    val lines = text.lineSequence().toList()
-    val pkg = lines.firstOrNull { it.trimStart().startsWith("package ") }?.trim()
-    if (pkg != null) sb.appendLine(pkg)
-
-    for ((idx,line) in lines.withIndex()) {
-        if (aiDeclLineRegex.matches(line)) {
-            sb.appendLine("${idx+1}: ${line.trimEnd()}")
-        }
-    }
-
-    return sb.toString()
-}
-
-val generateAiContext = rootProject.tasks.register("generateAiContext") {
-    group = "documentation"
-    description = "Generates AI context snapshot + delta"
-
-    val outFileProvider = rootProject.layout.buildDirectory.file(aiContextRelPath)
-    val deltaFileProvider = rootProject.layout.buildDirectory.file(aiDeltaRelPath)
-    val manifestFileProvider = rootProject.layout.buildDirectory.file(aiManifestRelPath)
-
-    outputs.files(outFileProvider, deltaFileProvider, manifestFileProvider)
-
-    doLast {
-        val outFile = outFileProvider.get().asFile
-        val deltaFile = deltaFileProvider.get().asFile
-        val manifestFile = manifestFileProvider.get().asFile
-        outFile.parentFile.mkdirs()
-
-        fun isExcluded(file: File): Boolean {
-            val path = file.absolutePath
-            if (aiExcludePathParts.any { path.contains(it) }) return true
-            val name = file.name
-            if (name in aiExcludeFileNames) return true
-            val ext = name.substringAfterLast('.', "")
-            if (ext.isNotEmpty() && ext in aiExcludeExtensions) return true
-            return false
-        }
-
-        val files = rootProject.rootDir
-            .walkTopDown()
-            .filter { it.isFile }
-            .filterNot { isExcluded(it) }
-            .filter {
-                val n = it.name
-                n.endsWith(".kt") || n.endsWith(".kts") ||
-                        n == "build.gradle" || n == "build.gradle.kts" ||
-                        n == "settings.gradle" || n == "settings.gradle.kts" ||
-                        n == "gradle.properties"
-            }
-            .toList()
-            .sortedBy { it.relativeTo(rootProject.rootDir).invariantSeparatorsPath }
-
-        val prev = readAiManifest(manifestFile)
-        val prevGlobal = prev?.first
-        val prevHashes = prev?.second ?: emptyMap()
-
-        val fileHashes = linkedMapOf<String,String>()
-        val symbolIndex = linkedMapOf<String,String>()
-        val entrypoints = mutableListOf<String>()
-
-        val sb = StringBuilder(2_000_000)
-
-        sb.appendLine("AI_CONTEXT v1")
-        sb.appendLine("root=${rootProject.name}")
-        sb.appendLine("generatedAtEpochMs=${System.currentTimeMillis()}")
-        sb.appendLine()
-
-        sb.appendLine("MODULES:")
-        for (p in rootProject.allprojects.sortedBy { it.path }) {
-            sb.appendLine("- ${p.path} dir=${p.projectDir.relativeTo(rootProject.rootDir).invariantSeparatorsPath}")
-        }
-        sb.appendLine()
-
-        sb.appendLine("DECLARATIONS:")
-        for (f in files) {
-            val rel = f.relativeTo(rootProject.rootDir).invariantSeparatorsPath
-            sb.append(buildFileBlock(f, rel))
-        }
-
-        val snapshotBytes = sb.toString().toByteArray(Charsets.UTF_8)
-        val globalHash = sha256Hex(snapshotBytes)
-
-        outFile.writeText(sb.toString(), Charsets.UTF_8)
-
-        manifestFile.writeText(
-            buildString {
-                appendLine("globalSha256=$globalHash")
-                appendLine("files:")
-                for ((rel,h) in fileHashes.toSortedMap()) {
-                    appendLine("$rel\t$h")
-                }
-            },
-            Charsets.UTF_8
-        )
-    }
-}
-
-// Always generate context on build/classes
-rootProject.allprojects {
-    tasks.matching { it.name == "build" || it.name == "classes" }.configureEach {
-        dependsOn(generateAiContext)
-    }
-}
-

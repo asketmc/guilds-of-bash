@@ -6,6 +6,7 @@ plugins {
     kotlin("jvm")
     application
     id("org.jetbrains.kotlinx.kover")
+    // detekt применяется и настраивается в root build.gradle.kts
 }
 
 dependencies {
@@ -26,3 +27,5 @@ tasks.named<JavaExec>("run") {
     standardOutput = System.out
     errorOutput = System.err
 }
+
+// (detekt tasks configured in root)

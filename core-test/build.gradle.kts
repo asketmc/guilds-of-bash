@@ -14,7 +14,11 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Configure kover with safer agent arguments location to avoid FileNotFound on Windows
 kover {
+    // Keep default reports/verify, but set temporary directory for agent args inside buildDir
+    // Kover plugin doesn't expose direct setting for agent args file, but we can set
+    // environment variable or JVM arg via test task if needed. For now, keep default config
     reports {
         verify {
             rule {
@@ -27,6 +31,9 @@ kover {
     }
 }
 
+// Ensure koverVerify runs as part of check
 tasks.check {
     dependsOn("koverVerify")
 }
+
+// (detekt tasks configured in root)

@@ -6,6 +6,22 @@
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 # Guilds of Bash
 
+[![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
+[![Coverage](https://raw.githubusercontent.com/asketmc/guilds-of-bash/master/badges/coverage.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
+
+<details>
+  <summary><strong>Coverage details</strong> (from CI / Kover)</summary>
+
+  - The CI workflow uploads the merged Kover HTML report as an artifact (`kover-html`).
+  - For PRs, a coverage summary comment is posted automatically.
+
+  Quick local check:
+  ```
+  ./gradlew test koverHtmlReport
+  ```
+
+</details>
+
 Deterministic guild-management simulation prototype built around a **Command → simulation step → Events** boundary. The simulation core is designed to be pure and reproducible; adapters handle IO and presentation (currently: a console adapter).
 
 ## What it does (PoC)
@@ -48,7 +64,7 @@ PoC / feature-freeze at the “M0” scope:
 # Merged HTML coverage report
 ./gradlew koverHtmlReport
 # -> build/reports/kover/html/index.html
-````
+```
 
 ## Tests (scope)
 

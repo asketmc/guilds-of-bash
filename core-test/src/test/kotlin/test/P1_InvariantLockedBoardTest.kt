@@ -89,7 +89,7 @@ class P1_InvariantLockedBoardTest {
         // THEN board status is not LOCKED
         val boardAfter = state.contracts.board.first { it.id.value == 1 }
         assertNotEquals(BoardStatus.LOCKED, boardAfter.status, "Board should not be LOCKED after close")
-        // Исправлено: BoardStatus.RETURN_READY не существует, допускаем только COMPLETED
+        // NOTE: BoardStatus.RETURN_READY is not used; expect COMPLETED instead
         assertEquals(BoardStatus.COMPLETED, boardAfter.status, "Board should be COMPLETED after close")
 
         // Active status допускаем RETURN_READY или CLOSED

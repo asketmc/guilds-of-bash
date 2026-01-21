@@ -1,0 +1,40 @@
+build:
+  maxIssues: 0
+  # При использовании baseline maxIssues не блокирует сборку, но держим 0 как сигнал "не добавляй новые".
+
+config:
+  validation: true
+
+processors:
+  active: true
+
+console-reports:
+  active: true
+
+output-reports:
+  active: true
+
+comments:
+  active: true
+
+complexity:
+  active: true
+  TooManyFunctions:
+    active: false
+
+style:
+  active: true
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: false
+  MaxLineLength:
+    active: false
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+
+performance:
+  active: true
