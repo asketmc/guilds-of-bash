@@ -12,7 +12,7 @@ import kotlin.test.*
  * P1 CRITICAL: Serialization/deserialization tests.
  * Save/load corruption breaks the entire game.
  */
-class P1_SerializationTest {
+class P1_011_SerializationTest {
 
     @Test
     fun `serialize produces non-empty JSON`() {
