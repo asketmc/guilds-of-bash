@@ -1,23 +1,18 @@
 // FILE: core/src/main/kotlin/core/invariants/InvariantId.kt
-package core.invariants
-
 /**
  * Invariant identifiers emitted by the invariants verifier.
  *
- * Contract:
+ * ## Contract
  * - Each enum entry is a stable identifier for one invariant check.
  * - Intended for machine-readable categorization and deterministic reporting.
  *
- * Invariants:
+ * ## Invariants
  * - `code == name`.
  */
-enum class InvariantId {
-    // Aggregate (design/manual-level)
-    INV_UNIQUE_IDS,
-    INV_REFERENTIAL_INTEGRITY,
-    INV_BOARD_ACTIVE_EXCLUSION,
-    INV_SORT_ORDER_STABILITY,
+package core.invariants
 
+
+enum class InvariantId {
     // IDs
     IDS__NEXT_CONTRACT_ID_POSITIVE,
     IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE,
@@ -26,6 +21,7 @@ enum class InvariantId {
     IDS__NEXT_ACTIVE_CONTRACT_ID_GT_MAX_ACTIVE_ID,
     IDS__NEXT_HERO_ID_GT_MAX_HERO_ID,
 
+
     // Contracts
     CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE,
     CONTRACTS__RETURN_READY_HAS_RETURN_PACKET,
@@ -33,11 +29,13 @@ enum class InvariantId {
     CONTRACTS__ACTIVE_DAYS_REMAINING_NON_NEGATIVE,
     CONTRACTS__WIP_DAYS_REMAINING_IN_1_2,
 
+
     // Heroes
     HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT,
     HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
 
-    // Economy / Region / Guild
+
+    // Economy/Region
     ECONOMY__MONEY_NON_NEGATIVE,
     ECONOMY__TROPHIES_NON_NEGATIVE,
     ECONOMY__RESERVED_NON_NEGATIVE,
@@ -45,13 +43,14 @@ enum class InvariantId {
     REGION__STABILITY_0_100,
     GUILD__REPUTATION_0_100;
 
+
     /**
      * Stable string representation of this invariant id.
      *
-     * Contract:
+     * ## Contract
      * - Returns `name` (no transformation).
      *
-     * Determinism:
+     * ## Determinism
      * - Pure and stable for a given enum entry.
      */
     val code: String
