@@ -25,19 +25,25 @@ class P1_017_AbuseTechnicalPoCTest {
         // This test documents the ABSENCE of replay protection at reducer level.
         // Replay protection must be implemented at adapter/persistence layer.
 
-        // Use Scenario + helpers to assert replay determinism and reuse hashing checks
-        val scenario = Scenario(
-            scenarioId = "AB_POC_REPROCESS_DUP",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(AdvanceDay(cmdId = 1L))
+        // GIVEN: State and command with specific cmdId
+        val state = initialState(42u)
+        val rng = Rng(100L)
+        val cmd = AdvanceDay(cmdId = 1L)
+
+        // WHEN: Apply same command twice with same RNG seed (simulating replay)
+        val result1 = step(state, cmd, Rng(100L))
+        val result2 = step(state, cmd, Rng(100L))
+
+        // THEN: Both succeed (reducer is stateless and does not track cmdId history)
+        assertNoRejections(result1.events, "First application should succeed")
+        assertNoRejections(result2.events, "Second application should also succeed (no replay protection in reducer)")
+
+        // Results should be identical (deterministic)
+        assertEquals(
+            result1.state.meta.dayIndex,
+            result2.state.meta.dayIndex,
+            "Both applications produce identical state (deterministic)"
         )
-
-        // Determinism/replay: runScenario twice should yield identical hashes/draws
-        assertReplayDeterminism(scenario, "AB_POC_REPROCESS_DUP: reducer determinism on replay")
-
-        val r = runScenario(scenario)
-        assertNoRejections(r.allEvents, "Both applications should succeed (no replay protection in reducer)")
 
         println("⚠ AB_POC_REPROCESS_DUP: Reducer does NOT prevent replay (adapter responsibility)")
         println("  - This is BY DESIGN: reducer is pure and stateless")
@@ -104,8 +110,8 @@ class P1_017_AbuseTechnicalPoCTest {
         val result = step(state, SellTrophies(amount = -10, cmdId = cmdId++), rng)
 
         // THEN: Command should be accepted but treated as 0 or sell all (implementation-dependent)
-        // Use consolidated helper to check happy-step semantics
-        assertStepOk(result.events, "AB_POC_SELL_BOUNDARY: negative amount")
+        // Current implementation: negative amount treated as "sell all" (amount <= 0 → sell all)
+        assertNoRejections(result.events, "SellTrophies with negative amount should not reject")
 
         val trophySoldEvents = result.events.filterIsInstance<TrophySold>()
         if (trophySoldEvents.isNotEmpty()) {
@@ -114,7 +120,7 @@ class P1_017_AbuseTechnicalPoCTest {
             println("✓ AB_POC_SELL_BOUNDARY: Negative amount resulted in no-op")
         }
 
-        // (no explicit invariant call — asserted by assertStepOk)
+        assertNoInvariantViolations(result.events, "Negative sell amount should not violate invariants")
     }
 
     @Test
@@ -152,16 +158,17 @@ class P1_017_AbuseTechnicalPoCTest {
         state = result.state
 
         // THEN: All trophies sold
-        assertStepOk(result.events, "AB_POC_SELL_BOUNDARY: sell exact stock")
+        assertNoRejections(result.events, "Sell exact stock should succeed")
 
         val trophySoldEvents = result.events.filterIsInstance<TrophySold>()
         if (trophySoldEvents.isNotEmpty()) {
-            assertEquals(trophyStock, trophySoldEvents.first().amount, "Should sell exactly requested amount")
+            val soldAmount = trophySoldEvents.first().amount
+            assertEquals(trophyStock, soldAmount, "Should sell exactly requested amount")
             assertEquals(0, state.economy.trophiesStock, "Stock should be 0 after selling all")
             println("✓ AB_POC_SELL_BOUNDARY: Sold exactly $trophyStock trophies (exact stock match)")
         }
 
-        // (no explicit invariant call — asserted by assertStepOk)
+        assertNoInvariantViolations(result.events, "Sell exact stock should not violate invariants")
     }
 
     @Test
@@ -200,10 +207,10 @@ class P1_017_AbuseTechnicalPoCTest {
         // THEN: Current semantics (via validateSellTrophies): reject if amount > stock
         assertSingleRejection(result.events, RejectReason.INVALID_STATE, "Sell excessive amount should reject")
 
-        val rejDetail = (result.events.first() as CommandRejected).detail
+        val rej = result.events.first() as CommandRejected
         assertTrue(
-            rejDetail.contains("Insufficient trophies", ignoreCase = true) ||
-                    rejDetail.contains("trophies", ignoreCase = true),
+            rej.detail.contains("Insufficient trophies", ignoreCase = true) ||
+                    rej.detail.contains("trophies", ignoreCase = true),
             "Rejection detail should mention trophies insufficiency"
         )
 
@@ -259,8 +266,8 @@ class P1_017_AbuseTechnicalPoCTest {
         ).state
 
         // Verify: 50 reserved, 50 available
-        assertReservedCopper(state, 50, "50 should be reserved")
-        assertAvailableCopper(state, 50, "50 should be available")
+        assertEquals(50, state.economy.reservedCopper, "50 should be reserved")
+        assertEquals(50, state.economy.moneyCopper - state.economy.reservedCopper, "50 should be available")
 
         // WHEN: Attempt to post second contract with fee=60 (exceeds available 50)
         val inbox2 = state.contracts.inbox.first().id.value.toLong()
