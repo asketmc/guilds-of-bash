@@ -278,3 +278,118 @@ data class InvariantViolated(
     val invariantId: InvariantId,
     val details: String
 ) : Event
+
+data class HeroDeclined(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val heroId: Int,
+    val boardContractId: Int,
+    val reason: String  // "low_profit", "too_risky", "bad_terms", etc.
+) : Event
+
+data class TrophyTheftSuspected(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val activeContractId: Int,
+    val heroId: Int,
+    val expectedTrophies: Int,  // What guild expected based on contract difficulty
+    val reportedTrophies: Int   // What hero actually reported
+) : Event
+
+// Tax events (Phase 2)
+data class TaxDue(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val amountDue: Int,
+    val dueDay: Int
+) : Event
+
+data class TaxPaid(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val amountPaid: Int,
+    val amountDue: Int,
+    val isPartialPayment: Boolean
+) : Event
+
+data class TaxMissed(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val amountDue: Int,
+    val penaltyAdded: Int,
+    val missedCount: Int
+) : Event
+
+data class GuildShutdown(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val reason: String
+) : Event
+
+data class GuildRankUp(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val oldRank: Int,
+    val newRank: Int,
+    val completedContracts: Int
+) : Event
+
+data class ProofPolicyChanged(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val oldPolicy: Int,
+    val newPolicy: Int
+) : Event
+
+// R1: Lifecycle command events
+data class ContractDraftCreated(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val draftId: Int,
+    val title: String,
+    val rank: Rank,
+    val difficulty: Int,
+    val reward: Int,
+    val salvage: SalvagePolicy
+) : Event
+
+data class ContractTermsUpdated(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val contractId: Int,
+    val location: String,  // "inbox" or "board"
+    val oldFee: Int?,
+    val newFee: Int?,
+    val oldSalvage: SalvagePolicy?,
+    val newSalvage: SalvagePolicy?
+) : Event
+
+data class ContractCancelled(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val contractId: Int,
+    val location: String,  // "inbox" or "board"
+    val refundedCopper: Int
+) : Event

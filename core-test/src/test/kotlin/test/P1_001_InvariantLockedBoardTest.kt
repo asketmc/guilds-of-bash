@@ -1,5 +1,7 @@
 package test
 
+// TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
+
 import core.*
 import core.invariants.InvariantId
 import core.invariants.verifyInvariants
@@ -33,6 +35,7 @@ class P1_InvariantLockedBoardTest {
                         rank = Rank.F,
                         fee = 0,
                         salvage = SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
                         status = BoardStatus.LOCKED
                     )
                 ),
@@ -56,7 +59,8 @@ class P1_InvariantLockedBoardTest {
                         trophiesCount = 2,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     )
                 )
             ),
@@ -77,7 +81,7 @@ class P1_InvariantLockedBoardTest {
         )
 
         // Verify board is LOCKED before close
-        val boardBefore = state.contracts.board.first { it.id.value == 1 }
+        val boardBefore = state.contracts.board.first { it.id.value.toLong() == 1L }
         assertEquals(BoardStatus.LOCKED, boardBefore.status, "Board should be LOCKED initially")
 
         // WHEN CloseReturn
@@ -87,13 +91,13 @@ class P1_InvariantLockedBoardTest {
         state = result.state
 
         // THEN board status is not LOCKED
-        val boardAfter = state.contracts.board.first { it.id.value == 1 }
+        val boardAfter = state.contracts.board.first { it.id.value.toLong() == 1L }
         assertNotEquals(BoardStatus.LOCKED, boardAfter.status, "Board should not be LOCKED after close")
         // NOTE: BoardStatus.RETURN_READY is not used; expect COMPLETED instead
         assertEquals(BoardStatus.COMPLETED, boardAfter.status, "Board should be COMPLETED after close")
 
         // Active status допускаем RETURN_READY или CLOSED
-        val activeAfter = state.contracts.active.first { it.id.value == 1 }
+        val activeAfter = state.contracts.active.first { it.id.value.toLong() == 1L }
         assertTrue(activeAfter.status == ActiveStatus.CLOSED || activeAfter.status == ActiveStatus.RETURN_READY, "Active should be CLOSED or RETURN_READY")
 
         // Step events do not include InvariantViolated with that invariantId
@@ -131,6 +135,7 @@ class P1_InvariantLockedBoardTest {
                         rank = Rank.F,
                         fee = 0,
                         salvage = SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
                         status = BoardStatus.LOCKED
                     )
                 ),
@@ -162,7 +167,8 @@ class P1_InvariantLockedBoardTest {
                         trophiesCount = 1,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     ),
                     ReturnPacket(
                         boardContractId = ContractId(1),
@@ -173,7 +179,8 @@ class P1_InvariantLockedBoardTest {
                         trophiesCount = 1,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     )
                 )
             ),
@@ -207,7 +214,7 @@ class P1_InvariantLockedBoardTest {
         state = result1.state
 
         // Board should still be LOCKED (active 2 is not CLOSED)
-        val boardAfterFirst = state.contracts.board.first { it.id.value == 1 }
+        val boardAfterFirst = state.contracts.board.first { it.id.value.toLong() == 1L }
         assertEquals(BoardStatus.LOCKED, boardAfterFirst.status, "Board should remain LOCKED after first close")
 
         // No violations yet
@@ -222,7 +229,7 @@ class P1_InvariantLockedBoardTest {
         state = result2.state
 
         // Now board should be COMPLETED
-        val boardAfterSecond = state.contracts.board.first { it.id.value == 1 }
+        val boardAfterSecond = state.contracts.board.first { it.id.value.toLong() == 1L }
         assertEquals(BoardStatus.COMPLETED, boardAfterSecond.status, "Board should be COMPLETED after all closed")
 
         // Still no violations
@@ -247,6 +254,7 @@ class P1_InvariantLockedBoardTest {
                         rank = Rank.F,
                         fee = 0,
                         salvage = SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
                         status = BoardStatus.LOCKED
                     )
                 ),
@@ -278,7 +286,8 @@ class P1_InvariantLockedBoardTest {
                         trophiesCount = 2,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     ),
                     ReturnPacket(
                         boardContractId = ContractId(1),
@@ -289,7 +298,8 @@ class P1_InvariantLockedBoardTest {
                         trophiesCount = 2,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     )
                 )
             ),
@@ -337,6 +347,7 @@ class P1_InvariantLockedBoardTest {
                         rank = Rank.F,
                         fee = 0,
                         salvage = SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
                         status = BoardStatus.LOCKED
                     )
                 ),
@@ -390,6 +401,7 @@ class P1_InvariantLockedBoardTest {
                         rank = Rank.F,
                         fee = 0,
                         salvage = SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
                         status = BoardStatus.COMPLETED
                     )
                 ),

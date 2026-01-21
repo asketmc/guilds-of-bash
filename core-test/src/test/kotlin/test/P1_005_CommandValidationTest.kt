@@ -1,5 +1,7 @@
 package test
 
+// TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
+
 import core.*
 import core.primitives.*
 import core.state.*
@@ -9,15 +11,19 @@ import kotlin.test.*
  * P1 CRITICAL: Command validation tests.
  * Invalid commands could corrupt game state.
  */
-class P1_CommandValidationTest {
+@Smoke
+class P1_005_CommandValidationTest {
 
     @Test
     fun `canApply allows AdvanceDay on any state`() {
+        // GIVEN: any initial state
         val state = initialState(42u)
         val cmd = AdvanceDay(cmdId = 1L)
 
+        // WHEN: canApply
         val result = canApply(state, cmd)
 
+        // THEN: valid
         assertEquals(ValidationResult.Valid, result, "AdvanceDay should always be valid")
     }
 
@@ -27,7 +33,8 @@ class P1_CommandValidationTest {
         val cmd = PostContract(
             cmdId = 1L,
             inboxId = 999L,
-            fee = 100
+            fee = 100,
+            salvage = SalvagePolicy.GUILD
         )
 
         val result = canApply(state, cmd)
@@ -48,6 +55,7 @@ class P1_CommandValidationTest {
                         title = "Test",
                         rankSuggested = Rank.F,
                         feeOffered = 0,
+                        salvage = SalvagePolicy.GUILD,
                         baseDifficulty = 1,
                         proofHint = "proof"
                     )
@@ -65,7 +73,8 @@ class P1_CommandValidationTest {
         val cmd = PostContract(
             cmdId = 1L,
             inboxId = 1L,
-            fee = 100
+            fee = 100,
+            salvage = SalvagePolicy.GUILD
         )
 
         val result = canApply(state, cmd)
@@ -84,6 +93,7 @@ class P1_CommandValidationTest {
                         title = "Test",
                         rankSuggested = Rank.F,
                         feeOffered = 0,
+                        salvage = SalvagePolicy.GUILD,
                         baseDifficulty = 1,
                         proofHint = "proof"
                     )
@@ -96,7 +106,8 @@ class P1_CommandValidationTest {
         val cmd = PostContract(
             cmdId = 1L,
             inboxId = 1L,
-            fee = -100
+            fee = -100,
+            salvage = SalvagePolicy.GUILD
         )
 
         val result = canApply(state, cmd)
@@ -179,7 +190,8 @@ class P1_CommandValidationTest {
                         trophiesCount = 0,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = false // Does not require close
+                        requiresPlayerClose = false, // Does not require close
+                        suspectedTheft = false
                     )
                 )
             )
@@ -221,7 +233,8 @@ class P1_CommandValidationTest {
                         trophiesCount = 0,
                         trophiesQuality = Quality.OK,
                         reasonTags = emptyList(),
-                        requiresPlayerClose = true
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
                     )
                 )
             )
@@ -242,7 +255,8 @@ class P1_CommandValidationTest {
         val cmd = PostContract(
             cmdId = 1L,
             inboxId = 999L,
-            fee = 100
+            fee = 100,
+            salvage = SalvagePolicy.GUILD
         )
 
         val result1 = canApply(state, cmd)

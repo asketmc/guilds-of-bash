@@ -32,8 +32,8 @@ fun deserialize(jsonString: String): GameState {
     val dto = json.decodeFromString<GameStateDto>(jsonString)
     
     // Validate save version
-    if (dto.meta.saveVersion != SUPPORTED_SAVE_VERSION) {
-        throw IllegalArgumentException("Unsupported saveVersion: ${dto.meta.saveVersion}")
+    require(dto.meta.saveVersion == SUPPORTED_SAVE_VERSION) {
+        "Unsupported saveVersion: ${dto.meta.saveVersion}"
     }
     
     return fromDto(dto)
@@ -62,14 +62,21 @@ fun toDto(meta: MetaState): MetaStateDto {
             nextContractId = meta.ids.nextContractId,
             nextHeroId = meta.ids.nextHeroId,
             nextActiveContractId = meta.ids.nextActiveContractId
-        )
+        ),
+
+        taxDueDay = meta.taxDueDay,
+        taxAmountDue = meta.taxAmountDue,
+        taxPenalty = meta.taxPenalty,
+        taxMissedCount = meta.taxMissedCount
     )
 }
 
 fun toDto(guild: GuildState): GuildStateDto {
     return GuildStateDto(
         guildRank = guild.guildRank,
-        reputation = guild.reputation
+        reputation = guild.reputation,
+        completedContractsTotal = guild.completedContractsTotal,
+        contractsForNextRank = guild.contractsForNextRank
     )
 }
 
@@ -103,6 +110,7 @@ fun toDto(draft: ContractDraft): ContractDraftDto {
         title = draft.title,
         rankSuggested = draft.rankSuggested.name,
         feeOffered = draft.feeOffered,
+        salvage = draft.salvage.name,
         baseDifficulty = draft.baseDifficulty,
         proofHint = draft.proofHint
     )
@@ -116,6 +124,7 @@ fun toDto(board: BoardContract): BoardContractDto {
         rank = board.rank.name,
         fee = board.fee,
         salvage = board.salvage.name,
+        baseDifficulty = board.baseDifficulty,
         status = board.status.name
     )
 }
@@ -141,7 +150,8 @@ fun toDto(packet: ReturnPacket): ReturnPacketDto {
         trophiesCount = packet.trophiesCount,
         trophiesQuality = packet.trophiesQuality.name,
         reasonTags = packet.reasonTags,
-        requiresPlayerClose = packet.requiresPlayerClose
+        requiresPlayerClose = packet.requiresPlayerClose,
+        suspectedTheft = packet.suspectedTheft
     )
 }
 
@@ -191,14 +201,21 @@ fun fromDtoMeta(dto: MetaStateDto): MetaState {
             nextContractId = dto.ids.nextContractId,
             nextHeroId = dto.ids.nextHeroId,
             nextActiveContractId = dto.ids.nextActiveContractId
-        )
+        ),
+
+        taxDueDay = dto.taxDueDay,
+        taxAmountDue = dto.taxAmountDue,
+        taxPenalty = dto.taxPenalty,
+        taxMissedCount = dto.taxMissedCount
     )
 }
 
 fun fromDto(dto: GuildStateDto): GuildState {
     return GuildState(
         guildRank = dto.guildRank,
-        reputation = dto.reputation
+        reputation = dto.reputation,
+        completedContractsTotal = dto.completedContractsTotal,
+        contractsForNextRank = dto.contractsForNextRank
     )
 }
 
@@ -232,6 +249,7 @@ fun fromDtoDraft(dto: ContractDraftDto): ContractDraft {
         title = dto.title,
         rankSuggested = Rank.valueOf(dto.rankSuggested),
         feeOffered = dto.feeOffered,
+        salvage = SalvagePolicy.valueOf(dto.salvage),
         baseDifficulty = dto.baseDifficulty,
         proofHint = dto.proofHint
     )
@@ -245,6 +263,7 @@ fun fromDtoBoard(dto: BoardContractDto): BoardContract {
         rank = Rank.valueOf(dto.rank),
         fee = dto.fee,
         salvage = SalvagePolicy.valueOf(dto.salvage),
+        baseDifficulty = dto.baseDifficulty,
         status = BoardStatus.valueOf(dto.status)
     )
 }
@@ -270,7 +289,8 @@ fun fromDtoReturn(dto: ReturnPacketDto): ReturnPacket {
         trophiesCount = dto.trophiesCount,
         trophiesQuality = Quality.valueOf(dto.trophiesQuality),
         reasonTags = dto.reasonTags,
-        requiresPlayerClose = dto.requiresPlayerClose
+        requiresPlayerClose = dto.requiresPlayerClose,
+        suspectedTheft = dto.suspectedTheft
     )
 }
 

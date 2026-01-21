@@ -25,3 +25,7 @@ Thumbs.db
 
 # === CI-generated coverage badge ===
 /badges/
+
+# Ignore logs and text files generated during development
+*.log
+*.txt

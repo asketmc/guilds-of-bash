@@ -36,6 +36,17 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is DayEnded -> serializeDayEnded(event, sb)
         is CommandRejected -> serializeCommandRejected(event, sb)
         is InvariantViolated -> serializeInvariantViolated(event, sb)
+        is HeroDeclined -> serializeHeroDeclined(event, sb)
+        is TrophyTheftSuspected -> serializeTrophyTheftSuspected(event, sb)
+        is TaxDue -> serializeTaxDue(event, sb)
+        is TaxPaid -> serializeTaxPaid(event, sb)
+        is TaxMissed -> serializeTaxMissed(event, sb)
+        is GuildShutdown -> serializeGuildShutdown(event, sb)
+        is GuildRankUp -> serializeGuildRankUp(event, sb)
+        is ProofPolicyChanged -> serializeProofPolicyChanged(event, sb)
+        is ContractDraftCreated -> serializeContractDraftCreated(event, sb)
+        is ContractTermsUpdated -> serializeContractTermsUpdated(event, sb)
+        is ContractCancelled -> serializeContractCancelled(event, sb)
     }
 }
 
@@ -68,12 +79,6 @@ private fun StringBuilder.appendIntField(name: String, value: Int) {
     append(value)
 }
 
-private fun StringBuilder.appendLongField(name: String, value: Long) {
-    append(",\"")
-    append(name)
-    append("\":")
-    append(value)
-}
 
 private fun StringBuilder.appendIntArray(name: String, array: IntArray) {
     append(",\"")
@@ -84,6 +89,30 @@ private fun StringBuilder.appendIntArray(name: String, array: IntArray) {
         append(value)
     }
     append("]")
+}
+
+private fun StringBuilder.appendNullableIntField(name: String, value: Int?) {
+    append(",\"")
+    append(name)
+    append("\":")
+    if (value == null) {
+        append("null")
+    } else {
+        append(value)
+    }
+}
+
+private fun StringBuilder.appendNullableStringField(name: String, value: String?) {
+    append(",\"")
+    append(name)
+    append("\":")
+    if (value == null) {
+        append("null")
+    } else {
+        append("\"")
+        append(escapeJson(value))
+        append("\"")
+    }
 }
 
 private fun escapeJson(str: String): String {
@@ -215,3 +244,96 @@ private fun serializeInvariantViolated(event: InvariantViolated, sb: StringBuild
     sb.appendStringField("details", event.details)
     sb.append('}')
 }
+
+private fun serializeHeroDeclined(event: HeroDeclined, sb: StringBuilder) {
+    sb.appendCommonFields("HeroDeclined", event)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("boardContractId", event.boardContractId)
+    sb.appendStringField("reason", event.reason)
+    sb.append('}')
+}
+
+private fun serializeTrophyTheftSuspected(event: TrophyTheftSuspected, sb: StringBuilder) {
+    sb.appendCommonFields("TrophyTheftSuspected", event)
+    sb.appendIntField("activeContractId", event.activeContractId)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("expectedTrophies", event.expectedTrophies)
+    sb.appendIntField("reportedTrophies", event.reportedTrophies)
+    sb.append('}')
+}
+
+private fun serializeTaxDue(event: TaxDue, sb: StringBuilder) {
+    sb.appendCommonFields("TaxDue", event)
+    sb.appendIntField("amountDue", event.amountDue)
+    sb.appendIntField("dueDay", event.dueDay)
+    sb.append('}')
+}
+
+private fun serializeTaxPaid(event: TaxPaid, sb: StringBuilder) {
+    sb.appendCommonFields("TaxPaid", event)
+    sb.appendIntField("amountPaid", event.amountPaid)
+    sb.appendIntField("amountDue", event.amountDue)
+    sb.append(",\"isPartialPayment\":")
+    sb.append(if (event.isPartialPayment) "true" else "false")
+    sb.append('}')
+}
+
+private fun serializeTaxMissed(event: TaxMissed, sb: StringBuilder) {
+    sb.appendCommonFields("TaxMissed", event)
+    sb.appendIntField("amountDue", event.amountDue)
+    sb.appendIntField("penaltyAdded", event.penaltyAdded)
+    sb.appendIntField("missedCount", event.missedCount)
+    sb.append('}')
+}
+
+private fun serializeGuildShutdown(event: GuildShutdown, sb: StringBuilder) {
+    sb.appendCommonFields("GuildShutdown", event)
+    sb.appendStringField("reason", event.reason)
+    sb.append('}')
+}
+
+private fun serializeGuildRankUp(event: GuildRankUp, sb: StringBuilder) {
+    sb.appendCommonFields("GuildRankUp", event)
+    sb.appendIntField("oldRank", event.oldRank)
+    sb.appendIntField("newRank", event.newRank)
+    sb.appendIntField("completedContracts", event.completedContracts)
+    sb.append('}')
+}
+
+private fun serializeProofPolicyChanged(event: ProofPolicyChanged, sb: StringBuilder) {
+    sb.appendCommonFields("ProofPolicyChanged", event)
+    sb.appendIntField("oldPolicy", event.oldPolicy)
+    sb.appendIntField("newPolicy", event.newPolicy)
+    sb.append('}')
+}
+
+private fun serializeContractDraftCreated(event: ContractDraftCreated, sb: StringBuilder) {
+    sb.appendCommonFields("ContractDraftCreated", event)
+    sb.appendIntField("draftId", event.draftId)
+    sb.appendStringField("title", event.title)
+    sb.appendStringField("rank", event.rank.name)
+    sb.appendIntField("difficulty", event.difficulty)
+    sb.appendIntField("reward", event.reward)
+    sb.appendStringField("salvage", event.salvage.name)
+    sb.append('}')
+}
+
+private fun serializeContractTermsUpdated(event: ContractTermsUpdated, sb: StringBuilder) {
+    sb.appendCommonFields("ContractTermsUpdated", event)
+    sb.appendIntField("contractId", event.contractId)
+    sb.appendStringField("location", event.location)
+    sb.appendNullableIntField("oldFee", event.oldFee)
+    sb.appendNullableIntField("newFee", event.newFee)
+    sb.appendNullableStringField("oldSalvage", event.oldSalvage?.name)
+    sb.appendNullableStringField("newSalvage", event.newSalvage?.name)
+    sb.append('}')
+}
+
+private fun serializeContractCancelled(event: ContractCancelled, sb: StringBuilder) {
+    sb.appendCommonFields("ContractCancelled", event)
+    sb.appendIntField("contractId", event.contractId)
+    sb.appendStringField("location", event.location)
+    sb.appendIntField("refundedCopper", event.refundedCopper)
+    sb.append('}')
+}
+

@@ -1,3 +1,5 @@
+// FILE: build.gradle.kts
+
 import java.io.File
 import java.security.MessageDigest
 import org.gradle.api.artifacts.ExternalModuleDependency
@@ -10,11 +12,17 @@ plugins {
     kotlin("jvm") version "1.9.23" apply false
     kotlin("plugin.serialization") version "1.9.23" apply false
 
+    // === DOKKA (docs-as-artifact) ===
+    id("org.jetbrains.dokka") version "2.1.0"
+
     // === KOVER ROOT AGGREGATOR ===
     id("org.jetbrains.kotlinx.kover") version "0.8.3"
 
     // === DETEKT (static analysis for Kotlin) ===
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
+
+    // === PITEST (mutation testing for quality assurance) ===
+    id("info.solidsoft.pitest") version "1.15.0" apply false
 }
 
 repositories {
@@ -32,6 +40,21 @@ subprojects {
     repositories {
         mavenCentral()
     }
+}
+
+// --- DOKKA: apply to Kotlin modules (multi-module HTML via root task dokkaHtmlMultiModule) ---
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        apply(plugin = "org.jetbrains.dokka")
+    }
+    plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        apply(plugin = "org.jetbrains.dokka")
+    }
+}
+
+// Stable output directory for CI artifact
+tasks.withType<org.jetbrains.dokka.gradle.DokkaMultiModuleTask>().configureEach {
+    outputDirectory.set(layout.buildDirectory.dir("reports/dokka/html"))
 }
 
 // --- Java/Kotlin toolchain alignment (Java 17) ---
@@ -87,7 +110,6 @@ subprojects {
             exclude("**/build/**")
             exclude("**/*.kts")
         }
-
 
         // Чтобы detekt запускался вместе с check
         tasks.named("check") {

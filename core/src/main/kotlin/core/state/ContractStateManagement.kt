@@ -15,6 +15,7 @@ data class ContractDraft(
     val title: String,
     val rankSuggested: Rank,
     val feeOffered: Int,
+    val salvage: SalvagePolicy,
     val baseDifficulty: Int,
     val proofHint: String
 )
@@ -26,6 +27,7 @@ data class BoardContract(
     val rank: Rank,
     val fee: Int,
     val salvage: SalvagePolicy,
+    val baseDifficulty: Int,  // Difficulty from original draft (1-5+ scale)
     val status: BoardStatus
 )
 
@@ -47,5 +49,6 @@ data class ReturnPacket(
     val trophiesCount: Int,
     val trophiesQuality: Quality,
     val reasonTags: List<String>,
-    val requiresPlayerClose: Boolean
+    val requiresPlayerClose: Boolean,
+    val suspectedTheft: Boolean  // True if guild suspects hero stole trophies
 )

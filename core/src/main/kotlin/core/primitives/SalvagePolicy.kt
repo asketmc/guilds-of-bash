@@ -1,5 +1,7 @@
 package core.primitives
 
 enum class SalvagePolicy {
-    HERO, GUILD
+    HERO,
+    GUILD,
+    SPLIT  // 50/50 distribution between guild and hero
 }

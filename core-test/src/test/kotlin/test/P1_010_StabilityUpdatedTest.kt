@@ -41,7 +41,8 @@ class P1_StabilityUpdatedTest {
 
         // Post a contract from inbox
         val inboxId = state.contracts.inbox.first().id.value.toLong()
-        val result2 = step(state, PostContract(inboxId = inboxId, fee = 0, cmdId = 2L), rng)
+        // supply salvage policy to match current PostContract signature
+        val result2 = step(state, PostContract(inboxId = inboxId, fee = 0, salvage = core.primitives.SalvagePolicy.GUILD, cmdId = 2L), rng)
         state = result2.state
 
         // Day 2: Heroes arrive and take the contract (daysRemaining=2)
@@ -139,7 +140,7 @@ class P1_StabilityUpdatedTest {
     @Test
     fun `StabilityUpdated appears before DayEnded when emitted`() {
         // This test verifies the emission order constraint
-        // Since current implementation always has requiresPlayerClose=true, 
+        // Since current implementation always has requiresPlayerClose=true,
         // we can't easily trigger a StabilityUpdated event
         // This test documents the expected behavior
 
