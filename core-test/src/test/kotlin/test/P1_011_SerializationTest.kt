@@ -74,7 +74,8 @@ class P1_011_SerializationTest {
 
     @Test
     fun `deserialize validates saveVersion`() {
-        val invalidJson = """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":0,"taxAmountDue":0,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":5,"proofPolicy":"LENIENT"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
+        val invalidJson =
+            """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":0,"taxAmountDue":0,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":5,"proofPolicy":"LENIENT"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
 
         val exception = assertFails {
             deserialize(invalidJson)
@@ -112,17 +113,20 @@ class P1_011_SerializationTest {
 
     @Test
     fun `deserialize handles empty collections`() {
-        val state = initialState(42u)
+        // Purpose: ensure deserialize correctly handles EMPTY lists in JSON payload.
+        // initialState() is not suitable here because it intentionally seeds inbox with 2 drafts.
 
-        val json = serialize(state)
-        val restored = deserialize(json)
+        val emptyCollectionsJson =
+            """{"meta":{"saveVersion":1,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":7,"taxAmountDue":10,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":10,"proofPolicy":"FAST"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
 
-        assertTrue(restored.contracts.inbox.isEmpty())
-        assertTrue(restored.contracts.board.isEmpty())
-        assertTrue(restored.contracts.active.isEmpty())
-        assertTrue(restored.contracts.returns.isEmpty())
-        assertTrue(restored.heroes.roster.isEmpty())
-        assertTrue(restored.heroes.arrivalsToday.isEmpty())
+        val restored = deserialize(emptyCollectionsJson)
+
+        assertTrue(restored.contracts.inbox.isEmpty(), "Inbox must be empty")
+        assertTrue(restored.contracts.board.isEmpty(), "Board must be empty")
+        assertTrue(restored.contracts.active.isEmpty(), "Active must be empty")
+        assertTrue(restored.contracts.returns.isEmpty(), "Returns must be empty")
+        assertTrue(restored.heroes.roster.isEmpty(), "Roster must be empty")
+        assertTrue(restored.heroes.arrivalsToday.isEmpty(), "arrivalsToday must be empty after load")
     }
 
     @Test
