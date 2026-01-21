@@ -2,188 +2,92 @@
 
 ## 🚀 Common Commands
 
-```bash
-# Run all P1 critical tests
-./gradlew ciTest
+```powershell
+# Run the core-test module (all tests)
+.\gradlew.bat :core-test:test
 
-# Run specific test class
-./gradlew :core-test:test --tests "P1_ReducerCriticalTest"
+# Run a specific test class (use the fully-qualified test class name or pattern)
+.\gradlew.bat :core-test:test --tests "test.P1_009_ReducerCriticalTest"
 
-# Run specific test method
-./gradlew :core-test:test --tests "P1_ReducerCriticalTest.step increments revision exactly once"
+# Run a specific test method (use Gradle test filter patterns)
+.\gradlew.bat :core-test:test --tests "test.P1_009_ReducerCriticalTest.someMethodPattern*"
 
-# Run all tests with detailed output
-./gradlew :core-test:test --info
+# Run with more Gradle logging
+.\gradlew.bat :core-test:test --info
 
 # Force rerun tests (ignore up-to-date)
-./gradlew :core-test:test --rerun-tasks
+.\gradlew.bat :core-test:test --rerun-tasks
 
-# Build any module (auto-runs tests)
-./gradlew :core:build
-./gradlew :adapter-console:build
+# Build a module (this may also run tests depending on task ordering)
+.\gradlew.bat :core:build
+.\gradlew.bat :adapter-console:build
 
 # Clean and rebuild everything
-./gradlew clean build
+.\gradlew.bat clean build
 ```
+
+> Note: Linux/macOS users can drop the `.bat` suffix and use `./gradlew`.
 
 ## 📊 Test Suite Overview
 
-| File | Tests | Purpose |
-|------|-------|---------|
-| `P1_ReducerCriticalTest.kt` | 13 | Core game loop |
-| `P1_GameStateInitializationTest.kt` | 8 | Valid startup |
-| `P1_SerializationTest.kt` | 12 | Save/load |
-| `P1_HashingTest.kt` | 13 | Replays |
-| `P1_InvariantVerificationTest.kt` | 14 | Corruption detection |
-| `P1_CommandValidationTest.kt` | 10 | Command safety |
-| **TOTAL** | **70** | **All critical paths** |
+- Tests for the project's core logic live in `core-test/src/test/kotlin/test/`.
+- Files are organized with a human-readable prefix convention (for example `P1_###_Name.kt`) indicating priority/area and an identifying name — treat the file names as stable anchors for developers, not rigid indices.
+- The tests use Kotlin + JUnit5 (with `kotlin.test` helpers and some JUnit annotations visible in the code). A lightweight `@Smoke` tag/annotation is provided for ultra-fast PR smoke runs.
+- Avoid treating a single number (total test count) as canonical in docs — tests change frequently. Instead, the reference describes where tests live, how they are tagged, and how CI consumes them.
 
-## 🎯 What's Tested
+## 🔎 What's in the `core-test` module
 
-### ✅ Will Catch These Bugs
+- Location: `core-test/src/test/kotlin/test/`
+- Patterns you will see:
+  - File naming: `P1_001_...`, `P1_002_...`, etc. (P1 indicates critical tests in this repo's convention)
+  - Shared helpers & harnesses are in `TestHelpers.kt` (scenario runner helpers like `runScenario`, `Scenario`, `ScenarioResult`) and utility assertions (e.g. `assertNoRejections`, `assertNoInvariantViolations`, `assertEventTypesPresent`).
+  - A `Smoke` annotation is available (`Smoke.kt`) to mark the smallest, fastest subset of tests.
+- Test flavor: unit-level deterministic scenarios driven by a pure `step(state, command, rng)` reducer with an explicit `Rng` seed for reproducibility.
 
-- ❌ Game crashes on AdvanceDay
-- ❌ State corruption after invalid command
-- ❌ Save file corruption
-- ❌ Replay desync
-- ❌ Negative money/trophies
-- ❌ ID collisions
-- ❌ Invalid initial state
-- ❌ Event ordering bugs
-- ❌ Business rule violations
+## 📁 Test Reports
 
-### ⚠️ Won't Catch These (Yet)
+When you run Gradle tests, results and reports are produced under the `core-test/build/` directory:
 
-- UI bugs
-- Performance issues
-- Multi-day scenario bugs
-- Race conditions (not applicable - single-threaded)
+- Machine-readable XML (per-test-suite): `core-test/build/test-results/test/*.xml` — useful for CI and custom parsing.
+- Human-friendly HTML summary: `core-test/build/reports/tests/test/index.html` — open it in a browser for a readable report.
 
-## 📁 Test Files Location
+If those files are not present locally, run the test task above to generate them.
 
-```
-Guilds-of-Bash/
-├── core-test/
-│   ├── src/test/kotlin/test/
-│   │   ├── P1_ReducerCriticalTest.kt
-│   │   ├── P1_GameStateInitializationTest.kt
-│   │   ├── P1_SerializationTest.kt
-│   │   ├── P1_HashingTest.kt
-│   │   ├── P1_InvariantVerificationTest.kt
-│   │   └── P1_CommandValidationTest.kt
-│   └── build/
-│       ├── test-results/test/  (XML results)
-│       └── reports/tests/test/index.html  (HTML report)
-└── P1_TEST_IMPLEMENTATION_SUMMARY.md  (full docs)
+## 🐞 Debugging Failed Tests
+
+- To inspect the HTML report, open the generated file in your OS's default browser:
+
+```powershell
+Start-Process core-test\build\reports\tests\test\index.html
 ```
 
-## 🔍 Test Results
+- To view XML results on Windows, use `Get-Content` or open in an editor:
 
-**View HTML report:**
-```
-open core-test/build/reports/tests/test/index.html
-```
-
-**Check XML results:**
-```
-cat core-test/build/test-results/test/*.xml
+```powershell
+Get-Content core-test\build\test-results\test\*.xml
 ```
 
-**Quick status:**
-```bash
-find core-test/build/test-results -name "*.xml" | \
-  xargs grep -h "testsuite name" | \
-  sed 's/.*name="\([^"]*\)".*tests="\([^"]*\)".*failures="\([^"]*\)".*/\1: \2 tests, \3 failures/'
+- Quick grep-like status (PowerShell example):
+
+```powershell
+Get-ChildItem -Path core-test\build\test-results\test -Filter *.xml | Get-Content | Select-String -Pattern 'testsuite' -Context 0,0
 ```
 
-## 🐛 Debugging Failed Tests
+- For detailed Gradle-run output, add `--info` or `--stacktrace` flags to the Gradle command to surface failure details.
 
-**Get detailed failure info:**
-```bash
-./gradlew :core-test:test --info | grep -A 20 "FAILED"
-```
+## 🧭 Troubleshooting & Tips
 
-**Run single failing test:**
-```bash
-./gradlew :core-test:test --tests "ClassName.test method name" --info
-```
-
-**Enable stack traces:**
-```bash
-./gradlew :core-test:test --stacktrace
-```
-
-## 🔧 CI/CD Setup
-
-**GitHub Actions:**
-```yaml
-- name: Run Tests
-  run: ./gradlew ciTest
-```
-
-**GitLab CI:**
-```yaml
-test:
-  script:
-    - ./gradlew ciTest
-```
-
-**Jenkins:**
-```groovy
-sh './gradlew ciTest'
-```
-
-## ⚡ Performance
-
-- **Execution time:** ~100ms for all 70 tests
-- **Fast enough for:** Every commit, pre-push hooks, CI on every PR
-- **Not needed for:** Watch mode (too fast anyway)
-
-## 📈 Current Status
-
-```
-✅ 70 tests
-✅ 0 failures
-✅ 100% pass rate
-✅ Runs on every build
-✅ CI/CD ready
-```
-
-## 🆘 Troubleshooting
-
-**Tests not running?**
-```bash
-# Check test discovery
-./gradlew :core-test:test --dry-run
-
-# Clean build cache
-./gradlew clean
-
-# Check test task exists
-./gradlew tasks --group verification
-```
-
-**Build fails but tests pass?**
-```bash
-# Tests might be passing but compile errors exist
-./gradlew :core:compileKotlin
-```
-
-**Need to skip tests temporarily?**
-```bash
-# NOT RECOMMENDED for CI, but useful for quick iterations
-./gradlew build -x test
-```
+- If a Gradle `test` run produces no results, ensure you ran the `:core-test:test` task from the repository root and that the build completed.
+- Use the `@Smoke` tag on classes you want as a tiny PR smoke suite.
+- For exact test selection use Gradle `--tests` with fully-qualified class names (package + class name) or patterns — this is preferred over editing tests for quick iteration.
 
 ## 📚 Related Documentation
 
-- **Full test docs:** `P1_TEST_IMPLEMENTATION_SUMMARY.md`
-- **Detailed test coverage:** `core-test/TEST_SUMMARY.md`
-- **Spec documents:** K9.1-K12 specs (original implementation specs)
+- Full test implementation notes: `P1_TEST_IMPLEMENTATION_SUMMARY.md`
+- Module-specific test details and design notes: `core-test/TEST_SUMMARY.md`
+- PoC manifest and command/event specs: `POC_MANIFEST.md`
 
 ---
 
-**Last Updated:** 2026-01-18
-**Test Count:** 70
-**Pass Rate:** 100%
-**Status:** ✅ PRODUCTION READY
+**Last reviewed:** 2026-01-21
+**Status:** This document describes the testing *structure and intent* rather than a fixed numeric snapshot; consult `core-test/src/test/kotlin/test/` for the live layout.

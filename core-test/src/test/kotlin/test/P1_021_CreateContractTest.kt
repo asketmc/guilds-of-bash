@@ -4,23 +4,27 @@ package test
 import core.*
 import core.primitives.Rank
 import core.primitives.SalvagePolicy
+import core.rng.Rng
 import core.state.initialState
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import core.rng.Rng
 
 /**
  * P1_021: CreateContract Command Tests
  *
  * Validates R1 lifecycle command: CreateContract
  * Tests contract draft creation in inbox with validation rules
+ *
+ * Notes:
+ * - initialState(...) seeds the inbox with initial drafts. Tests must not assume empty inbox unless
+ *   they explicitly clear it.
  */
 class P1_021_CreateContractTest {
 
     @Test
     fun `CreateContract creates draft in inbox`() {
-        var state = initialState(123u)
+        val state = initialState(123u)
         val rng = Rng(456L)
 
         val cmd = CreateContract(
@@ -71,8 +75,10 @@ class P1_021_CreateContractTest {
         // Should emit Rejected
         assertEquals(1, events.size)
         val event = events[0] as Rejected
-        assertTrue(event.detail.contains("blank") || event.detail.contains("empty"),
-            "Rejection reason should mention blank/empty title")
+        assertTrue(
+            event.detail.contains("blank") || event.detail.contains("empty"),
+            "Rejection reason should mention blank/empty title"
+        )
     }
 
     @Test
@@ -93,8 +99,7 @@ class P1_021_CreateContractTest {
 
         assertEquals(1, events.size)
         val event = events[0] as Rejected
-        assertTrue(event.detail.contains("difficulty"),
-            "Rejection reason should mention difficulty")
+        assertTrue(event.detail.contains("difficulty"), "Rejection reason should mention difficulty")
     }
 
     @Test
@@ -115,8 +120,7 @@ class P1_021_CreateContractTest {
 
         assertEquals(1, events.size)
         val event = events[0] as Rejected
-        assertTrue(event.detail.contains("difficulty"),
-            "Rejection reason should mention difficulty")
+        assertTrue(event.detail.contains("difficulty"), "Rejection reason should mention difficulty")
     }
 
     @Test
@@ -137,13 +141,12 @@ class P1_021_CreateContractTest {
 
         assertEquals(1, events.size)
         val event = events[0] as Rejected
-        assertTrue(event.detail.contains("reward"),
-            "Rejection reason should mention reward")
+        assertTrue(event.detail.contains("reward"), "Rejection reason should mention reward")
     }
 
     @Test
     fun `CreateContract ID monotonicity`() {
-        var state = initialState(123u)
+        val state = initialState(123u)
         val rng = Rng(456L)
 
         val cmd1 = CreateContract(
@@ -183,6 +186,8 @@ class P1_021_CreateContractTest {
         val ranks = listOf(Rank.F, Rank.E, Rank.D, Rank.C, Rank.B, Rank.A, Rank.S)
         val policies = listOf(SalvagePolicy.GUILD, SalvagePolicy.HERO, SalvagePolicy.SPLIT)
 
+        val inboxSizeBefore = state.inbox.size
+
         for ((idx, rank) in ranks.withIndex()) {
             val policy = policies[idx % policies.size]
             val cmd = CreateContract(
@@ -203,10 +208,13 @@ class P1_021_CreateContractTest {
             assertEquals(policy, event.salvage)
         }
 
-        // All drafts should be in inbox
-        assertEquals(ranks.size, state.inbox.size)
+        // All newly-created drafts should be appended to inbox (initial inbox may be non-empty).
+        assertEquals(inboxSizeBefore + ranks.size, state.inbox.size)
     }
 
+    /**
+     * Verifies deterministic contract creation given same seed
+     */
     @Test
     fun `CreateContract deterministic with same seed`() {
         val state = initialState(123u)

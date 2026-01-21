@@ -301,8 +301,7 @@ class P1_002_TrophyPipelineTest {
 
     @Test
     fun `end to end trophy flow from resolve to sell`() {
-        // GIVEN: Full pipeline with initial money and a WIP contract that will resolve to PARTIAL
-        // To get PARTIAL outcome, we need difficulty that challenges the hero
+        // GIVEN: Full pipeline with initial money and a WIP contract that will resolve
         val rng = Rng(200L)
         var state = initialState(42u).copy(
             economy = EconomyState(
@@ -320,7 +319,7 @@ class P1_002_TrophyPipelineTest {
                         rank = Rank.F,
                         fee = 50,
                         salvage = SalvagePolicy.GUILD,
-                        baseDifficulty = 5,  // Higher difficulty to force PARTIAL outcome
+                        baseDifficulty = 5,
                         status = BoardStatus.LOCKED
                     )
                 ),
@@ -341,11 +340,11 @@ class P1_002_TrophyPipelineTest {
                     Hero(
                         id = HeroId(1),
                         name = "Hero #1",
-                        rank = Rank.D,  // Stronger hero to balance difficulty=5
+                        rank = Rank.D,
                         klass = HeroClass.WARRIOR,
                         traits = Traits(greed = 0, honesty = 50, courage = 50),
                         status = HeroStatus.ON_MISSION,
-                        historyCompleted = 10  // More experience
+                        historyCompleted = 10
                     )
                 ),
                 arrivalsToday = emptyList()
@@ -364,27 +363,28 @@ class P1_002_TrophyPipelineTest {
         val trophiesGenerated = resolved[0].trophiesCount
         assertTrue(trophiesGenerated >= 0, "Should generate non-negative trophies")
 
-        // Check if this requires player close (only PARTIAL does)
-        val returns = state.contracts.returns
-        val requiresClose = returns.firstOrNull()?.requiresPlayerClose ?: false
+        val requiresClose = state.contracts.returns.firstOrNull()?.requiresPlayerClose ?: false
 
         if (requiresClose) {
             // PARTIAL outcome - requires manual close
-            // Trophies not yet in stock
             assertEquals(0, state.economy.trophiesStock)
 
             // Step 2: Close
             val result2 = step(state, CloseReturn(activeContractId = 1L, cmdId = 2L), rng)
             state = result2.state
 
-            // Trophies now in stock
+            // Trophies now in stock (GUILD salvage)
             assertEquals(trophiesGenerated, state.economy.trophiesStock)
+            assertEquals(0, state.economy.reservedCopper, "Escrow should be released after close")
             assertEquals(initialMoney - 50, state.economy.moneyCopper, "Money decreased by fee after close")
         } else {
-            // SUCCESS/FAIL outcome - auto-processed, no manual close needed
-            // Auto-processing does NOT deposit trophies - they're lost
-            assertEquals(0, state.economy.trophiesStock, "Auto-processed returns don't deposit trophies (they're lost)")
-            // Skip manual close step since it's auto-processed
+            // SUCCESS/FAIL outcome - auto-processed
+            val expectedStock = if (outcome == Outcome.SUCCESS) trophiesGenerated else 0
+            val expectedMoney = if (outcome == Outcome.SUCCESS) (initialMoney - 50) else initialMoney
+
+            assertEquals(expectedStock, state.economy.trophiesStock, "Auto-processed outcome should apply trophy accounting")
+            assertEquals(0, state.economy.reservedCopper, "Escrow should be released on auto-close")
+            assertEquals(expectedMoney, state.economy.moneyCopper, "Auto-close should settle fee based on outcome")
         }
 
         // Step 3: Sell (only if we have trophies)
