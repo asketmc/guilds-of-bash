@@ -1,10 +1,12 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blueviolet)
 ![JDK](https://img.shields.io/badge/JDK-17-blue)
 ![Gradle](https://img.shields.io/badge/Gradle-8.14-02303A?logo=gradle)
-![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
+![Coverage](badges/coverage.svg)
+![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 # Guilds of Bash
 
+[![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
 <details>
   <summary><strong>Coverage details</strong> (from CI / Kover)</summary>
 
