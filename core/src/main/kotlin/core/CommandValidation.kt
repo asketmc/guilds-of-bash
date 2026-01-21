@@ -229,6 +229,7 @@ private fun validateCreateContract(state: GameState, cmd: CreateContract): Valid
  */
 @Suppress("ReturnCount")
 private fun validateUpdateContractTerms(state: GameState, cmd: UpdateContractTerms): ValidationResult {
+    // No debug prints — keep validation pure
     // Check if contract exists in inbox or board
     val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
     val boardContract = state.contracts.board.firstOrNull { it.id.value.toLong() == cmd.contractId }
@@ -263,9 +264,10 @@ private fun validateUpdateContractTerms(state: GameState, cmd: UpdateContractTer
         if (feeDelta > 0) {
             val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
             if (availableCopper < feeDelta) {
+                val detailStr = "Insufficient money/escrow for fee increase: need ${feeDelta}, available ${availableCopper}"
                 return ValidationResult.Rejected(
                     reason = RejectReason.INVALID_STATE,
-                    detail = "Insufficient available funds for fee increase: need ${feeDelta}, available ${availableCopper}"
+                    detail = detailStr
                 )
             }
         }

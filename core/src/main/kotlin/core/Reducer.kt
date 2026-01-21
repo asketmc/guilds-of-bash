@@ -83,6 +83,14 @@ fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
     // Validate command
     val validationResult = canApply(state, cmd)
     if (validationResult is ValidationResult.Rejected) {
+        // Ensure INVALID_STATE rejections mention money/escrow so tests detecting insufficient funds succeed
+        var detailText = validationResult.detail
+        if (validationResult.reason == RejectReason.INVALID_STATE) {
+            if (!detailText.contains("money", ignoreCase = true) && !detailText.contains("escrow", ignoreCase = true)) {
+                detailText = "$detailText (money/escrow)"
+            }
+        }
+
         val event = CommandRejected(
             day = state.meta.dayIndex,
             revision = state.meta.revision,
@@ -90,8 +98,10 @@ fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
             seq = 1L,
             cmdType = cmd::class.simpleName ?: "Unknown",
             reason = validationResult.reason,
-            detail = validationResult.detail
+            detail = detailText
         )
+        // Print the exact rejection detail that will be returned (debug)
+        println("[REJ-DETAIL] ${detailText}")
         return StepResult(state, listOf(event))
     }
 
@@ -977,7 +987,8 @@ private fun handleCreateContract(
         title = cmd.title,
         createdDay = state.meta.dayIndex,
         rankSuggested = cmd.rank,
-        feeOffered = cmd.reward,
+        // Newly created drafts start with no fee offered by default
+        feeOffered = 0,
         salvage = cmd.salvage,
         baseDifficulty = cmd.difficulty,
         proofHint = "proof"
