@@ -13,4 +13,9 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// (detekt tasks configured in root)
+// Удобный entrypoint: запуск PIT “из core” (делегирует в core-test, где живут тесты)
+tasks.register("pitest") {
+    group = "verification"
+    description = "Runs PIT mutation testing for :core using tests from :core-test (delegates to :core-test:pitest)."
+    dependsOn(":core-test:pitest")
+}
