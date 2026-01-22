@@ -9,6 +9,7 @@ on:
   schedule:
     # Nightly run (UTC)
     - cron: "0 2 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -210,6 +211,83 @@ jobs:
               issue_number: context.issue.number,
               body
             });
+
+      # -----------------------------
+      # PR path: PITEST gate (standard) + degradation check (> 1 pp => fail)
+      # -----------------------------
+
+      - name: Run PITEST (PR) [GATE: score must not drop > 1pp]
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          ./gradlew :core-test:pitest --no-daemon --stacktrace
+
+      - name: Compare PIT score to baseline (allow -1.00 pp)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          python3 - << 'PY'
+          import json
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          baseline_path = Path("ci/pitest-baseline.json")
+          xml_path = Path("core-test/build/reports/pitest/mutations.xml")
+
+          if not baseline_path.exists():
+              print(f"Missing baseline: {baseline_path}")
+              sys.exit(2)
+
+          if not xml_path.exists():
+              print(f"Missing PIT XML: {xml_path}")
+              sys.exit(2)
+
+          baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+          baseline_score = float(baseline["mutationScorePct"])
+
+          root = ET.parse(str(xml_path)).getroot()
+          counts = {}
+          for m in root.findall(".//mutation"):
+              s = (m.findtext("status") or "").strip()
+              if not s:
+                  continue
+              counts[s] = counts.get(s, 0) + 1
+
+          killed = counts.get("KILLED", 0)
+          survived = counts.get("SURVIVED", 0)
+          timed_out = counts.get("TIMED_OUT", 0)
+          run_error = counts.get("RUN_ERROR", 0)
+          memory_error = counts.get("MEMORY_ERROR", 0)
+          not_started = counts.get("NOT_STARTED", 0)
+          started = counts.get("STARTED", 0)
+
+          denom = killed + survived + timed_out + run_error + memory_error + not_started + started
+          score = (killed / denom * 100.0) if denom > 0 else 0.0
+
+          allowed_drop_pp = 1.00
+          drop_pp = baseline_score - score
+
+          print("PIT summary (computed from mutations.xml):")
+          print(f"  baselineScorePct = {baseline_score:.2f}")
+          print(f"  currentScorePct  = {score:.2f}")
+          print(f"  dropPp           = {drop_pp:.2f}")
+          print(f"  allowDropPp      = {allowed_drop_pp:.2f}")
+          print(f"  killed={killed} survived={survived} timed_out={timed_out} run_error={run_error} memory_error={memory_error} not_started={not_started} started={started}")
+
+          if drop_pp > allowed_drop_pp:
+              print("FAIL: mutation score degraded more than allowed threshold.")
+              sys.exit(1)
+
+          print("OK: mutation score within allowed degradation.")
+          PY
+
+      - name: Upload PIT report (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-pitest-report
+          path: core-test/build/reports/pitest
+          if-no-files-found: warn
+          retention-days: 14
 
       # -----------------------------
       # master push path
