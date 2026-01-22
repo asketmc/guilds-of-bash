@@ -30,36 +30,21 @@ class P1_003_PoCScenarioTest {
         assertEquals(50, state.region.stability, "Initial stability should be 50")
         assertEquals(2, state.contracts.inbox.size, "Initial inbox count is seeded by initialState()")
 
-        // Helper: enforce no rejections / no invariant violations for a step
-        fun assertStepOk(events: List<Event>, label: String) {
-            val inv = events.filterIsInstance<InvariantViolated>()
-            assertTrue(inv.isEmpty(), "$label: must not emit InvariantViolated, got=$inv")
-
-            val rej = events.filterIsInstance<CommandRejected>()
-            assertTrue(rej.isEmpty(), "$label: must not reject, got=$rej")
-
-            // seq must be 1..N within a step (exclude no events case)
-            if (events.isNotEmpty()) {
-                events.forEachIndexed { index, e ->
-                    assertEquals((index + 1).toLong(), e.seq, "$label: seq must be sequential")
-                }
-            }
-        }
-
         // Step 1: AdvanceDay (should emit the day envelope events)
         val r1 = step(state, AdvanceDay(cmdId = cmdId++), rng)
         assertStepOk(r1.events, "AdvanceDay#1")
         state = r1.state
 
-        assertTrue(r1.events.any { it is DayStarted }, "AdvanceDay#1 must emit DayStarted")
-        assertTrue(r1.events.any { it is InboxGenerated }, "AdvanceDay#1 must emit InboxGenerated")
-        assertTrue(r1.events.any { it is HeroesArrived }, "AdvanceDay#1 must emit HeroesArrived")
-        assertTrue(r1.events.any { it is DayEnded }, "AdvanceDay#1 must emit DayEnded")
+        assertEventTypesPresent(
+            r1.events,
+            setOf("DayStarted", "InboxGenerated", "HeroesArrived", "DayEnded"),
+            "AdvanceDay#1 must emit day envelope events"
+        )
 
         // Step 2: PostContract from inbox
-        val inboxId = state.contracts.inbox.first().id.value.toLong()
-        val inboxBefore = state.contracts.inbox.size
-        val boardBefore = state.contracts.board.size
+        val inboxId = state.inbox.first().id.value.toLong()
+        val inboxBefore = state.inbox.size
+        val boardBefore = state.board.size
 
         val r2 = step(
             state,
@@ -74,9 +59,9 @@ class P1_003_PoCScenarioTest {
         assertStepOk(r2.events, "PostContract")
         state = r2.state
 
-        assertTrue(r2.events.any { it is ContractPosted }, "PostContract must emit ContractPosted")
-        assertEquals(inboxBefore - 1, state.contracts.inbox.size, "Posted draft must be removed from inbox")
-        assertEquals(boardBefore + 1, state.contracts.board.size, "Posted draft must be added to board")
+        assertEventTypesPresent(r2.events, setOf("ContractPosted"), "PostContract must emit ContractPosted")
+        assertEquals(inboxBefore - 1, state.inbox.size, "Posted draft must be removed from inbox")
+        assertEquals(boardBefore + 1, state.board.size, "Posted draft must be added to board")
 
         // Step 3+: AdvanceDay until we see at least one resolution (bounded, deterministic)
         // Some seeds/logic may require multiple ticks (take + WIP + resolve).
