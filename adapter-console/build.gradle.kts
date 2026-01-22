@@ -4,9 +4,7 @@ import org.gradle.api.tasks.JavaExec
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
-    kotlin("jvm")
-    application
-    id("org.jetbrains.kotlinx.kover")
+    id("gob.kotlin-application")
     id("com.gradleup.shadow")
 }
 
