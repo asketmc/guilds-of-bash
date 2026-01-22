@@ -1,0 +1,105 @@
+# FILE: .github/workflows/ci9_release.yml
+name: CI module - Release (GitHub)
+
+'on':
+  workflow_call:
+    inputs:
+      artifact_name:
+        type: string
+        required: false
+        default: adapter-console-standalone-jar
+      tag_prefix:
+        type: string
+        required: false
+        default: build
+      prerelease:
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          jar="$(ls -1 dist/*-all.jar | head -n 1 || true)"
+          if [[ -z "${jar}" ]]; then
+            echo "ERROR: no *-all.jar found in dist/" >&2
+            ls -la dist >&2 || true
+            exit 1
+          fi
+
+          sha_full="${GITHUB_SHA}"
+          sha_short="${sha_full:0:7}"
+
+          version="unknown"
+          if [[ -f "gradle.properties" ]]; then
+            v="$(grep -E '^[[:space:]]*version[[:space:]]*=' gradle.properties | head -n 1 | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+            if [[ -n "${v}" ]]; then
+              version="${v}"
+            fi
+          fi
+          if [[ "${version}" == "unknown" ]]; then
+            v2="$(./gradlew -q properties | awk -F': ' '$1=="version"{print $2; exit}' || true)"
+            if [[ -n "${v2}" ]]; then
+              version="${v2}"
+            fi
+          fi
+
+          sha256_file="${jar}.sha256"
+          sha256sum "${jar}" > "${sha256_file}"
+
+          tag="${{ inputs.tag_prefix }}-${{ github.run_number }}"
+          title="Release ${tag} (v${version})"
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          cat > release_notes.md <<EOF
+          - version: ${version}
+          - commit: ${sha_full} (${sha_short})
+          - tests: FULL + Kover verify, Detekt, Dokka, ShadowJar
+          - artifacts: ${jar##*/}, ${sha256_file##*/}
+          - ci_run: ${run_url}
+          EOF
+
+          prerelease_flag=""
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release edit "${tag}" --title "${title}" --notes-file release_notes.md
+            gh release upload "${tag}" "${jar}" "${sha256_file}" --clobber
+          else
+            gh release create "${tag}" "${jar}" "${sha256_file}" --title "${title}" --notes-file release_notes.md --target "${sha_full}" ${prerelease_flag}
+          fi
