@@ -25,7 +25,6 @@ import kotlin.test.*
 @P1
 @Smoke
 class P1_020_InvariantsAfterEachStepTest {
-class P1_020_InvariantsAfterEachStepTest {
 
     @Test
     fun `GR1 happy path has no invariant violations after each step`() {

@@ -75,6 +75,8 @@ tasks.register<Test>("perfTest") {
     useJUnitPlatform {
         includeTags("perf")
         excludeTags("flaky")
+        // Exclude JUnit Platform Suite classes that are used for other test filtering
+        excludeEngines("junit-platform-suite")
     }
 }
 
