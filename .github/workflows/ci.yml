@@ -1,13 +1,14 @@
 # FILE: .github/workflows/ci.yml
 name: CI
 
-on:
+'on':
   push:
-    branches: ["master"]
+    branches:
+      - master
   pull_request:
-    branches: ["master"]
+    branches:
+      - master
   schedule:
-    # Nightly run (UTC)
     - cron: "0 2 * * *"
   workflow_dispatch:
 
@@ -19,639 +20,90 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-coverage:
-    runs-on: ubuntu-latest
+  unit-tests:
+    name: Unit tests (SMOKE) [PR]
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/ci2_unit_tests.yml
+    permissions:
+      contents: read
 
-    # Prevent infinite loop when the workflow commits the badge
-    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) }}
+  pitest:
+    name: PITEST (mutation) [PR]
+    needs:
+      - unit-tests
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/ci3_pitest.yml
+    permissions:
+      contents: read
 
+  fast-flaky:
+    name: FAST + flaky detection [PR]
+    needs:
+      - pitest
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/ci4_fast_flaky.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+  full-tests-coverage:
+    name: FULL + Kover + badge [master push]
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/ci5_full_tests_coverage_badge.yml
     permissions:
       contents: write
-      pull-requests: write
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      # -----------------------------
-      # PR path (single sequential job)
-      # Smoke is the only gate.
-      # Everything after smoke is non-blocking but still reports.
-      # -----------------------------
-
-      - name: Run SMOKE tests (PR) [GATE]
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          ./gradlew :core-test:smokeTest
-
-      - name: Run FAST tests (PR) [non-blocking]
-        if: ${{ github.event_name == 'pull_request' }}
-        continue-on-error: true
-        run: |
-          ./gradlew :core-test:testFast
-
-      - name: Flaky detection (PR) [report-only, max 3 classes]
-        if: ${{ github.event_name == 'pull_request' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - << 'PY'
-          import math
-          import subprocess
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          RESULTS_DIR = Path("core-test/build/test-results/testFast")
-          if not RESULTS_DIR.exists():
-              Path("flaky_summary.md").write_text(
-                  f"⚠️ FAST results directory missing: `{RESULTS_DIR}`\n",
-                  encoding="utf-8"
-              )
-              sys.exit(0)
-
-          xml_files = sorted(RESULTS_DIR.glob("TEST-*.xml"))
-          if not xml_files:
-              Path("flaky_summary.md").write_text(
-                  f"⚠️ No JUnit XML files found in `{RESULTS_DIR}`\n",
-                  encoding="utf-8"
-              )
-              sys.exit(0)
-
-          total_tests = 0
-          failed_classes = set()
-
-          for xf in xml_files:
-              root = ET.parse(xf).getroot()
-              for tc in root.iter("testcase"):
-                  total_tests += 1
-                  has_fail = False
-                  for child in tc:
-                      if child.tag in ("failure", "error"):
-                          has_fail = True
-                          break
-                  if has_fail:
-                      cls = tc.attrib.get("classname")
-                      if cls:
-                          failed_classes.add(cls)
-
-          budget = max(1, int(math.floor(total_tests * 0.03)))
-
-          # No failures => clean PR
-          if not failed_classes:
-              Path("flaky_summary.md").write_text(
-                  f"✅ FAST suite passed: {total_tests} tests, no failures.\n",
-                  encoding="utf-8"
-              )
-              sys.exit(0)
-
-          def run_class_once(classname: str) -> bool:
-              cmd = ["./gradlew", ":core-test:testFast", "--rerun-tasks", "--tests", classname]
-              r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-              return r.returncode == 0
-
-          # Cap: rerun only up to 3 failed classes (PoC)
-          MAX_RERUN_CLASSES = 3
-
-          flaky_candidates = []
-          consistent_failures = []
-          not_checked_due_to_cap = []
-
-          failed_sorted = sorted(failed_classes)
-          to_check = failed_sorted[:MAX_RERUN_CLASSES]
-          not_checked_due_to_cap = failed_sorted[MAX_RERUN_CLASSES:]
-
-          # Each checked class already failed once (initial run). Rerun 4 more times => 5 total.
-          for cls in to_check:
-              fails = 1
-              passes = 0
-              for _ in range(4):
-                  ok = run_class_once(cls)
-                  if ok:
-                      passes += 1
-                  else:
-                      fails += 1
-
-              if fails >= 2 and passes >= 1:
-                  flaky_candidates.append((cls, fails, passes))
-              if fails == 5:
-                  consistent_failures.append((cls, fails, passes))
-
-          flake_count = len(flaky_candidates)
-
-          lines = []
-          lines.append(f"FAST suite: **{total_tests}** tests")
-          lines.append("")
-          lines.append(f"- Initial failed classes: **{len(failed_classes)}**")
-          lines.append(f"- Checked for flakiness (cap {MAX_RERUN_CLASSES}): **{len(to_check)}**")
-          lines.append(f"- Not checked due to cap: **{len(not_checked_due_to_cap)}**")
-          lines.append(f"- Flaky candidates (among checked): **{flake_count}**")
-          lines.append(f"- Flake budget reference (3% of tests, min 1): **{budget}**")
-          lines.append("")
-          lines.append("ℹ️ Note: report-only mode — this workflow does **not** fail PRs based on FAST/flaky results.")
-          lines.append("")
-
-          if flaky_candidates:
-              lines.append("### Flaky candidates (tag with `@Tag(\"flaky\")` to quarantine)")
-              for cls, fails, passes in flaky_candidates:
-                  lines.append(f"- `{cls}` — fails={fails}, passes={passes}")
-              lines.append("")
-
-          if consistent_failures:
-              lines.append("### Consistent failures (not flaky) — report-only")
-              for cls, fails, passes in consistent_failures:
-                  lines.append(f"- `{cls}` — fails={fails}, passes={passes}")
-              lines.append("")
-
-          if not_checked_due_to_cap:
-              lines.append("### Not checked due to rerun cap (increase cap if needed)")
-              for cls in not_checked_due_to_cap:
-                  lines.append(f"- `{cls}`")
-              lines.append("")
-
-          Path("flaky_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-          # Never fail the job in report-only mode
-          sys.exit(0)
-          PY
-
-      - name: Upload FAST test reports (PR)
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr-fast-test-reports
-          path: |
-            core-test/build/reports/tests/testFast/**
-            core-test/build/test-results/testFast/**
-            flaky_summary.md
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Comment flaky summary in PR
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('flaky_summary.md', 'utf8');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
-
-      # -----------------------------
-      # PR path: PITEST gate (standard) + degradation check (> 1 pp => fail)
-      # -----------------------------
-
-      - name: Run PITEST (PR) [GATE: score must not drop > 1pp]
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          ./gradlew :core-test:pitest --no-daemon --stacktrace
-
-      - name: Compare PIT score to baseline (allow -1.00 pp)
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          python3 - << 'PY'
-          import json
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          baseline_path = Path("ci/pitest-baseline.json")
-          xml_path = Path("core-test/build/reports/pitest/mutations.xml")
-
-          if not baseline_path.exists():
-              print(f"Missing baseline: {baseline_path}")
-              sys.exit(2)
-
-          if not xml_path.exists():
-              print(f"Missing PIT XML: {xml_path}")
-              sys.exit(2)
-
-          baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-          baseline_score = float(baseline["mutationScorePct"])
-
-          root = ET.parse(str(xml_path)).getroot()
-          counts = {}
-          for m in root.findall(".//mutation"):
-              s = (m.findtext("status") or "").strip()
-              if not s:
-                  continue
-              counts[s] = counts.get(s, 0) + 1
-
-          killed = counts.get("KILLED", 0)
-          survived = counts.get("SURVIVED", 0)
-          timed_out = counts.get("TIMED_OUT", 0)
-          run_error = counts.get("RUN_ERROR", 0)
-          memory_error = counts.get("MEMORY_ERROR", 0)
-          not_started = counts.get("NOT_STARTED", 0)
-          started = counts.get("STARTED", 0)
-
-          denom = killed + survived + timed_out + run_error + memory_error + not_started + started
-          score = (killed / denom * 100.0) if denom > 0 else 0.0
-
-          allowed_drop_pp = 1.00
-          drop_pp = baseline_score - score
-
-          print("PIT summary (computed from mutations.xml):")
-          print(f"  baselineScorePct = {baseline_score:.2f}")
-          print(f"  currentScorePct  = {score:.2f}")
-          print(f"  dropPp           = {drop_pp:.2f}")
-          print(f"  allowDropPp      = {allowed_drop_pp:.2f}")
-          print(f"  killed={killed} survived={survived} timed_out={timed_out} run_error={run_error} memory_error={memory_error} not_started={not_started} started={started}")
-
-          if drop_pp > allowed_drop_pp:
-              print("FAIL: mutation score degraded more than allowed threshold.")
-              sys.exit(1)
-
-          print("OK: mutation score within allowed degradation.")
-          PY
-
-      - name: Upload PIT report (PR)
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr-pitest-report
-          path: core-test/build/reports/pitest
-          if-no-files-found: warn
-          retention-days: 14
-
-      # -----------------------------
-      # master push path
-      # -----------------------------
-
-      - name: Run FULL tests + generate Kover reports (master push)
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        run: |
-          ./gradlew test koverXmlReport koverHtmlReport koverVerify
-
-      # Dokka V2: generate HTML publications per module (root V1 tasks are not allowed)
-      - name: Generate Dokka HTML (master push)
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        run: |
-          ./gradlew :core:dokkaGeneratePublicationHtml :adapter-console:dokkaGeneratePublicationHtml
-
-      - name: Upload Dokka HTML artifact
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: dokka-html
-          path: |
-            core/build/dokka/html/**
-            adapter-console/build/dokka/html/**
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Normalize Kover merged report locations
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p build/reports/kover/xml
-          mkdir -p build/reports/kover/html
-
-          TARGET_XML="build/reports/kover/xml/report.xml"
-
-          if [[ -f "$TARGET_XML" ]]; then
-            echo "Kover XML already present: $TARGET_XML"
-            exit 0
-          fi
-
-          candidates=()
-
-          if [[ -f "build/reports/kover/report.xml" ]]; then
-            candidates+=("build/reports/kover/report.xml")
-          fi
-
-          while IFS= read -r f; do
-            candidates+=("${f#./}")
-          done < <(
-            find . -type f \( \
-              -path "*/build/reports/kover/xml/*.xml" -o \
-              -path "*/build/reports/kover/*.xml" -o \
-              -path "*/build/reports/kover/*/*.xml" \
-            \) | sort
-          )
-
-          if [[ ${#candidates[@]} -eq 0 ]]; then
-            echo "ERROR: No Kover XML report found anywhere under build/reports/kover" >&2
-            exit 1
-          fi
-
-          pick=""
-
-          for f in "${candidates[@]}"; do
-            if [[ "$f" == "build/reports/kover/xml/report.xml" ]]; then
-              pick="$f"
-              break
-            fi
-          done
-
-          if [[ -z "$pick" ]]; then
-            for f in "${candidates[@]}"; do
-              if [[ "$f" == "build/reports/kover/report.xml" ]]; then
-                pick="$f"
-                break
-              fi
-            done
-          fi
-
-          if [[ -z "$pick" ]]; then
-            for f in "${candidates[@]}"; do
-              if [[ "$f" == */build/reports/kover/xml/report.xml ]]; then
-                pick="$f"
-                break
-              fi
-            done
-          fi
-
-          if [[ -z "$pick" ]]; then
-            for f in "${candidates[@]}"; do
-              if [[ "$f" == */build/reports/kover/report.xml ]]; then
-                pick="$f"
-                break
-              fi
-            done
-          fi
-
-          if [[ -z "$pick" ]]; then
-            pick="${candidates[0]}"
-            for f in "${candidates[@]}"; do
-              if [[ ${#f} -lt ${#pick} ]]; then
-                pick="$f"
-              fi
-            done
-          fi
-
-          echo "Using Kover XML: $pick"
-          cp -f "$pick" "$TARGET_XML"
-
-          test -f "$TARGET_XML"
-          echo "Normalized Kover XML at: $TARGET_XML"
-
-      - name: Upload Kover HTML report artifact
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: kover-html
-          path: build/reports/kover/html
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload Kover XML report artifact
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: kover-xml
-          path: build/reports/kover/xml/report.xml
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Generate coverage badge (SVG)
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        shell: bash
-        run: |
-          python3 - << 'PY'
-          import os, xml.etree.ElementTree as ET
-
-          xml_path = "build/reports/kover/xml/report.xml"
-          tree = ET.parse(xml_path)
-          root = tree.getroot()
-
-          line = None
-          for c in root.iter("counter"):
-            if c.attrib.get("type") == "LINE":
-              line = c
-              break
-
-          if line is None:
-            raise SystemExit("No LINE counter found in report.xml")
-
-          missed = int(line.attrib.get("missed", "0"))
-          covered = int(line.attrib.get("covered", "0"))
-          total = missed + covered
-          pct = 0 if total == 0 else int(round(covered * 100.0 / total))
-
-          if pct >= 90:
-            color = "#4c1"
-          elif pct >= 80:
-            color = "#97CA00"
-          elif pct >= 70:
-            color = "#dfb317"
-          else:
-            color = "#e05d44"
-
-          label = "coverage"
-          value = f"{pct}%"
-
-          label_w = 70
-          value_w = 50 if pct < 100 else 58
-          total_w = label_w + value_w
-          h = 20
-
-          svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{total_w}" height="{h}" role="img" aria-label="{label}: {value}">
-            <linearGradient id="s" x2="0" y2="100%">
-              <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-              <stop offset="1" stop-opacity=".1"/>
-            </linearGradient>
-            <clipPath id="r">
-              <rect width="{total_w}" height="{h}" rx="3" fill="#fff"/>
-            </clipPath>
-            <g clip-path="url(#r)">
-              <rect width="{label_w}" height="{h}" fill="#555"/>
-              <rect x="{label_w}" width="{value_w}" height="{h}" fill="{color}"/>
-              <rect width="{total_w}" height="{h}" fill="url(#s)"/>
-            </g>
-            <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-              <text x="{label_w/2}" y="14">{label}</text>
-              <text x="{label_w + value_w/2}" y="14">{value}</text>
-            </g>
-          </svg>'''
-
-          os.makedirs("badges", exist_ok=True)
-          with open("badges/coverage.svg", "w", encoding="utf-8") as f:
-            f.write(svg)
-          print(f"Badge generated: {pct}%")
-          PY
-
-      - name: Commit badge
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-        shell: bash
-        run: |
-          if git status --porcelain | grep -q "badges/coverage.svg"; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add badges/coverage.svg
-            git commit -m "chore: update coverage badge [skip ci]"
-            git push
-          else
-            echo "No badge changes."
-          fi
+  docs:
+    name: Dokka HTML [master push]
+    needs:
+      - full-tests-coverage
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/ci1_docs.yml
+    permissions:
+      contents: read
 
   detekt:
-    runs-on: ubuntu-latest
-
+    name: Detekt
     if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) }}
-
+    uses: ./.github/workflows/ci6_detekt.yml
     permissions:
       contents: read
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Run detekt
-        run: |
-          ./gradlew detekt
-
-      - name: Upload detekt reports artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: detekt-reports
-          path: |
-            **/build/reports/detekt/**
-          if-no-files-found: error
-          retention-days: 14
-
-  build-standalone-jar:
-    runs-on: ubuntu-latest
-    needs: [test-and-coverage, detekt]
-
-    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) }}
-
+  build-standalone-jar-pr:
+    name: Build standalone fat jar [PR]
+    needs:
+      - fast-flaky
+      - detekt
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/ci7_build_artifact.yml
     permissions:
       contents: read
 
-    steps:
-      - uses: actions/checkout@v4
+  build-standalone-jar-master:
+    name: Build standalone fat jar [master push]
+    needs:
+      - full-tests-coverage
+      - docs
+      - detekt
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/ci7_build_artifact.yml
+    permissions:
+      contents: read
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Build standalone fat jar
-        run: |
-          ./gradlew :adapter-console:shadowJar
-
-      - name: Upload standalone jar artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: adapter-console-standalone-jar
-          path: |
-            adapter-console/build/libs/*-all.jar
-          if-no-files-found: error
-          retention-days: 14
+  build-standalone-jar-dispatch:
+    name: Build standalone fat jar [workflow_dispatch]
+    needs:
+      - detekt
+    if: ${{ github.event_name != 'schedule' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) && github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/ci7_build_artifact.yml
+    permissions:
+      contents: read
 
   nightly-full-and-quarantine:
-    runs-on: ubuntu-latest
+    name: Nightly FULL + quarantine [schedule]
     if: ${{ github.event_name == 'schedule' }}
-
+    uses: ./.github/workflows/ci8_nightly_full_quarantine.yml
     permissions:
       contents: read
       issues: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Run FULL (excluding @Tag("flaky"))
-        run: |
-          ./gradlew :core-test:testFull
-
-      - name: Run QUARANTINE (only @Tag("flaky"), non-blocking)
-        run: |
-          ./gradlew :core-test:testQuarantine
-
-      - name: Upload nightly test reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: nightly-test-reports
-          path: |
-            core-test/build/reports/tests/**
-            core-test/build/test-results/**
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Create issue if quarantine has failures
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            const dir = 'core-test/build/test-results/testQuarantine';
-            if (!fs.existsSync(dir)) return;
-
-            const files = fs.readdirSync(dir).filter(f => f.startsWith('TEST-') && f.endsWith('.xml'));
-            if (files.length === 0) return;
-
-            let failures = 0;
-            let errors = 0;
-
-            for (const f of files) {
-              const xml = fs.readFileSync(path.join(dir, f), 'utf8');
-              const m1 = xml.match(/failures="(\d+)"/);
-              const m2 = xml.match(/errors="(\d+)"/);
-              if (m1) failures += parseInt(m1[1], 10);
-              if (m2) errors += parseInt(m2[1], 10);
-            }
-
-            if (failures === 0 && errors === 0) return;
-
-            const title = `Quarantine tests failing (nightly)`;
-            const body =
-              `Nightly quarantine suite has failures.\n\n` +
-              `- failures: ${failures}\n` +
-              `- errors: ${errors}\n\n` +
-              `See workflow run artifacts: nightly-test-reports\n`;
-
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title,
-              body
-            });

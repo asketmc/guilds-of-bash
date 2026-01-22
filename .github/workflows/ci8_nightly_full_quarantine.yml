@@ -1,0 +1,110 @@
+# FILE: .github/workflows/ci8_nightly_full_quarantine.yml
+name: CI module - Nightly FULL + quarantine
+
+'on':
+  workflow_call:
+
+jobs:
+  nightly-full-and-quarantine:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run FULL (excluding @Tag("flaky"))
+        run: ./gradlew :core-test:testFull
+
+      - name: Run QUARANTINE (only @Tag("flaky"), non-blocking)
+        run: ./gradlew :core-test:testQuarantine
+        continue-on-error: true
+
+      - name: Upload nightly test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-test-reports
+          path: |
+            core-test/build/reports/tests/**
+            core-test/build/test-results/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Create or update issue if quarantine has failures
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            const dir = 'core-test/build/test-results/testQuarantine';
+            if (!fs.existsSync(dir)) return;
+            
+            const files = fs.readdirSync(dir).filter(f => f.startsWith('TEST-') && f.endsWith('.xml'));
+            if (files.length === 0) return;
+            
+            let failures = 0;
+            let errors = 0;
+            
+            for (const f of files) {
+              const xml = fs.readFileSync(path.join(dir, f), 'utf8');
+              const m1 = xml.match(/failures="(\d+)"/);
+              const m2 = xml.match(/errors="(\d+)"/);
+              if (m1) failures += parseInt(m1[1], 10);
+              if (m2) errors += parseInt(m2[1], 10);
+            }
+            
+            if (failures === 0 && errors === 0) return;
+            
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            const title = 'Quarantine tests failing (nightly)';
+            const label = 'ci-quarantine';
+            
+            const body =
+              `Nightly quarantine suite has failures.\n\n` +
+              `- failures: ${failures}\n` +
+              `- errors: ${errors}\n\n` +
+              `Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}\n` +
+              `Artifacts: nightly-test-reports\n`;
+            
+            // Find an existing OPEN issue with same title + label
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: label,
+              per_page: 100
+            });
+            
+            const existing = issues.find(i => i.title === title);
+            
+            if (!existing) {
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: [label]
+              });
+              return;
+            }
+            
+            // Update existing issue body (idempotent "latest status")
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: existing.number,
+              body
+            });

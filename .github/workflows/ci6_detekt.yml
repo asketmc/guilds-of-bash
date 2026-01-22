@@ -1,0 +1,36 @@
+# FILE: .github/workflows/ci6_detekt.yml
+name: CI module - Detekt
+
+'on':
+  workflow_call:
+
+jobs:
+  detekt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run detekt
+        run: ./gradlew detekt
+
+      - name: Upload detekt reports artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-reports
+          path: |
+            **/build/reports/detekt/**
+          if-no-files-found: error
+          retention-days: 14

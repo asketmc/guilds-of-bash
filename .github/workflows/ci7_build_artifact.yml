@@ -1,0 +1,36 @@
+# FILE: .github/workflows/ci7_build_artifact.yml
+name: CI module - Build standalone artifact
+
+'on':
+  workflow_call:
+
+jobs:
+  build-standalone-jar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build standalone fat jar
+        run: ./gradlew :adapter-console:shadowJar
+
+      - name: Upload standalone jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: adapter-console-standalone-jar
+          path: |
+            adapter-console/build/libs/*-all.jar
+          if-no-files-found: error
+          retention-days: 14

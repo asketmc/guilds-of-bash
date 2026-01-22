@@ -1,0 +1,165 @@
+# FILE: .github/workflows/ci4_fast_flaky.yml
+name: CI module - FAST + flaky detection
+
+'on':
+  workflow_call:
+
+jobs:
+  fast-flaky:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run FAST tests (PR) [non-blocking]
+        continue-on-error: true
+        run: ./gradlew :core-test:testFast
+
+      - name: Flaky detection (PR) [report-only, max 3 classes]
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import math
+          import subprocess
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          RESULTS_DIR = Path("core-test/build/test-results/testFast")
+          if not RESULTS_DIR.exists():
+              Path("flaky_summary.md").write_text(
+                  f"⚠️ FAST results directory missing: `{RESULTS_DIR}`\n",
+                  encoding="utf-8"
+              )
+              sys.exit(0)
+
+          xml_files = sorted(RESULTS_DIR.glob("TEST-*.xml"))
+          if not xml_files:
+              Path("flaky_summary.md").write_text(
+                  f"⚠️ No JUnit XML files found in `{RESULTS_DIR}`\n",
+                  encoding="utf-8"
+              )
+              sys.exit(0)
+
+          total_tests = 0
+          failed_classes = set()
+
+          for xf in xml_files:
+              root = ET.parse(xf).getroot()
+              for tc in root.iter("testcase"):
+                  total_tests += 1
+                  has_fail = any(child.tag in ("failure", "error") for child in tc)
+                  if has_fail:
+                      cls = tc.attrib.get("classname")
+                      if cls:
+                          failed_classes.add(cls)
+
+          budget = max(1, int(math.floor(total_tests * 0.03)))
+
+          if not failed_classes:
+              Path("flaky_summary.md").write_text(
+                  f"✅ FAST suite passed: {total_tests} tests, no failures.\n",
+                  encoding="utf-8"
+              )
+              sys.exit(0)
+
+          def run_class_once(classname: str) -> bool:
+              cmd = ["./gradlew", ":core-test:testFast", "--rerun-tasks", "--tests", classname]
+              r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              return r.returncode == 0
+
+          MAX_RERUN_CLASSES = 3
+
+          flaky_candidates = []
+          consistent_failures = []
+          not_checked_due_to_cap = []
+
+          failed_sorted = sorted(failed_classes)
+          to_check = failed_sorted[:MAX_RERUN_CLASSES]
+          not_checked_due_to_cap = failed_sorted[MAX_RERUN_CLASSES:]
+
+          for cls in to_check:
+              fails = 1
+              passes = 0
+              for _ in range(4):
+                  ok = run_class_once(cls)
+                  if ok:
+                      passes += 1
+                  else:
+                      fails += 1
+
+              if fails >= 2 and passes >= 1:
+                  flaky_candidates.append((cls, fails, passes))
+              if fails == 5:
+                  consistent_failures.append((cls, fails, passes))
+
+          lines = []
+          lines.append(f"FAST suite: **{total_tests}** tests")
+          lines.append("")
+          lines.append(f"- Initial failed classes: **{len(failed_classes)}**")
+          lines.append(f"- Checked for flakiness (cap {MAX_RERUN_CLASSES}): **{len(to_check)}**")
+          lines.append(f"- Not checked due to cap: **{len(not_checked_due_to_cap)}**")
+          lines.append(f"- Flaky candidates (among checked): **{len(flaky_candidates)}**")
+          lines.append(f"- Flake budget reference (3% of tests, min 1): **{budget}**")
+          lines.append("")
+          lines.append("ℹ️ Note: report-only mode — this workflow does **not** fail PRs based on FAST/flaky results.")
+          lines.append("")
+
+          if flaky_candidates:
+              lines.append("### Flaky candidates (tag with `@Tag(\"flaky\")` to quarantine)")
+              for cls, fails, passes in flaky_candidates:
+                  lines.append(f"- `{cls}` — fails={fails}, passes={passes}")
+              lines.append("")
+
+          if consistent_failures:
+              lines.append("### Consistent failures (not flaky) — report-only")
+              for cls, fails, passes in consistent_failures:
+                  lines.append(f"- `{cls}` — fails={fails}, passes={passes}")
+              lines.append("")
+
+          if not_checked_due_to_cap:
+              lines.append("### Not checked due to rerun cap (increase cap if needed)")
+              for cls in not_checked_due_to_cap:
+                  lines.append(f"- `{cls}`")
+              lines.append("")
+
+          Path("flaky_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          sys.exit(0)
+          PY
+
+      - name: Upload FAST test reports (PR)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-fast-test-reports
+          path: |
+            core-test/build/reports/tests/testFast/**
+            core-test/build/test-results/testFast/**
+            flaky_summary.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment flaky summary in PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('flaky_summary.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
