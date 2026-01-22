@@ -47,7 +47,23 @@
 |-----------|------------------------|--------|
 | `CommandRejected` | `InvalidCommandRejected` | ✅ Canonical: code |
 
-**Policy A Implementation**: Command validation uses `CommandRejected` event with `RejectReason` enum and human-readable `detail` field.
+Decision & field mapping
+
+- Canonical runtime event: `CommandRejected` (code is authoritative).
+- Doc alias: `InvalidCommandRejected` — retained only as a documentation alias to help readers who used the older doc name.
+
+Canonical fields (runtime implementation)
+- `cmdType: String` — runtime command class simple name (maps to doc `commandType`).
+- `reason: RejectReason` — machine-readable error code (enum). Treat this as the doc's `code` value.
+- `detail: String` — human-readable diagnostic (maps to doc `details`).
+- `entityId` — NOT present in the runtime event. If callers need a structured entity reference, prefer a future explicit optional field added to the runtime event (and propagated to emit sites). For now, event authors may include identifying information inside `detail`.
+
+Policy A Implementation: Command validation uses the runtime `CommandRejected` event with a `RejectReason` enum for machine-readable codes and a human-readable `detail` field. Documentation should reference the runtime field names and types; where external systems require the doc alias (`InvalidCommandRejected`), an adapter can map runtime fields to the alias (e.g., `reason.name` -> `code`, `detail` -> `details`, `cmdType` -> `commandType`, `entityId` -> null).
+
+Migration guidance
+
+- Documentation-first: keep the code canonical in documentation (as above). Update other docs and examples to use `CommandRejected` and the canonical field names.
+- Adapter option: if an external consumer expects the `InvalidCommandRejected(code, details, commandType, entityId?)` shape, provide a small adapter/DTO that converts `CommandRejected` -> `InvalidCommandRejected` (map `reason.name()` to `code`, copy `detail` -> `details`, `cmdType` -> `commandType`, set `entityId` to null until runtime provides it).
 
 ---
 
