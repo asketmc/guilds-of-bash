@@ -7,6 +7,8 @@ import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
 import kotlin.test.*
+import core.hash.hashEvents
+import core.hash.hashState
 
 /**
  * Shared test utilities for PoC scenario replays.
@@ -268,4 +270,66 @@ fun assertContractPresentInInbox(state: GameState, contractId: Int, message: Str
 fun assertContractAbsentInInbox(state: GameState, contractId: Int, message: String = "") {
     val exists = state.inbox.any { it.id.value == contractId }
     assertTrue(!exists, if (message.isNotBlank()) message else "Expected contract $contractId to be absent from inbox")
+}
+
+// --- Event count / presence helpers ---
+
+/**
+ * Assert the exact count of events of type T (ignores InvariantViolated events).
+ */
+inline fun <reified T : Event> assertEventCount(events: List<Event>, expected: Int, message: String = "") {
+    val mainEvents = events.filterNot { it is InvariantViolated }
+    val count = mainEvents.filterIsInstance<T>().size
+    assertEquals(expected, count, if (message.isNotBlank()) message else "Expected $expected events of ${T::class.simpleName}, actual=$count")
+}
+
+/**
+ * Assert the exact count of events by class simple name (ignores InvariantViolated events).
+ */
+fun assertEventCountByType(events: List<Event>, eventClassName: String, expected: Int, message: String = "") {
+    val mainEvents = events.filterNot { it is InvariantViolated }
+    val count = mainEvents.count { it::class.simpleName == eventClassName }
+    assertEquals(expected, count, if (message.isNotBlank()) message else "Expected $expected events of $eventClassName, actual=$count")
+}
+
+fun assertEventPresentByType(events: List<Event>, eventClassName: String, message: String = "") {
+    val mainEvents = events.filterNot { it is InvariantViolated }
+    val exists = mainEvents.any { it::class.simpleName == eventClassName }
+    assertTrue(exists, if (message.isNotBlank()) message else "Expected event of type $eventClassName to be present")
+}
+
+fun assertEventAbsentByType(events: List<Event>, eventClassName: String, message: String = "") {
+    val mainEvents = events.filterNot { it is InvariantViolated }
+    val absent = mainEvents.none { it::class.simpleName == eventClassName }
+    assertTrue(absent, if (message.isNotBlank()) message else "Expected event of type $eventClassName to be absent")
+}
+
+/**
+ * Run the given scenario twice and assert deterministic outcomes: state hash, events hash, and RNG draws must match.
+ */
+fun assertReplayDeterminism(scenario: Scenario, message: String = "") {
+    val r1 = runScenario(scenario)
+    val r2 = runScenario(scenario)
+
+    val stateHash1 = hashState(r1.finalState)
+    val stateHash2 = hashState(r2.finalState)
+    assertEquals(stateHash1, stateHash2, if (message.isNotBlank()) message else "State hashes must match across runs: $stateHash1 vs $stateHash2")
+
+    val eventsHash1 = hashEvents(r1.allEvents)
+    val eventsHash2 = hashEvents(r2.allEvents)
+    assertEquals(eventsHash1, eventsHash2, if (message.isNotBlank()) message else "Event hashes must match across runs: $eventsHash1 vs $eventsHash2")
+
+    assertEquals(r1.rngDraws, r2.rngDraws, if (message.isNotBlank()) message else "RNG draws must match across runs: ${r1.rngDraws} vs ${r2.rngDraws}")
+}
+
+// --- Economy helpers ---
+
+fun assertReservedCopper(state: GameState, expected: Int, message: String = "") {
+    val actual = state.economy.reservedCopper
+    assertEquals(expected, actual, if (message.isNotBlank()) message else "Expected reservedCopper=$expected, actual=$actual")
+}
+
+fun assertAvailableCopper(state: GameState, expected: Int, message: String = "") {
+    val actual = state.economy.moneyCopper - state.economy.reservedCopper
+    assertEquals(expected, actual, if (message.isNotBlank()) message else "Expected available money=$expected, actual=$actual")
 }
