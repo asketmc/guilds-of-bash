@@ -56,11 +56,11 @@ class P1_014_PoCManifestCoverageTest {
 
     @Test
     fun `all PoC commands exist in code`() {
-        // Get all Command sealed interface implementations via reflection
-        val commandClasses = Command::class.sealedSubclasses.map { it.simpleName }
+        // Use helper to get sealed subclass names
+        val commandClasses = sealedSubclassNamesOf(Command::class)
 
         // Verify all PoC commands are present
-        val missingCommands = pocCommands - commandClasses.toSet()
+        val missingCommands = pocCommands - commandClasses
         assertTrue(
             missingCommands.isEmpty(),
             "Missing PoC commands in code: $missingCommands. Update core/Commands.kt or POC_MANIFEST.md"
@@ -72,11 +72,11 @@ class P1_014_PoCManifestCoverageTest {
 
     @Test
     fun `all PoC events exist in code`() {
-        // Get all Event sealed interface implementations via reflection
-        val eventClasses = Event::class.sealedSubclasses.map { it.simpleName }
+        // Use helper to get sealed subclass names
+        val eventClasses = sealedSubclassNamesOf(Event::class)
 
         // Verify all PoC events are present
-        val missingEvents = pocEvents - eventClasses.toSet()
+        val missingEvents = pocEvents - eventClasses
         assertTrue(
             missingEvents.isEmpty(),
             "Missing PoC events in code: $missingEvents. Update core/Events.kt or POC_MANIFEST.md"
@@ -89,10 +89,10 @@ class P1_014_PoCManifestCoverageTest {
     @Test
     fun `no extra commands beyond PoC scope`() {
         // Get all Command implementations
-        val commandClasses = Command::class.sealedSubclasses.map { it.simpleName ?: "Unknown" }
+        val commandClasses = sealedSubclassNamesOf(Command::class)
 
         // Check for commands not in manifest (potential scope creep)
-        val extraCommands = commandClasses.toSet() - pocCommands
+        val extraCommands = commandClasses - pocCommands
 
         // Allow for future expansion but document it
         if (extraCommands.isNotEmpty()) {
@@ -106,10 +106,10 @@ class P1_014_PoCManifestCoverageTest {
     @Test
     fun `no extra events beyond PoC scope`() {
         // Get all Event implementations
-        val eventClasses = Event::class.sealedSubclasses.map { it.simpleName ?: "Unknown" }
+        val eventClasses = sealedSubclassNamesOf(Event::class)
 
         // Check for events not in manifest
-        val extraEvents = eventClasses.toSet() - pocEvents
+        val extraEvents = eventClasses - pocEvents
 
         if (extraEvents.isNotEmpty()) {
             println("⚠ Extra events beyond PoC manifest: $extraEvents")
@@ -124,27 +124,19 @@ class P1_014_PoCManifestCoverageTest {
         // Verify that critical command-event pairs exist (based on POC_MANIFEST.md feature groups)
 
         // FG_02: PostContract → ContractPosted
-        val postContractExists = Command::class.sealedSubclasses.any { it.simpleName == "PostContract" }
-        val contractPostedExists = Event::class.sealedSubclasses.any { it.simpleName == "ContractPosted" }
-        assertTrue(postContractExists && contractPostedExists,
-            "FG_02 Contract Posting: PostContract command and ContractPosted event must exist")
+        assertSealedSubclassExists(Command::class, "PostContract")
+        assertSealedSubclassExists(Event::class, "ContractPosted")
 
         // FG_05: CloseReturn → ReturnClosed
-        val closeReturnExists = Command::class.sealedSubclasses.any { it.simpleName == "CloseReturn" }
-        val returnClosedExists = Event::class.sealedSubclasses.any { it.simpleName == "ReturnClosed" }
-        assertTrue(closeReturnExists && returnClosedExists,
-            "FG_05 Return Processing: CloseReturn command and ReturnClosed event must exist")
+        assertSealedSubclassExists(Command::class, "CloseReturn")
+        assertSealedSubclassExists(Event::class, "ReturnClosed")
 
         // FG_06: SellTrophies → TrophySold
-        val sellTrophiesExists = Command::class.sealedSubclasses.any { it.simpleName == "SellTrophies" }
-        val trophySoldExists = Event::class.sealedSubclasses.any { it.simpleName == "TrophySold" }
-        assertTrue(sellTrophiesExists && trophySoldExists,
-            "FG_06 Trophy Sales: SellTrophies command and TrophySold event must exist")
+        assertSealedSubclassExists(Command::class, "SellTrophies")
+        assertSealedSubclassExists(Event::class, "TrophySold")
 
         // FG_07: All commands → CommandRejected (validation)
-        val commandRejectedExists = Event::class.sealedSubclasses.any { it.simpleName == "CommandRejected" }
-        assertTrue(commandRejectedExists,
-            "FG_07 Command Validation: CommandRejected event must exist for all command validation")
+        assertSealedSubclassExists(Event::class, "CommandRejected")
 
         println("✓ Critical command-event mappings verified")
     }
@@ -152,15 +144,10 @@ class P1_014_PoCManifestCoverageTest {
     @Test
     fun `PoC feature group commands are testable`() {
         // Ensure all PoC commands have cmdId field (required for step() function)
-        // This is structural validation - if code compiles, this should pass
-        // But we document it explicitly as a contract
+        val missing = sealedSubclassesMissingField(Command::class, "cmdId")
 
-        val allCommandsHaveCmdId = Command::class.sealedSubclasses.all { kClass ->
-            kClass.java.declaredFields.any { it.name == "cmdId" }
-        }
-
-        assertTrue(allCommandsHaveCmdId,
-            "All Command implementations must have cmdId: Long field for step() reducer")
+        assertTrue(missing.isEmpty(),
+            "All Command implementations must have cmdId: Long field for step() reducer; missing=$missing")
 
         println("✓ All commands have cmdId field (testable via step())")
     }
@@ -168,16 +155,15 @@ class P1_014_PoCManifestCoverageTest {
     @Test
     fun `PoC feature group events are observable`() {
         // Ensure all PoC events have required fields: day, revision, cmdId, seq
-        // This validates Event sealed interface contract
-
         val requiredFields = setOf("day", "revision", "cmdId", "seq")
-        val allEventsHaveRequiredFields = Event::class.sealedSubclasses.all { kClass ->
-            val fieldNames = kClass.java.declaredFields.map { it.name }.toSet()
-            requiredFields.all { it in fieldNames }
+        val missingInfo = Event::class.sealedSubclasses.mapNotNull { sub ->
+            val fieldNames = sub.java.declaredFields.map { it.name }.toSet()
+            val missing = requiredFields - fieldNames
+            if (missing.isNotEmpty()) "${sub.simpleName}: missing=$missing" else null
         }
 
-        assertTrue(allEventsHaveRequiredFields,
-            "All Event implementations must have day, revision, cmdId, seq fields")
+        assertTrue(missingInfo.isEmpty(),
+            "All Event implementations must have day, revision, cmdId, seq fields; missing=$missingInfo")
 
         println("✓ All events have required fields (observable via event stream)")
     }

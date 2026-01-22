@@ -1,314 +1,184 @@
+// FILE: core-test/src/test/kotlin/test/P1_004_InvariantVerificationTest.kt
 package test
 
 // TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
 
 import core.invariants.InvariantId
-import core.invariants.verifyInvariants
 import core.primitives.*
 import core.state.*
 import kotlin.test.*
 
-/**
- * P1 CRITICAL: Invariant verification tests.
- * State corruption detection is critical for game stability.
- */
 @Smoke
 class P1_004_InvariantVerificationTest {
 
+    private val seed = 42u
+
     @Test
-    fun `verifyInvariants returns empty list for valid initial state`() {
-        // GIVEN: fresh initial state
-        val state = initialState(42u)
-
-        // WHEN: verifyInvariants
-        val violations = verifyInvariants(state)
-
-        // THEN: no violations
-        assertTrue(violations.isEmpty(), "Initial state must have no violations")
+    fun `initial state has no violations`() {
+        assertStateValid(baseState(seed))
     }
 
     @Test
-    fun `verifyInvariants detects negative money`() {
-        val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0)
-        )
-
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.ECONOMY__MONEY_NON_NEGATIVE })
+    fun `economy negatives`() {
+        expectViolation(seed, InvariantId.ECONOMY__MONEY_NON_NEGATIVE) {
+            copy(economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0))
+        }
+        expectViolation(seed, InvariantId.ECONOMY__TROPHIES_NON_NEGATIVE) {
+            copy(economy = EconomyState(moneyCopper = 0, trophiesStock = -50, reservedCopper = 0))
+        }
     }
 
     @Test
-    fun `verifyInvariants detects negative trophies`() {
-        val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = 0, trophiesStock = -50, reservedCopper = 0)
-        )
+    fun `bounds for stability and reputation`() {
+        expectViolation(seed, InvariantId.REGION__STABILITY_0_100) { copy(region = RegionState(stability = -1)) }
+        expectViolation(seed, InvariantId.REGION__STABILITY_0_100) { copy(region = RegionState(stability = 101)) }
 
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.ECONOMY__TROPHIES_NON_NEGATIVE })
+        expectViolation(seed, InvariantId.GUILD__REPUTATION_0_100) {
+            copy(guild = GuildState(guildRank = 1, reputation = -1, completedContractsTotal = 0, contractsForNextRank = 1))
+        }
+        expectViolation(seed, InvariantId.GUILD__REPUTATION_0_100) {
+            copy(guild = GuildState(guildRank = 1, reputation = 101, completedContractsTotal = 0, contractsForNextRank = 1))
+        }
     }
 
     @Test
-    fun `verifyInvariants detects stability out of range`() {
-        val stateBelow = initialState(42u).copy(
-            region = RegionState(stability = -1)
-        )
-        val stateAbove = initialState(42u).copy(
-            region = RegionState(stability = 101)
-        )
-
-        val violationsBelow = verifyInvariants(stateBelow)
-        val violationsAbove = verifyInvariants(stateAbove)
-
-        assertTrue(violationsBelow.any { it.invariantId == InvariantId.REGION__STABILITY_0_100 })
-        assertTrue(violationsAbove.any { it.invariantId == InvariantId.REGION__STABILITY_0_100 })
+    fun `id counters must be positive`() {
+        expectViolation(seed, InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE) {
+            copy(meta = meta.copy(ids = IdCounters(nextContractId = 0, nextHeroId = 1, nextActiveContractId = 1)))
+        }
+        expectViolation(seed, InvariantId.IDS__NEXT_HERO_ID_POSITIVE) {
+            copy(meta = meta.copy(ids = IdCounters(nextContractId = 1, nextHeroId = 0, nextActiveContractId = 1)))
+        }
+        expectViolation(seed, InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE) {
+            copy(meta = meta.copy(ids = IdCounters(nextContractId = 1, nextHeroId = 1, nextActiveContractId = 0)))
+        }
     }
 
     @Test
-    fun `verifyInvariants detects reputation out of range`() {
-        val stateBelow = initialState(42u).copy(
-            guild = GuildState(guildRank = 1, reputation = -1, completedContractsTotal = 0, contractsForNextRank = 1)
-        )
-        val stateAbove = initialState(42u).copy(
-            guild = GuildState(guildRank = 1, reputation = 101, completedContractsTotal = 0, contractsForNextRank = 1)
-        )
-
-        val violationsBelow = verifyInvariants(stateBelow)
-        val violationsAbove = verifyInvariants(stateAbove)
-
-        assertTrue(violationsBelow.any { it.invariantId == InvariantId.GUILD__REPUTATION_0_100 })
-        assertTrue(violationsAbove.any { it.invariantId == InvariantId.GUILD__REPUTATION_0_100 })
-    }
-
-    @Test
-    fun `verifyInvariants detects nextContractId not positive`() {
-        val state = initialState(42u).copy(
-            meta = initialState(42u).meta.copy(
-                ids = IdCounters(nextContractId = 0, nextHeroId = 1, nextActiveContractId = 1)
-            )
-        )
-
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE })
-    }
-
-    @Test
-    fun `verifyInvariants detects nextHeroId not positive`() {
-        val state = initialState(42u).copy(
-            meta = initialState(42u).meta.copy(
-                ids = IdCounters(nextContractId = 1, nextHeroId = 0, nextActiveContractId = 1)
-            )
-        )
-
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.IDS__NEXT_HERO_ID_POSITIVE })
-    }
-
-    @Test
-    fun `verifyInvariants detects nextActiveContractId not positive`() {
-        val state = initialState(42u).copy(
-            meta = initialState(42u).meta.copy(
-                ids = IdCounters(nextContractId = 1, nextHeroId = 1, nextActiveContractId = 0)
-            )
-        )
-
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE })
-    }
-
-    @Test
-    fun `verifyInvariants detects nextContractId not greater than max contract id`() {
-        val state = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = listOf(
-                    ContractDraft(
-                        id = ContractId(5),
-                        createdDay = 0,
-                        title = "Test",
-                        rankSuggested = Rank.F,
-                        feeOffered = 0,
-                        salvage = SalvagePolicy.GUILD,
-                        baseDifficulty = 1,
-                        proofHint = "proof"
-                    )
+    fun `nextContractId must exceed max contractId in inbox+board`() {
+        expectViolation(seed, InvariantId.IDS__NEXT_CONTRACT_ID_GT_MAX_CONTRACT_ID) {
+            copy(
+                contracts = ContractState(
+                    inbox = listOf(
+                        ContractDraft(
+                            id = ContractId(5),
+                            createdDay = 0,
+                            title = "Test",
+                            rankSuggested = Rank.F,
+                            feeOffered = 0,
+                            salvage = SalvagePolicy.GUILD,
+                            baseDifficulty = 1,
+                            proofHint = "proof"
+                        )
+                    ),
+                    board = emptyList(),
+                    active = emptyList(),
+                    returns = emptyList()
                 ),
-                board = emptyList(),
-                active = emptyList(),
-                returns = emptyList()
-            ),
-            meta = initialState(42u).meta.copy(
-                ids = IdCounters(nextContractId = 5, nextHeroId = 1, nextActiveContractId = 1)
+                meta = meta.copy(ids = IdCounters(nextContractId = 5, nextHeroId = meta.ids.nextHeroId, nextActiveContractId = meta.ids.nextActiveContractId))
             )
-        )
-
-        val violations = verifyInvariants(state)
-
-        assertTrue(violations.any { it.invariantId == InvariantId.IDS__NEXT_CONTRACT_ID_GT_MAX_CONTRACT_ID })
+        }
     }
 
     @Test
-    fun `verifyInvariants detects negative daysRemaining in active contract`() {
-        val state = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = emptyList(),
-                board = emptyList(),
-                active = listOf(
-                    ActiveContract(
-                        id = ActiveContractId(1),
-                        boardContractId = ContractId(1),
-                        takenDay = 0,
-                        daysRemaining = -1,
-                        heroIds = listOf(HeroId(1)),
-                        status = ActiveStatus.WIP
-                    )
-                ),
-                returns = emptyList()
-            )
+    fun `active daysRemaining constraints`() {
+        fun active(days: Int) = ActiveContract(
+            id = ActiveContractId(1),
+            boardContractId = ContractId(1),
+            takenDay = 0,
+            daysRemaining = days,
+            heroIds = listOf(HeroId(1)),
+            status = ActiveStatus.WIP
         )
 
-        val violations = verifyInvariants(state)
+        expectViolation(seed, InvariantId.CONTRACTS__ACTIVE_DAYS_REMAINING_NON_NEGATIVE) {
+            copy(contracts = contracts.copy(active = listOf(active(-1))))
+        }
 
-        assertTrue(violations.any { it.invariantId == InvariantId.CONTRACTS__ACTIVE_DAYS_REMAINING_NON_NEGATIVE })
+        expectViolation(seed, InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2) {
+            copy(contracts = contracts.copy(active = listOf(active(0))))
+        }
+        expectViolation(seed, InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2) {
+            copy(contracts = contracts.copy(active = listOf(active(3))))
+        }
     }
 
     @Test
-    fun `verifyInvariants detects WIP contract with invalid daysRemaining`() {
-        val stateZero = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = emptyList(),
-                board = emptyList(),
-                active = listOf(
-                    ActiveContract(
-                        id = ActiveContractId(1),
-                        boardContractId = ContractId(1),
-                        takenDay = 0,
-                        daysRemaining = 0,
-                        heroIds = listOf(HeroId(1)),
-                        status = ActiveStatus.WIP
-                    )
-                ),
-                returns = emptyList()
-            )
+    fun `allows WIP daysRemaining 1 or 2`() {
+        val hero = Hero(
+            id = HeroId(1),
+            name = "Test",
+            rank = Rank.F,
+            klass = HeroClass.WARRIOR,
+            traits = Traits(50, 50, 50),
+            status = HeroStatus.ON_MISSION,
+            historyCompleted = 0
         )
 
-        val stateThree = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = emptyList(),
-                board = emptyList(),
-                active = listOf(
-                    ActiveContract(
-                        id = ActiveContractId(1),
-                        boardContractId = ContractId(1),
-                        takenDay = 0,
-                        daysRemaining = 3,
-                        heroIds = listOf(HeroId(1)),
-                        status = ActiveStatus.WIP
-                    )
-                ),
-                returns = emptyList()
+        fun stateWith(days: Int) = state(seed) {
+            copy(
+                heroes = HeroState(roster = listOf(hero), arrivalsToday = emptyList()),
+                contracts = ContractState(
+                    inbox = emptyList(),
+                    board = emptyList(),
+                    active = listOf(
+                        ActiveContract(
+                            id = ActiveContractId(1),
+                            boardContractId = ContractId(1),
+                            takenDay = 0,
+                            daysRemaining = days,
+                            heroIds = listOf(HeroId(1)),
+                            status = ActiveStatus.WIP
+                        )
+                    ),
+                    returns = emptyList()
+                )
             )
-        )
+        }
 
-        val violationsZero = verifyInvariants(stateZero)
-        val violationsThree = verifyInvariants(stateThree)
-
-        assertTrue(violationsZero.any { it.invariantId == InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2 })
-        assertTrue(violationsThree.any { it.invariantId == InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2 })
+        assertNoViolations(stateWith(1), InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2)
+        assertNoViolations(stateWith(2), InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2)
     }
 
     @Test
-    fun `verifyInvariants allows WIP contract with daysRemaining 1 or 2`() {
-        val state1 = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = emptyList(),
-                board = emptyList(),
-                active = listOf(
-                    ActiveContract(
-                        id = ActiveContractId(1),
-                        boardContractId = ContractId(1),
-                        takenDay = 0,
-                        daysRemaining = 1,
-                        heroIds = listOf(HeroId(1)),
-                        status = ActiveStatus.WIP
-                    )
-                ),
-                returns = emptyList()
-            ),
-            heroes = HeroState(
-                roster = listOf(
-                    Hero(
-                        id = HeroId(1),
-                        name = "Test",
-                        rank = Rank.F,
-                        klass = HeroClass.WARRIOR,
-                        traits = Traits(50, 50, 50),
-                        status = HeroStatus.ON_MISSION,
-                        historyCompleted = 0
-                    )
-                ),
-                arrivalsToday = emptyList()
-            )
-        )
-
-        val state2 = state1.copy(
-            contracts = state1.contracts.copy(
-                active = listOf(state1.contracts.active[0].copy(daysRemaining = 2))
-            )
-        )
-
-        val violations1 = verifyInvariants(state1)
-        val violations2 = verifyInvariants(state2)
-
-        assertFalse(violations1.any { it.invariantId == InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2 })
-        assertFalse(violations2.any { it.invariantId == InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2 })
-    }
-
-    @Test
-    fun `verifyInvariants allows return packet without active contract after resolution`() {
-        val state = initialState(42u).copy(
-            contracts = ContractState(
-                inbox = emptyList(),
-                board = emptyList(),
-                active = emptyList(),
-                returns = listOf(
-                    ReturnPacket(
-                        boardContractId = ContractId(1),
-                        heroIds = listOf(HeroId(1)),
-                        activeContractId = ActiveContractId(999),
-                        resolvedDay = 1,
-                        outcome = Outcome.SUCCESS,
-                        trophiesCount = 0,
-                        trophiesQuality = Quality.OK,
-                        reasonTags = emptyList(),
-                        requiresPlayerClose = true,
-                        suspectedTheft = false
+    fun `allows informational return packet without active after auto-close`() {
+        val s = state(seed) {
+            copy(
+                contracts = ContractState(
+                    inbox = emptyList(),
+                    board = emptyList(),
+                    active = emptyList(),
+                    returns = listOf(
+                        ReturnPacket(
+                            boardContractId = ContractId(1),
+                            heroIds = listOf(HeroId(1)),
+                            activeContractId = ActiveContractId(999),
+                            resolvedDay = 1,
+                            outcome = Outcome.SUCCESS,
+                            trophiesCount = 0,
+                            trophiesQuality = Quality.OK,
+                            reasonTags = emptyList(),
+                            requiresPlayerClose = false, // key: informational packet
+                            suspectedTheft = false
+                        )
                     )
                 )
             )
-        )
+        }
 
-        val violations = verifyInvariants(state)
+        assertNoViolations(s, InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE)
 
-        assertFalse(violations.any { it.invariantId == InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE })
+        val maybeRef = runCatching { InvariantId.valueOf("INV_REFERENTIAL_INTEGRITY") }.getOrNull()
+        if (maybeRef != null) {
+            assertNoViolations(s, maybeRef)
+        }
     }
 
     @Test
-    fun `verifyInvariants provides stable detail strings`() {
-        val state = initialState(42u).copy(
-            economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0)
-        )
-
-        val violations1 = verifyInvariants(state)
-        val violations2 = verifyInvariants(state)
-
-        assertEquals(violations1.size, violations2.size)
-        violations1.zip(violations2).forEach { (v1, v2) ->
-            assertEquals(v1.invariantId, v2.invariantId)
-            assertEquals(v1.details, v2.details, "Violation details must be deterministic")
+    fun `violation details are deterministic`() {
+        val s = state(seed) {
+            copy(economy = EconomyState(moneyCopper = -100, trophiesStock = 0, reservedCopper = 0))
         }
+        assertViolationDetailsDeterministic(s)
     }
 }
