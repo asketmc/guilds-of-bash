@@ -10,7 +10,10 @@ plugins {
 
 dependencies {
     implementation(project(":core"))
-    testImplementation(kotlin("test"))
+
+    testImplementation(kotlin("test-junit5"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 application {

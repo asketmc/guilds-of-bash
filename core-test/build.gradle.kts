@@ -1,6 +1,7 @@
 // FILE: core-test/build.gradle.kts
 
 import java.math.BigDecimal
+import org.gradle.api.tasks.SourceSetContainer
 
 plugins {
     id("gob.core-test")
@@ -8,8 +9,27 @@ plugins {
     id("info.solidsoft.pitest")
 }
 
+// --- Pull test outputs from other modules onto :core-test test runtime classpath ---
+// IMPORTANT: must be resolved as Project (not dependency notation), hence declared outside dependencies block.
+val coreTestOutput =
+    project(":core")
+        .extensions
+        .getByType<SourceSetContainer>()["test"]
+        .output
+
+val adapterConsoleTestOutput =
+    project(":adapter-console")
+        .extensions
+        .getByType<SourceSetContainer>()["test"]
+        .output
+
 dependencies {
     implementation(project(":core"))
+    implementation(project(":adapter-console"))
+
+    // Bring test outputs from other modules onto :core-test test runtime classpath
+    testImplementation(coreTestOutput)
+    testImplementation(adapterConsoleTestOutput)
 
     // Kotlin test -> JUnit5
     testImplementation(kotlin("test-junit5"))
@@ -18,6 +38,10 @@ dependencies {
     // For IDE/Gradle to see J5:
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // JUnit Platform Suite (SmokeSuite)
+    testImplementation("org.junit.platform:junit-platform-suite-api:1.10.1")
+    testRuntimeOnly("org.junit.platform:junit-platform-suite-engine:1.10.1")
 
     // PIT JUnit5 plugin
     pitest("org.pitest:pitest-junit5-plugin:1.2.1")
@@ -41,13 +65,20 @@ tasks.check {
 }
 
 // ====================================================================
-// === PITEST (mutate :core, run tests from :core-test)
+// === PITEST (mutate :core + :adapter-console, run SMOKE tests by tag)
 // ====================================================================
 
-val pitTargetClasses: String =
+val pitTargetClassesRaw: String =
     (findProperty("pitTargetClasses") as String?)?.trim()
         .takeUnless { it.isNullOrEmpty() }
-        ?: "core.*"
+        ?: "core.*,console.*"
+
+val pitTargetClasses: Set<String> =
+    pitTargetClassesRaw
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
 
 val pitTargetTests: Set<String> =
     (findProperty("pitTargetTests") as String?)?.trim()
@@ -56,17 +87,13 @@ val pitTargetTests: Set<String> =
         ?.map { it.trim() }
         ?.filter { it.isNotEmpty() }
         ?.toSet()
-        ?: setOf(
-            "test.P1_*",
-            "test.P2_*",
-            "test.Smoke*"
-        )
+        ?: setOf("test.SmokeSuite")
 
 pitest {
     testPlugin.set("junit5")
     junit5PluginVersion.set("1.2.1")
 
-    targetClasses.set(setOf(pitTargetClasses))
+    targetClasses.set(pitTargetClasses)
     targetTests.set(pitTargetTests)
 
     mutators.set(setOf("ALL"))
@@ -83,7 +110,10 @@ pitest {
     useClasspathFile.set(true)
 
     additionalMutableCodePaths.set(
-        files(project(":core").tasks.named("jar"))
+        files(
+            project(":core").tasks.named("jar"),
+            project(":adapter-console").tasks.named("jar")
+        )
     )
 
     excludedClasses.set(
@@ -97,4 +127,5 @@ pitest {
 
 tasks.named("pitest") {
     dependsOn(":core:jar")
+    dependsOn(":adapter-console:jar")
 }
