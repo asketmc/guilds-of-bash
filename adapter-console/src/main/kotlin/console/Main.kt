@@ -1,3 +1,15 @@
+/**
+ * Console adapter for the deterministic core.
+ *
+ * Why this exists:
+ * - Provide a minimal, dependency-free harness to exercise core commands interactively without adding UI complexity.
+ * - Make determinism observable: every command prints the emitted event stream plus stable hashes of state/events and RNG draw count.
+ * - Support long-term regression detection: hashes and printed event order make it easy to spot drift after refactors.
+ * - Support manual repro: fixed seeds and monotonic `cmdId` allow copy/paste session transcripts to reproduce behavior.
+ *
+ * This file is intentionally *not* a source of truth for game rules.
+ * All authority is in `core.step(state, cmd, rng)`; this adapter only translates typed user input into commands and prints outputs.
+ */
 package console
 
 import core.*
@@ -10,9 +22,33 @@ import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
 
+/**
+ * Fixed initial-state seed for reproducible interactive sessions.
+ *
+ * Why fixed:
+ * - Ensures that a saved transcript of console inputs replays the same initial world shape.
+ * - Prevents accidental reliance on "current randomness" when diagnosing bugs.
+ */
 private const val STATE_SEED: UInt = 42u
+
+/**
+ * Fixed RNG seed for reproducible command execution.
+ *
+ * Why fixed:
+ * - Makes the RNG draw sequence comparable across runs and across machines.
+ * - Enables hashing-based regression checks that depend on deterministic event/state evolution.
+ */
 private const val RNG_SEED: Long = 100L
 
+/**
+ * Interactive REPL for issuing core commands and printing observable outputs.
+ *
+ * Why this loop is structured as-is:
+ * - The adapter prints *input context* (day, revision, RNG draws) before action to support log-based debugging.
+ * - It prints *events* after each command because events are the canonical "telemetry" surface of the deterministic core.
+ * - It prints *hashes* after each command to provide a stable fingerprint for golden-replay style comparisons.
+ * - It maintains a monotonic `cmdId` locally to preserve a stable audit trail across a session.
+ */
 fun main() {
     var state: GameState = initialState(STATE_SEED)
     val rng = Rng(RNG_SEED)
@@ -401,16 +437,45 @@ fun main() {
     }
 }
 
+/**
+ * Keeps the REPL resilient to typos without throwing, which is important for manual exploration sessions.
+ *
+ * Why:
+ * - Prevents accidental termination of the harness during long debugging runs.
+ * - Encourages keeping console sessions as pasteable transcripts (invalid lines are still visible in logs).
+ *
+ * @param input Raw user input line.
+ */
 private fun unknownCommand(input: String) {
     println("Неизвестная команда: $input")
     println("Введите 'help' для списка команд.")
 }
 
+/**
+ * Prints the command input and the minimal execution context required to reason about determinism.
+ *
+ * Why:
+ * - `day` and `rev` explain which logical "time" the command ran in.
+ * - `rngDraws` provides a cheap invariant-like signal: unintended extra draws frequently correlate with replay drift.
+ *
+ * @param input Raw user input as entered.
+ * @param state Current state before applying the command.
+ * @param rng RNG instance used by `step`, exposing draw count for diagnostics.
+ */
 private fun printCmdInput(input: String, state: GameState, rng: Rng) {
     println("IN: \"$input\"")
     println("CTX: day=${state.meta.dayIndex} rev=${state.meta.revision} rngDraws=${rng.draws}")
 }
 
+/**
+ * Prints parsed command variables in a compact, greppable format.
+ *
+ * Why:
+ * - Provides structured breadcrumbs in logs without needing a logging framework.
+ * - Helps correlate a failing/rejected command to the exact parsed values (especially after copy/paste edits).
+ *
+ * @param kv Key/value pairs representing parsed variables or error context.
+ */
 private fun printCmdVars(vararg kv: Pair<String, Any?>) {
     if (kv.isEmpty()) {
         println("VARS: (none)")
@@ -419,6 +484,21 @@ private fun printCmdVars(vararg kv: Pair<String, Any?>) {
     println("VARS: " + kv.joinToString(" ") { "${it.first}=${it.second}" })
 }
 
+/**
+ * Applies a [Command] via [step] and prints the observable outputs (events + stable hashes).
+ *
+ * Why hashes are printed:
+ * - They act as a durable "golden fingerprint" for a given command result.
+ * - They enable cheap, copy/paste regression checks even when event lists are long.
+ *
+ * Why RNG draw count is printed:
+ * - Draw count is an early warning for determinism contract violations (extra draws shift all downstream randomness).
+ *
+ * @param state State before command application.
+ * @param cmd Command instance (already parsed and typed).
+ * @param rng RNG instance shared across the session.
+ * @return New state returned by [step].
+ */
 private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
     val result = step(state, cmd, rng)
     val newState = result.state
@@ -436,8 +516,20 @@ private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
 }
 
 /**
- * Apply command and print with day analytics (S7-S9) if DayEnded event is present.
- * Returns (newState, currentSnapshot) for tracking across days.
+ * Applies a command and optionally prints cross-day analytics when a [DayEnded] event is present.
+ *
+ * Why this exists separately from [applyAndPrint]:
+ * - Day-level metrics require a boundary signal; [DayEnded] provides a stable boundary without peeking into core internals.
+ * - Cross-day deltas (e.g., money delta) require a previous snapshot; returning the current snapshot makes this explicit.
+ *
+ * The function returns `(newState, currentSnapshotOrPrevious)` to preserve the last known snapshot when the command
+ * does not end a day, which keeps the REPL state machine simple and predictable.
+ *
+ * @param state State before command application.
+ * @param cmd Command to apply.
+ * @param rng RNG instance shared across the session.
+ * @param prevSnapshot Previous day snapshot (nullable for first day or first boundary observed).
+ * @return Pair of (new state, snapshot to carry forward).
  */
 private fun applyAndPrintWithAnalytics(
     state: GameState,
@@ -475,7 +567,21 @@ private fun applyAndPrintWithAnalytics(
 }
 
 /**
- * Compute and print day analytics: S7 (ContractTakeRate), S8 (OutcomeCounts), S9 (MoneyΔ).
+ * Prints day analytics derived strictly from the emitted [Event] list and [DaySnapshot] values.
+ *
+ * Why event-derived analytics:
+ * - Keeps analytics aligned with the "events are telemetry" philosophy.
+ * - Avoids introducing hidden reads of state internals that could drift from what adapters/tests observe.
+ * - Allows future refactors of state structure without breaking the console's analytics as long as events remain stable.
+ *
+ * Why these specific signals (S7-S9):
+ * - S7 helps detect economic/behavioral deadlocks (e.g., posting without taking).
+ * - S8 helps detect balance drift (outcome distribution changes after formula tweaks).
+ * - S9 provides a coarse economy sanity check across day boundaries.
+ *
+ * @param events Events emitted by the command that ended the day.
+ * @param currentSnapshot Snapshot from the current [DayEnded] event.
+ * @param prevSnapshot Snapshot from the previous day boundary (nullable for the first observed boundary).
  */
 private fun printDayAnalytics(events: List<Event>, currentSnapshot: DaySnapshot, prevSnapshot: DaySnapshot?) {
     // S7: ContractTakeRate = ContractTaken.count / ContractPosted.count
@@ -512,6 +618,13 @@ private fun printDayAnalytics(events: List<Event>, currentSnapshot: DaySnapshot,
     println("─────────────────────")
 }
 
+/**
+ * Prints the command list.
+ *
+ * Why keep it local and static:
+ * - Avoids reflection-based discovery that could introduce ordering instability or require extra dependencies.
+ * - Makes the console a stable "tool" rather than a moving UI target while the core evolves.
+ */
 private fun printHelp() {
     println(
         """
@@ -533,6 +646,16 @@ Commands:
     )
 }
 
+/**
+ * Prints a concise, human-oriented snapshot of the current [GameState].
+ *
+ * Why:
+ * - Designed for fast sanity checks during interactive sessions without scrolling through full lists.
+ * - Mirrors invariant-critical quantities (available money, active/returns counts) to surface broken transitions early.
+ *
+ * @param state Current state to summarize.
+ * @param rng RNG instance to expose current draw count alongside state summary.
+ */
 private fun printStatus(state: GameState, rng: Rng) {
     val returnsNeedingClose = state.contracts.returns.count { it.requiresPlayerClose }
     val activeWipCount = state.contracts.active.count { it.status == ActiveStatus.WIP }
@@ -545,6 +668,13 @@ private fun printStatus(state: GameState, rng: Rng) {
     println("hash=${hashState(state)}")
 }
 
+/**
+ * Prints inbox drafts in a stable order.
+ *
+ * Why sorting matters:
+ * - Keeps output diff-friendly across runs and across JVMs (even if underlying storage order changes later).
+ * - Supports copy/paste debugging where humans expect "the same thing prints the same way".
+ */
 private fun printInbox(state: GameState) {
     val xs = state.contracts.inbox.sortedBy { it.id.value }
     if (xs.isEmpty()) return println("(inbox empty)")
@@ -553,6 +683,13 @@ private fun printInbox(state: GameState) {
     }
 }
 
+/**
+ * Prints board contracts in a stable order.
+ *
+ * Why:
+ * - Makes it easier to correlate board IDs with subsequent events and actives.
+ * - Reduces noise in long sessions where board contents evolve.
+ */
 private fun printBoard(state: GameState) {
     val xs = state.contracts.board.sortedBy { it.id.value }
     if (xs.isEmpty()) return println("(board empty)")
@@ -561,6 +698,13 @@ private fun printBoard(state: GameState) {
     }
 }
 
+/**
+ * Prints active contracts in a stable order.
+ *
+ * Why:
+ * - Active contracts are the bridge between board selection and returns; stable printing helps track lifecycle transitions.
+ * - Hero IDs are additionally normalized (sorted) to avoid noise when hero assignment order is non-essential to the UI.
+ */
 private fun printActive(state: GameState) {
     val xs = state.contracts.active.sortedBy { it.id.value }
     if (xs.isEmpty()) return println("(active empty)")
@@ -570,6 +714,13 @@ private fun printActive(state: GameState) {
     }
 }
 
+/**
+ * Prints return packets in a stable order.
+ *
+ * Why:
+ * - Returns are the "player intervention" boundary; sorting by active ID makes it easy to match to lifecycle events.
+ * - `requiresClose` is printed explicitly because it controls whether the player must issue `close`.
+ */
 private fun printReturns(state: GameState) {
     val xs = state.contracts.returns.sortedBy { it.activeContractId.value }
     if (xs.isEmpty()) return println("(returns empty)")
@@ -578,6 +729,18 @@ private fun printReturns(state: GameState) {
     }
 }
 
+/**
+ * Formats an [Event] into a single-line, log-friendly representation.
+ *
+ * Why:
+ * - Keeps console output compact while preserving the fields humans use to reason about causality: seq/day/rev/cmdId.
+ * - Avoids printing full JSON here to keep the "human view" stable even if serialization evolves.
+ * - Each branch pins field ordering and labels to reduce churn in test fixtures and pasted transcripts.
+ *
+ * Note:
+ * - The final `else` branch provides a non-throwing fallback if the event model expands without updating this adapter.
+ *   This is intentionally biased toward debuggability over strict exhaustiveness in the console layer.
+ */
 private fun formatEvent(e: Event): String =
     when (e) {
         is DayStarted -> "E#${e.seq} DayStarted day=${e.day} rev=${e.revision} cmdId=${e.cmdId}"
