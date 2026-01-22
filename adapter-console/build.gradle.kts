@@ -1,5 +1,3 @@
-// FILE: adapter-console/build.gradle.kts
-
 import org.gradle.api.tasks.JavaExec
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
