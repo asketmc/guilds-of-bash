@@ -21,93 +21,124 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run FULL tests + generate Kover reports (master push)
-        run: ./gradlew test koverXmlReport koverHtmlReport koverVerify
+      - name: Run FULL tests + generate Kover reports (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+          
+          log="gradle_full_kover.log"
+          
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            test \
+            koverXmlReport \
+            koverHtmlReport \
+            koverVerify \
+            >"${log}" 2>&1 || {
+              echo "FAIL: FULL/Kover step failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
+
+      - name: Upload FULL/Kover gradle log (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-full-kover
+          path: gradle_full_kover.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Normalize Kover merged report locations
         shell: bash
-        run: |
+        run:
+          |
           set -euo pipefail
-
+          
           mkdir -p build/reports/kover/xml
           mkdir -p build/reports/kover/html
-
+          
           TARGET_XML="build/reports/kover/xml/report.xml"
-
-          if [[ -f "$TARGET_XML" ]]; then
+          
+          if [[ -f "${TARGET_XML}" ]]; then
             exit 0
           fi
-
+          
           candidates=()
-
+          
           if [[ -f "build/reports/kover/report.xml" ]]; then
             candidates+=("build/reports/kover/report.xml")
           fi
-
+          
           while IFS= read -r f; do
             candidates+=("${f#./}")
           done < <(
-            find . -type f \( \
-              -path "*/build/reports/kover/xml/*.xml" -o \
-              -path "*/build/reports/kover/*.xml" -o \
-              -path "*/build/reports/kover/*/*.xml" \
+            find build -type f \( \
+              -path "*/reports/kover/xml/*.xml" -o \
+              -path "*/reports/kover/*.xml" -o \
+              -path "*/reports/kover/*/*.xml" \
             \) | sort
           )
-
+          
           if [[ ${#candidates[@]} -eq 0 ]]; then
             echo "ERROR: No Kover XML report found anywhere under build/reports/kover" >&2
             exit 1
           fi
-
+          
           pick=""
-
+          
           for f in "${candidates[@]}"; do
-            if [[ "$f" == "build/reports/kover/xml/report.xml" ]]; then
-              pick="$f"
+            if [[ "${f}" == "build/reports/kover/xml/report.xml" ]]; then
+              pick="${f}"
               break
             fi
           done
-
-          if [[ -z "$pick" ]]; then
+          
+          if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
-              if [[ "$f" == "build/reports/kover/report.xml" ]]; then
-                pick="$f"
+              if [[ "${f}" == "build/reports/kover/report.xml" ]]; then
+                pick="${f}"
                 break
               fi
             done
           fi
-
-          if [[ -z "$pick" ]]; then
+          
+          if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
-              if [[ "$f" == */build/reports/kover/xml/report.xml ]]; then
-                pick="$f"
+              if [[ "${f}" == */build/reports/kover/xml/report.xml ]]; then
+                pick="${f}"
                 break
               fi
             done
           fi
-
-          if [[ -z "$pick" ]]; then
+          
+          if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
-              if [[ "$f" == */build/reports/kover/report.xml ]]; then
-                pick="$f"
+              if [[ "${f}" == */build/reports/kover/report.xml ]]; then
+                pick="${f}"
                 break
               fi
             done
           fi
-
-          if [[ -z "$pick" ]]; then
+          
+          if [[ -z "${pick}" ]]; then
             pick="${candidates[0]}"
             for f in "${candidates[@]}"; do
               if [[ ${#f} -lt ${#pick} ]]; then
-                pick="$f"
+                pick="${f}"
               fi
             done
           fi
-
-          cp -f "$pick" "$TARGET_XML"
-          test -f "$TARGET_XML"
+          
+          cp -f "${pick}" "${TARGET_XML}"
+          test -f "${TARGET_XML}"
 
       - name: Upload Kover HTML report artifact
         uses: actions/upload-artifact@v4
@@ -127,28 +158,30 @@ jobs:
 
       - name: Generate coverage badge (SVG)
         shell: bash
-        run: |
+        run:
+          |
           python3 - << 'PY'
-          import os, xml.etree.ElementTree as ET
-
+          import os
+          import xml.etree.ElementTree as ET
+          
           xml_path = "build/reports/kover/xml/report.xml"
           tree = ET.parse(xml_path)
           root = tree.getroot()
-
+          
           line = None
           for c in root.iter("counter"):
               if c.attrib.get("type") == "LINE":
                   line = c
                   break
-
+          
           if line is None:
               raise SystemExit("No LINE counter found in report.xml")
-
+          
           missed = int(line.attrib.get("missed", "0"))
           covered = int(line.attrib.get("covered", "0"))
           total = missed + covered
           pct = 0 if total == 0 else int(round(covered * 100.0 / total))
-
+          
           if pct >= 90:
               color = "#4c1"
           elif pct >= 80:
@@ -157,15 +190,15 @@ jobs:
               color = "#dfb317"
           else:
               color = "#e05d44"
-
+          
           label = "coverage"
           value = f"{pct}%"
-
+          
           label_w = 70
           value_w = 50 if pct < 100 else 58
           total_w = label_w + value_w
           h = 20
-
+          
           svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{total_w}" height="{h}" role="img" aria-label="{label}: {value}">
             <linearGradient id="s" x2="0" y2="100%">
               <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -184,7 +217,7 @@ jobs:
               <text x="{label_w + value_w/2}" y="14">{value}</text>
             </g>
           </svg>'''
-
+          
           os.makedirs("badges", exist_ok=True)
           with open("badges/coverage.svg", "w", encoding="utf-8") as f:
               f.write(svg)
@@ -192,11 +225,12 @@ jobs:
 
       - name: Commit badge
         shell: bash
-        run: |
+        run:
+          |
           if git status --porcelain | grep -q "badges/coverage.svg"; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add badges/coverage.svg
-            git commit -m "chore: update coverage badge [skip ci]"
-            git push
+            git commit --quiet -m "chore: update coverage badge [skip ci]"
+            git push --quiet
           fi

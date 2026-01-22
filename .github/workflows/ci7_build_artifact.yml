@@ -21,16 +21,44 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Build standalone fat jar
-        run: ./gradlew :adapter-console:shadowJar
+      - name: Build standalone fat jar (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+          
+          log="gradle_shadowjar.log"
+          
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :adapter-console:shadowJar \
+            >"${log}" 2>&1 || {
+              echo "FAIL: ShadowJar build failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
 
       - name: Upload standalone jar artifact
         uses: actions/upload-artifact@v4
         with:
           name: adapter-console-standalone-jar
-          path: |
+          path:
+            |
             adapter-console/build/libs/*-all.jar
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ShadowJar gradle log (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-shadowjar
+          path: gradle_shadowjar.log
+          if-no-files-found: warn
           retention-days: 14
