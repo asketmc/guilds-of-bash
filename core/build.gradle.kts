@@ -1,6 +1,5 @@
 plugins {
-    kotlin("jvm")
-    kotlin("plugin.serialization")
+    id("gob.kotlin-library")
     id("org.jetbrains.kotlinx.kover")
 }
 
