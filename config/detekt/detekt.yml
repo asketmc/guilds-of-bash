@@ -3,18 +3,31 @@ build:
 
 config:
   validation: true
+  warningsAsErrors: true
 
 processors:
   active: true
+  exclude:
+    - 'DetektProgressListener'
 
 console-reports:
   active: true
+  exclude:
+    - 'ProjectStatisticsReport'
+    - 'ComplexityReport'
+    - 'FindingsReport'
+    - 'FileBasedFindingsReport'
+    - 'LiteFindingsReport'
 
 output-reports:
   active: true
+  exclude:
+    - 'TxtOutputReport'
+    - 'MdOutputReport'
+    - 'HtmlOutputReport'
 
 comments:
-  active: true
+  active: false
 
 complexity:
   active: true
@@ -22,17 +35,21 @@ complexity:
   TooManyFunctions:
     active: false
 
+  CognitiveComplexMethod:
+    active: true
+    allowedComplexity: 20
+
   LongMethod:
     active: true
-    threshold: 200
+    allowedLines: 80
 
   CyclomaticComplexMethod:
     active: true
-    threshold: 25
+    allowedComplexity: 20
 
   NestedBlockDepth:
     active: true
-    threshold: 6
+    allowedDepth: 5
 
 style:
   active: true
@@ -50,6 +67,9 @@ naming:
   active: true
 
   FunctionNaming:
+    active: true
+
+  ClassNaming:
     active: true
 
 performance:

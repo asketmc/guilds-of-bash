@@ -23,18 +23,19 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run FULL tests + generate Kover reports (captured)
+      - name: Run FULL (no perf) + adapter tests + generate Kover reports (captured)
         shell: bash
         run:
           |
           set -euo pipefail
-          
+
           log="gradle_full_kover.log"
-          
+
           ./gradlew \
             --console=plain \
             --warning-mode=all \
-            test \
+            :core-test:testFull \
+            :adapter-console:test \
             koverXmlReport \
             koverHtmlReport \
             koverVerify \
@@ -61,22 +62,22 @@ jobs:
         run:
           |
           set -euo pipefail
-          
+
           mkdir -p build/reports/kover/xml
           mkdir -p build/reports/kover/html
-          
+
           TARGET_XML="build/reports/kover/xml/report.xml"
-          
+
           if [[ -f "${TARGET_XML}" ]]; then
             exit 0
           fi
-          
+
           candidates=()
-          
+
           if [[ -f "build/reports/kover/report.xml" ]]; then
             candidates+=("build/reports/kover/report.xml")
           fi
-          
+
           while IFS= read -r f; do
             candidates+=("${f#./}")
           done < <(
@@ -86,21 +87,21 @@ jobs:
               -path "*/reports/kover/*/*.xml" \
             \) | sort
           )
-          
+
           if [[ ${#candidates[@]} -eq 0 ]]; then
             echo "ERROR: No Kover XML report found anywhere under build/reports/kover" >&2
             exit 1
           fi
-          
+
           pick=""
-          
+
           for f in "${candidates[@]}"; do
             if [[ "${f}" == "build/reports/kover/xml/report.xml" ]]; then
               pick="${f}"
               break
             fi
           done
-          
+
           if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
               if [[ "${f}" == "build/reports/kover/report.xml" ]]; then
@@ -109,7 +110,7 @@ jobs:
               fi
             done
           fi
-          
+
           if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
               if [[ "${f}" == */build/reports/kover/xml/report.xml ]]; then
@@ -118,7 +119,7 @@ jobs:
               fi
             done
           fi
-          
+
           if [[ -z "${pick}" ]]; then
             for f in "${candidates[@]}"; do
               if [[ "${f}" == */build/reports/kover/report.xml ]]; then
@@ -127,7 +128,7 @@ jobs:
               fi
             done
           fi
-          
+
           if [[ -z "${pick}" ]]; then
             pick="${candidates[0]}"
             for f in "${candidates[@]}"; do
@@ -136,7 +137,7 @@ jobs:
               fi
             done
           fi
-          
+
           cp -f "${pick}" "${TARGET_XML}"
           test -f "${TARGET_XML}"
 
@@ -163,25 +164,25 @@ jobs:
           python3 - << 'PY'
           import os
           import xml.etree.ElementTree as ET
-          
+
           xml_path = "build/reports/kover/xml/report.xml"
           tree = ET.parse(xml_path)
           root = tree.getroot()
-          
+
           line = None
           for c in root.iter("counter"):
               if c.attrib.get("type") == "LINE":
                   line = c
                   break
-          
+
           if line is None:
               raise SystemExit("No LINE counter found in report.xml")
-          
+
           missed = int(line.attrib.get("missed", "0"))
           covered = int(line.attrib.get("covered", "0"))
           total = missed + covered
           pct = 0 if total == 0 else int(round(covered * 100.0 / total))
-          
+
           if pct >= 90:
               color = "#4c1"
           elif pct >= 80:
@@ -190,15 +191,15 @@ jobs:
               color = "#dfb317"
           else:
               color = "#e05d44"
-          
+
           label = "coverage"
           value = f"{pct}%"
-          
+
           label_w = 70
           value_w = 50 if pct < 100 else 58
           total_w = label_w + value_w
           h = 20
-          
+
           svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{total_w}" height="{h}" role="img" aria-label="{label}: {value}">
             <linearGradient id="s" x2="0" y2="100%">
               <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -217,7 +218,7 @@ jobs:
               <text x="{label_w + value_w/2}" y="14">{value}</text>
             </g>
           </svg>'''
-          
+
           os.makedirs("badges", exist_ok=True)
           with open("badges/coverage.svg", "w", encoding="utf-8") as f:
               f.write(svg)

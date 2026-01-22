@@ -23,20 +23,21 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run SMOKE tests (captured)
+      - name: Run PR gate tests (SMOKE + adapter tests) (captured)
         shell: bash
         run:
           |
           set -euo pipefail
-          
-          log="gradle_smoke.log"
-          
+
+          log="gradle_pr_gate.log"
+
           ./gradlew \
             --console=plain \
             --warning-mode=all \
             :core-test:smokeTest \
+            :adapter-console:test \
             >"${log}" 2>&1 || {
-              echo "FAIL: SMOKE suite failed."
+              echo "FAIL: PR gate failed (SMOKE/adapter)."
               echo "Failure block (max 25 lines):"
               awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
               echo "Tail (last 40 lines):"
@@ -44,23 +45,25 @@ jobs:
               exit 1
             }
 
-      - name: Upload SMOKE gradle log (on failure)
+      - name: Upload PR gate gradle log (on failure)
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: logs-smoke
-          path: gradle_smoke.log
+          name: logs-pr-gate
+          path: gradle_pr_gate.log
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload SMOKE test reports (on failure)
+      - name: Upload PR gate test reports (on failure)
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-test-reports
+          name: pr-gate-test-reports
           path:
             |
             core-test/build/reports/tests/**
             core-test/build/test-results/**
+            adapter-console/build/reports/tests/**
+            adapter-console/build/test-results/**
           if-no-files-found: warn
           retention-days: 14

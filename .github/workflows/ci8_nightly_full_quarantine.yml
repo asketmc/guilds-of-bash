@@ -28,9 +28,9 @@ jobs:
         run:
           |
           set -euo pipefail
-          
+
           log="gradle_nightly_full.log"
-          
+
           ./gradlew \
             --console=plain \
             --warning-mode=all \
@@ -44,15 +44,58 @@ jobs:
               exit 1
             }
 
+      - name: Run PITEST (ALL) (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+
+          log="gradle_nightly_pitest_all.log"
+
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :core-test:pitest \
+            "-PpitProfile=ALL" \
+            >"${log}" 2>&1 || {
+              echo "FAIL: Nightly PITEST (ALL) failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
+
+      - name: Run PERF (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+
+          log="gradle_nightly_perf.log"
+
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :core-test:perfTest \
+            >"${log}" 2>&1 || {
+              echo "FAIL: Nightly PERF failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
+
       - name: Run QUARANTINE (only @Tag("flaky"), report-only)
         id: quarantine
         shell: bash
         run:
           |
           set -euo pipefail
-          
+
           log="gradle_nightly_quarantine.log"
-          
+
           set +e
           ./gradlew \
             --console=plain \
@@ -61,11 +104,11 @@ jobs:
             >"${log}" 2>&1
           code=$?
           set -e
-          
+
           echo "exit_code=${code}" >> "${GITHUB_OUTPUT}"
           echo "QUARANTINE exitCode=${code}"
 
-      - name: Upload nightly reports (on FULL failure or QUARANTINE non-zero)
+      - name: Upload nightly reports (on any failure or QUARANTINE non-zero)
         if: ${{ failure() || steps.quarantine.outputs.exit_code != '0' }}
         uses: actions/upload-artifact@v4
         with:
@@ -74,10 +117,11 @@ jobs:
             |
             core-test/build/reports/tests/**
             core-test/build/test-results/**
+            core-test/build/reports/pitest/**
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload nightly gradle logs (on FULL failure or QUARANTINE non-zero)
+      - name: Upload nightly gradle logs (on any failure or QUARANTINE non-zero)
         if: ${{ failure() || steps.quarantine.outputs.exit_code != '0' }}
         uses: actions/upload-artifact@v4
         with:
@@ -85,6 +129,8 @@ jobs:
           path:
             |
             gradle_nightly_full.log
+            gradle_nightly_pitest_all.log
+            gradle_nightly_perf.log
             gradle_nightly_quarantine.log
           if-no-files-found: warn
           retention-days: 14
