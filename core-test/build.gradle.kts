@@ -89,6 +89,46 @@ val pitTargetTests: Set<String> =
         ?.toSet()
         ?: setOf("test.SmokeSuite")
 
+// ====================================================================
+// === MUTATORS PROFILES
+// ====================================================================
+//
+// Switch via: -PpitProfile=ALL | -PpitProfile=SMOKE
+// Default: ALL
+//
+// SMOKE mutators: CONDITIONALS_BOUNDARY, INCREMENTS, MATH
+// SMOKE avoidCallsTo: kotlin.jvm.internal
+
+val PIT_PROFILE_ALL = "ALL"
+val PIT_PROFILE_SMOKE = "SMOKE"
+
+val PIT_MUTATORS_ALL: Set<String> = setOf("ALL")
+
+val PIT_MUTATORS_SMOKE: Set<String> = setOf(
+    "CONDITIONALS_BOUNDARY",
+    "INCREMENTS",
+    "MATH"
+)
+
+val pitProfile: String =
+    (findProperty("pitProfile") as String?)?.trim()
+        ?.uppercase()
+        ?.takeUnless { it.isEmpty() }
+        ?: PIT_PROFILE_ALL
+
+val pitMutators: Set<String> =
+    when (pitProfile) {
+        PIT_PROFILE_SMOKE -> PIT_MUTATORS_SMOKE
+        PIT_PROFILE_ALL -> PIT_MUTATORS_ALL
+        else -> error("Unknown -PpitProfile=$pitProfile. Allowed: $PIT_PROFILE_ALL, $PIT_PROFILE_SMOKE")
+    }
+
+val pitAvoidCallsTo: Set<String> =
+    when (pitProfile) {
+        PIT_PROFILE_SMOKE -> setOf("kotlin.jvm.internal")
+        else -> emptySet()
+    }
+
 pitest {
     testPlugin.set("junit5")
     junit5PluginVersion.set("1.2.1")
@@ -96,7 +136,7 @@ pitest {
     targetClasses.set(pitTargetClasses)
     targetTests.set(pitTargetTests)
 
-    mutators.set(setOf("ALL"))
+    mutators.set(pitMutators)
     threads.set(Runtime.getRuntime().availableProcessors())
 
     timeoutFactor.set(BigDecimal("1.5"))
@@ -123,6 +163,10 @@ pitest {
             "*Main*"
         )
     )
+
+    if (pitAvoidCallsTo.isNotEmpty()) {
+        avoidCallsTo.set(pitAvoidCallsTo)
+    }
 }
 
 tasks.named("pitest") {
