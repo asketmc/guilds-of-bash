@@ -133,6 +133,7 @@ val pitTargetTests: Set<String> =
             "test.Smoke*"
         )
 
+// Configures PIT mutation testing with specific settings
 pitest {
     testPlugin.set("junit5")
     junit5PluginVersion.set("1.2.1")
@@ -140,7 +141,7 @@ pitest {
     targetClasses.set(setOf(pitTargetClasses))
     targetTests.set(pitTargetTests)
 
-    mutators.set(setOf("DEFAULTS"))
+    mutators.set(setOf("ALL"))
     threads.set(Runtime.getRuntime().availableProcessors())
 
     timeoutFactor.set(BigDecimal("1.5"))
