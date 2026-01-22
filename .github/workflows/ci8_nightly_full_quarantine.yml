@@ -21,41 +21,91 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run FULL (excluding @Tag("flaky"))
-        run: ./gradlew :core-test:testFull
+      - name: Run FULL (excluding @Tag("flaky")) (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+          
+          log="gradle_nightly_full.log"
+          
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :core-test:testFull \
+            >"${log}" 2>&1 || {
+              echo "FAIL: Nightly FULL suite failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
 
-      - name: Run QUARANTINE (only @Tag("flaky"), non-blocking)
-        run: ./gradlew :core-test:testQuarantine
-        continue-on-error: true
+      - name: Run QUARANTINE (only @Tag("flaky"), report-only)
+        id: quarantine
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+          
+          log="gradle_nightly_quarantine.log"
+          
+          set +e
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :core-test:testQuarantine \
+            >"${log}" 2>&1
+          code=$?
+          set -e
+          
+          echo "exit_code=${code}" >> "${GITHUB_OUTPUT}"
+          echo "QUARANTINE exitCode=${code}"
 
-      - name: Upload nightly test reports
+      - name: Upload nightly reports (on FULL failure or QUARANTINE non-zero)
+        if: ${{ failure() || steps.quarantine.outputs.exit_code != '0' }}
         uses: actions/upload-artifact@v4
         with:
           name: nightly-test-reports
-          path: |
+          path:
+            |
             core-test/build/reports/tests/**
             core-test/build/test-results/**
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Upload nightly gradle logs (on FULL failure or QUARANTINE non-zero)
+        if: ${{ failure() || steps.quarantine.outputs.exit_code != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-nightly
+          path:
+            |
+            gradle_nightly_full.log
+            gradle_nightly_quarantine.log
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Create or update issue if quarantine has failures
+        if: ${{ steps.quarantine.outputs.exit_code != '0' }}
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
-            
+
             const dir = 'core-test/build/test-results/testQuarantine';
             if (!fs.existsSync(dir)) return;
-            
+
             const files = fs.readdirSync(dir).filter(f => f.startsWith('TEST-') && f.endsWith('.xml'));
             if (files.length === 0) return;
-            
+
             let failures = 0;
             let errors = 0;
-            
+
             for (const f of files) {
               const xml = fs.readFileSync(path.join(dir, f), 'utf8');
               const m1 = xml.match(/failures="(\d+)"/);
@@ -63,23 +113,22 @@ jobs:
               if (m1) failures += parseInt(m1[1], 10);
               if (m2) errors += parseInt(m2[1], 10);
             }
-            
+
             if (failures === 0 && errors === 0) return;
-            
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            
+
             const title = 'Quarantine tests failing (nightly)';
             const label = 'ci-quarantine';
-            
+
             const body =
               `Nightly quarantine suite has failures.\n\n` +
               `- failures: ${failures}\n` +
               `- errors: ${errors}\n\n` +
               `Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}\n` +
               `Artifacts: nightly-test-reports\n`;
-            
-            // Find an existing OPEN issue with same title + label
+
             const { data: issues } = await github.rest.issues.listForRepo({
               owner,
               repo,
@@ -87,9 +136,9 @@ jobs:
               labels: label,
               per_page: 100
             });
-            
+
             const existing = issues.find(i => i.title === title);
-            
+
             if (!existing) {
               await github.rest.issues.create({
                 owner,
@@ -100,8 +149,7 @@ jobs:
               });
               return;
             }
-            
-            // Update existing issue body (idempotent "latest status")
+
             await github.rest.issues.update({
               owner,
               repo,

@@ -21,7 +21,46 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make gradlew executable
-        run: chmod +x ./gradlew
+        run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run SMOKE tests (PR) [GATE]
-        run: ./gradlew :core-test:smokeTest
+      - name: Run SMOKE tests (captured)
+        shell: bash
+        run:
+          |
+          set -euo pipefail
+          
+          log="gradle_smoke.log"
+          
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            :core-test:smokeTest \
+            >"${log}" 2>&1 || {
+              echo "FAIL: SMOKE suite failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
+
+      - name: Upload SMOKE gradle log (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-smoke
+          path: gradle_smoke.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload SMOKE test reports (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-reports
+          path:
+            |
+            core-test/build/reports/tests/**
+            core-test/build/test-results/**
+          if-no-files-found: warn
+          retention-days: 14
