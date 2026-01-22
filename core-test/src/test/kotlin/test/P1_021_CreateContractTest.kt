@@ -7,8 +7,7 @@ import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * P1_021: CreateContract Command Tests

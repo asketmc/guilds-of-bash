@@ -1,0 +1,37 @@
+# FILE: .github/workflows/ci1_docs.yml
+name: CI module - Docs (Dokka)
+
+'on':
+  workflow_call:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Generate Dokka HTML (master push)
+        run: ./gradlew :core:dokkaGeneratePublicationHtml :adapter-console:dokkaGeneratePublicationHtml
+
+      - name: Upload Dokka HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dokka-html
+          path: |
+            core/build/dokka/html/**
+            adapter-console/build/dokka/html/**
+          if-no-files-found: error
+          retention-days: 14

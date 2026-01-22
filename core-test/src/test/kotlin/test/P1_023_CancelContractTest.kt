@@ -2,99 +2,92 @@
 package test
 
 import core.*
-import core.primitives.ContractId
-import core.primitives.Rank
-import core.primitives.SalvagePolicy
-import core.state.initialState
-import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import core.invariants.InvariantId
+import core.primitives.*
 import core.rng.Rng
+import core.state.GameState
+import core.state.initialState
+import kotlin.test.*
 
 /**
  * P1_023: CancelContract Command Tests
  *
  * Validates R1 lifecycle command: CancelContract
- * Tests cancelling contracts from inbox (drafts) and board (OPEN contracts)
+ * - Cancelling drafts from inbox
+ * - Cancelling OPEN contracts from board (escrow release)
+ * - Rejections for missing / non-OPEN contracts
  */
 class P1_023_CancelContractTest {
 
     @Test
     fun `CancelContract removes draft from inbox without refund`() {
-        var state = initialState(123u)
+        val state = initialState(123u)
         val rng = Rng(456L)
 
-        // Create a draft
-        val createCmd = CreateContract(
-            title = "Test Contract",
-            rank = Rank.F,
-            difficulty = 30,
-            reward = 50,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
-        )
-        val (state2, events1) = step(state, createCmd, rng)
-        val draftId = (events1[0] as ContractDraftCreated).draftId
+        val draftId = state.inbox.first().id.value
 
-        // Cancel the draft
-        val cancelCmd = CancelContract(
-            contractId = draftId.toLong(),
-            cmdId = 2L
-        )
-        val (state3, events2) = step(state2, cancelCmd, rng)
+        val r = step(state, CancelContract(contractId = draftId.toLong(), cmdId = 1L), rng)
+        assertStepOk(r.events, "Cancel draft")
 
-        assertEquals(1, events2.size)
-        val event = events2[0] as ContractCancelled
-        assertEquals(draftId, event.contractId)
-        assertEquals("inbox", event.location)
-        assertEquals(0, event.refundedCopper)
+        val cancelled = r.events.filterIsInstance<ContractCancelled>().single()
+        assertEquals(draftId, cancelled.contractId)
+        assertEquals("inbox", cancelled.location.toString().lowercase())
+        assertEquals(0, cancelled.refundedCopper)
 
-        // Draft should be removed from inbox
-        val draft = state3.inbox.find { it.id == ContractId(draftId) }
-        assertNull(draft, "Draft should be removed from inbox")
-
-        // Economy unchanged (no escrow for drafts)
-        assertEquals(state2.economy, state3.economy)
+        assertInboxAbsent(r.state, draftId)
+        assertEquals(state.economy, r.state.economy, "Economy must not change when cancelling a draft")
     }
 
     @Test
     fun `CancelContract removes OPEN contract from board with escrow refund`() {
-        var state = initialState(123u)
-        state = state.copy(economy = state.economy.copy(moneyCopper = 1000))
+        var state = initialState(123u).copy(
+            economy = initialState(123u).economy.copy(moneyCopper = 1000, reservedCopper = 0)
+        )
         val rng = Rng(456L)
 
-        // Post a contract to board
-        val draftId = state.inbox.first().id
-        val postCmd = PostContract(
-            inboxId = draftId.toLong(),
-            fee = 75,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
-        )
-        val (state2, _) = step(state, postCmd, rng)
+        val boardBeforeIds = state.board.map { it.id.value }.toSet()
 
-        val contractOnBoard = state2.board.contracts.values.first()
+        // Post a contract to board
+        val draftId = state.inbox.first().id.value
+        val post = step(
+            state,
+            PostContract(
+                inboxId = draftId.toLong(),
+                fee = 75,
+                salvage = SalvagePolicy.GUILD,
+                cmdId = 1L
+            ),
+            rng
+        )
+        assertStepOk(post.events, "PostContract")
+        val state2 = post.state
+
+        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
         val oldReserved = state2.economy.reservedCopper
+        val oldMoney = state2.economy.moneyCopper
 
         // Cancel the board contract
-        val cancelCmd = CancelContract(
-            contractId = contractOnBoard.id.toLong(),
-            cmdId = 2L
+        val r = step(
+            state2,
+            CancelContract(contractId = contractOnBoard.id.value.toLong(), cmdId = 2L),
+            rng
         )
-        val (state3, events) = step(state2, cancelCmd, rng)
+        assertStepOk(r.events, "Cancel board contract")
+        val state3 = r.state
 
-        assertEquals(1, events.size)
-        val event = events[0] as ContractCancelled
-        assertEquals(contractOnBoard.id.value, event.contractId)
-        assertEquals("board", event.location)
-        assertEquals(75, event.refundedCopper)
+        val cancelled = r.events.filterIsInstance<ContractCancelled>().single()
+        assertEquals(contractOnBoard.id.value, cancelled.contractId)
+        assertEquals("board", cancelled.location.toString().lowercase())
+        assertEquals(75, cancelled.refundedCopper)
 
         // Contract should be removed from board
-        assertNull(state3.board.contracts[contractOnBoard.id], "Contract should be removed from board")
+        assertBoardAbsent(state3, contractOnBoard.id.value)
 
-        // Reserved copper should decrease by fee amount
+        // Reserved copper should decrease by fee amount (escrow released)
         assertEquals(oldReserved - 75, state3.economy.reservedCopper)
+
+        // Total money should stay the same on cancel (we're releasing escrow, not paying)
+        assertEquals(oldMoney, state3.economy.moneyCopper)
     }
 
     @Test
@@ -102,52 +95,63 @@ class P1_023_CancelContractTest {
         val state = initialState(123u)
         val rng = Rng(456L)
 
-        val cancelCmd = CancelContract(
-            contractId = 99999L,
-            cmdId = 1L
-        )
-        val (_, events) = step(state, cancelCmd, rng)
+        val r = step(state, CancelContract(contractId = 99999L, cmdId = 1L), rng)
 
-        assertEquals(1, events.size)
-        val event = events[0] as Rejected
-        assertTrue(event.detail.contains("not found") || event.detail.contains("NOT_FOUND"),
-            "Should reject with NOT_FOUND reason")
+        // Prefer canonical enum-based rejection check
+        assertSingleRejection(r.events, RejectReason.NOT_FOUND, "Cancel non-existent contract")
     }
 
     @Test
-    fun `CancelContract rejects TAKEN contract`() {
-        var state = initialState(123u)
-        state = state.copy(economy = state.economy.copy(moneyCopper = 1000))
+    fun `CancelContract rejects TAKEN or non-OPEN contract`() {
+        var state = initialState(123u).copy(
+            economy = initialState(123u).economy.copy(moneyCopper = 1000, reservedCopper = 0)
+        )
         val rng = Rng(456L)
 
-        // Post and take a contract
-        val draftId = state.inbox.first().id
-        val postCmd = PostContract(
-            inboxId = draftId.toLong(),
-            fee = 50,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
+        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+
+        // Post a contract
+        val draftId = state.inbox.first().id.value
+        val post = step(
+            state,
+            PostContract(
+                inboxId = draftId.toLong(),
+                fee = 50,
+                salvage = SalvagePolicy.GUILD,
+                cmdId = 1L
+            ),
+            rng
         )
-        val (state2, _) = step(state, postCmd, rng)
+        assertStepOk(post.events, "PostContract")
+        val postedState = post.state
+        val postedBoardContract = postedState.board.first { it.id.value !in boardBeforeIds }
 
-        val advanceCmd = AdvanceDay(cmdId = 2L)
-        val (state3, _) = step(state2, advanceCmd, rng)
-
-        // Find a taken contract
-        val takenContract = state3.board.contracts.values.firstOrNull { it.status.name == "TAKEN" }
-        if (takenContract != null) {
-            // Try to cancel a taken contract
-            val cancelCmd = CancelContract(
-                contractId = takenContract.id.toLong(),
-                cmdId = 3L
+        // Force status to LOCKED to simulate TAKEN (deterministic, avoids relying on day-tick AI)
+        val lockedState = postedState.copy(
+            contracts = postedState.contracts.copy(
+                board = postedState.board.map { bc ->
+                    if (bc.id.value == postedBoardContract.id.value) bc.copy(status = BoardStatus.LOCKED) else bc
+                }
             )
-            val (_, events) = step(state3, cancelCmd, rng)
+        )
 
-            assertEquals(1, events.size)
-            val event = events[0] as Rejected
-            assertTrue(event.detail.contains("OPEN") || event.detail.contains("status"),
-                "Should reject non-OPEN contract")
-        }
+        val r = step(
+            lockedState,
+            CancelContract(contractId = postedBoardContract.id.value.toLong(), cmdId = 2L),
+            rng
+        )
+
+        val rejections = r.events.filterIsInstance<CommandRejected>()
+        assertTrue(rejections.isNotEmpty(), "Should reject cancelling non-OPEN (LOCKED/TAKEN) contract, got events=${r.events}")
+
+        // Keep fuzzy detail check to avoid overfitting on RejectReason
+        val detail = rejections.first().detail
+        assertTrue(
+            detail.contains("OPEN", ignoreCase = true) ||
+                    detail.contains("LOCKED", ignoreCase = true) ||
+                    detail.contains("status", ignoreCase = true),
+            "Rejection detail should mention OPEN/status, got: $detail"
+        )
     }
 
     @Test
@@ -155,152 +159,181 @@ class P1_023_CancelContractTest {
         var state = initialState(123u)
         val rng = Rng(456L)
 
-        // Create 3 drafts
+        // Create 3 drafts (in addition to any seeded drafts)
         val ids = mutableListOf<Int>()
         for (i in 1..3) {
-            val createCmd = CreateContract(
-                title = "Contract $i",
-                rank = Rank.F,
-                difficulty = 30,
-                reward = 50,
-                salvage = SalvagePolicy.GUILD,
-                cmdId = i.toLong()
+            val r = step(
+                state,
+                CreateContract(
+                    title = "Contract $i",
+                    rank = Rank.F,
+                    difficulty = 30,
+                    reward = 50,
+                    salvage = SalvagePolicy.GUILD,
+                    cmdId = i.toLong()
+                ),
+                rng
             )
-            val (newState, events) = step(state, createCmd, rng)
-            state = newState
-            ids.add((events[0] as ContractDraftCreated).draftId)
+            assertStepOk(r.events, "CreateContract#$i")
+            state = r.state
+
+            val created = r.events.filterIsInstance<ContractDraftCreated>().single()
+            ids.add(created.draftId)
         }
 
-        assertEquals(3 + state.inbox.size - 3, state.inbox.size)
-
         // Cancel the middle one
-        val cancelCmd = CancelContract(
-            contractId = ids[1].toLong(),
-            cmdId = 4L
-        )
-        val (state2, events) = step(state, cancelCmd, rng)
+        val rCancel = step(state, CancelContract(contractId = ids[1].toLong(), cmdId = 4L), rng)
+        assertStepOk(rCancel.events, "Cancel middle draft")
 
-        assertEquals(1, events.size)
-        val event = events[0] as ContractCancelled
-        assertEquals(ids[1], event.contractId)
+        val cancelled = rCancel.events.filterIsInstance<ContractCancelled>().single()
+        assertEquals(ids[1], cancelled.contractId)
 
         // Middle draft removed, others remain
-        assertNull(state2.inbox.find { it.id.value == ids[1] })
-        assertTrue(state2.inbox.any { it.id.value == ids[0] })
-        assertTrue(state2.inbox.any { it.id.value == ids[2] })
+        assertInboxAbsent(rCancel.state, ids[1])
+        assertInboxPresent(rCancel.state, ids[0])
+        assertInboxPresent(rCancel.state, ids[2])
     }
 
     @Test
     fun `CancelContract escrow refund preserves economy invariants`() {
-        var state = initialState(123u)
-        state = state.copy(economy = state.economy.copy(moneyCopper = 500, reservedCopper = 0))
+        var state = initialState(123u).copy(
+            economy = initialState(123u).economy.copy(moneyCopper = 500, reservedCopper = 0)
+        )
         val rng = Rng(456L)
 
+        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+
         // Post a contract with fee=100
-        val draftId = state.inbox.first().id
-        val postCmd = PostContract(
-            inboxId = draftId.toLong(),
-            fee = 100,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
+        val draftId = state.inbox.first().id.value
+        val post = step(
+            state,
+            PostContract(
+                inboxId = draftId.toLong(),
+                fee = 100,
+                salvage = SalvagePolicy.GUILD,
+                cmdId = 1L
+            ),
+            rng
         )
-        val (state2, _) = step(state, postCmd, rng)
+        assertStepOk(post.events, "PostContract")
+        val state2 = post.state
 
         // Should have 500 total, 100 reserved, 400 available
         assertEquals(500, state2.economy.moneyCopper)
         assertEquals(100, state2.economy.reservedCopper)
 
-        val contractOnBoard = state2.board.contracts.values.first()
+        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
 
         // Cancel the contract
-        val cancelCmd = CancelContract(
-            contractId = contractOnBoard.id.toLong(),
-            cmdId = 2L
+        val rCancel = step(
+            state2,
+            CancelContract(contractId = contractOnBoard.id.value.toLong(), cmdId = 2L),
+            rng
         )
-        val (state3, _) = step(state2, cancelCmd, rng)
+        assertStepOk(rCancel.events, "Cancel board contract")
+        val state3 = rCancel.state
 
         // After cancel: still 500 total, 0 reserved, 500 available
         assertEquals(500, state3.economy.moneyCopper)
         assertEquals(0, state3.economy.reservedCopper)
 
         // Invariant: reserved should never be negative
-        assertTrue(state3.economy.reservedCopper >= 0)
-        // Invariant: reserved should never exceed total
-        assertTrue(state3.economy.reservedCopper <= state3.economy.moneyCopper)
+        assertNoViolations(state3, InvariantId.ECONOMY__RESERVED_NON_NEGATIVE, "reserved negative")
+
+        // Basic sanity: reserved within [0..money]
+        assertTrue(state3.economy.reservedCopper in 0..state3.economy.moneyCopper)
     }
 
     @Test
     fun `CancelContract deterministic with same seed`() {
         val state = initialState(123u)
+
+        val draftId = state.inbox.first().id.value.toLong()
+
         val rng1 = Rng(456L)
         val rng2 = Rng(456L)
 
-        // Create and cancel with rng1
-        val createCmd = CreateContract(
-            title = "Test Contract",
-            rank = Rank.F,
-            difficulty = 30,
-            reward = 50,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
-        )
-        val (state1a, events1a) = step(state, createCmd, rng1)
-        val draftId = (events1a[0] as ContractDraftCreated).draftId
+        val r1 = step(state, CancelContract(contractId = draftId, cmdId = 1L), rng1)
+        val r2 = step(state, CancelContract(contractId = draftId, cmdId = 1L), rng2)
 
-        val cancelCmd = CancelContract(
-            contractId = draftId.toLong(),
-            cmdId = 2L
-        )
-        val (finalState1, finalEvents1) = step(state1a, cancelCmd, rng1)
-
-        // Create and cancel with rng2
-        val (state2a, events2a) = step(state, createCmd, rng2)
-        val (finalState2, finalEvents2) = step(state2a, cancelCmd, rng2)
-
-        assertEquals(finalEvents1, finalEvents2, "Events should be identical with same seed")
-        assertEquals(finalState1, finalState2, "States should be identical with same seed")
+        assertEquals(r1.events, r2.events, "Events should be identical with same seed")
+        assertEquals(r1.state, r2.state, "States should be identical with same seed")
     }
 
     @Test
     fun `CancelContract after UpdateContractTerms refunds updated fee`() {
-        var state = initialState(123u)
-        state = state.copy(economy = state.economy.copy(moneyCopper = 1000))
+        var state = initialState(123u).copy(
+            economy = initialState(123u).economy.copy(moneyCopper = 1000, reservedCopper = 0)
+        )
         val rng = Rng(456L)
 
+        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+
         // Post a contract
-        val draftId = state.inbox.first().id
-        val postCmd = PostContract(
-            inboxId = draftId.toLong(),
-            fee = 50,
-            salvage = SalvagePolicy.GUILD,
-            cmdId = 1L
+        val draftId = state.inbox.first().id.value
+        val post = step(
+            state,
+            PostContract(
+                inboxId = draftId.toLong(),
+                fee = 50,
+                salvage = SalvagePolicy.GUILD,
+                cmdId = 1L
+            ),
+            rng
         )
-        val (state2, _) = step(state, postCmd, rng)
-        val contractOnBoard = state2.board.contracts.values.first()
+        assertStepOk(post.events, "PostContract")
+        val state2 = post.state
+
+        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
+        val contractId = contractOnBoard.id.value.toLong()
 
         // Update fee to 120
-        val updateCmd = UpdateContractTerms(
-            contractId = contractOnBoard.id.toLong(),
-            newFee = 120,
-            newSalvage = null,
-            cmdId = 2L
+        val upd = step(
+            state2,
+            UpdateContractTerms(
+                contractId = contractId,
+                newFee = 120,
+                newSalvage = null,
+                cmdId = 2L
+            ),
+            rng
         )
-        val (state3, _) = step(state2, updateCmd, rng)
-
+        assertStepOk(upd.events, "Update terms")
+        val state3 = upd.state
         val oldReserved = state3.economy.reservedCopper
 
         // Cancel - should refund 120, not 50
-        val cancelCmd = CancelContract(
-            contractId = contractOnBoard.id.toLong(),
-            cmdId = 3L
-        )
-        val (state4, events) = step(state3, cancelCmd, rng)
+        val rCancel = step(state3, CancelContract(contractId = contractId, cmdId = 3L), rng)
+        assertStepOk(rCancel.events, "Cancel after update")
+        val state4 = rCancel.state
 
-        assertEquals(1, events.size)
-        val event = events[0] as ContractCancelled
-        assertEquals(120, event.refundedCopper)
+        val cancelled = rCancel.events.filterIsInstance<ContractCancelled>().single()
+        assertEquals(120, cancelled.refundedCopper)
 
         // Reserved should decrease by 120
         assertEquals(oldReserved - 120, state4.economy.reservedCopper)
+    }
+
+    // --- Local presence helpers (stable across board/inbox internal representations) ---
+
+    private fun assertInboxAbsent(state: GameState, contractId: Int) {
+        assertTrue(
+            state.inbox.none { it.id.value == contractId },
+            "Expected inbox NOT to contain contractId=$contractId, inboxIds=${state.inbox.map { it.id.value }}"
+        )
+    }
+
+    private fun assertInboxPresent(state: GameState, contractId: Int) {
+        assertTrue(
+            state.inbox.any { it.id.value == contractId },
+            "Expected inbox to contain contractId=$contractId, inboxIds=${state.inbox.map { it.id.value }}"
+        )
+    }
+
+    private fun assertBoardAbsent(state: GameState, contractId: Int) {
+        assertTrue(
+            state.board.none { it.id.value == contractId },
+            "Expected board NOT to contain contractId=$contractId, boardIds=${state.board.map { it.id.value }}"
+        )
     }
 }

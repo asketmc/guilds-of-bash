@@ -33,106 +33,212 @@ fun main() {
         val cmdName = parts[0].lowercase()
 
         when (cmdName) {
-            "help", "h", "?" -> printHelp()
+            "help", "h", "?" -> {
+                printCmdInput(trimmed, state, rng)
+                printCmdVars()
+                printHelp()
+            }
 
-            "quit", "q", "exit" -> return
+            "quit", "q", "exit" -> {
+                printCmdInput(trimmed, state, rng)
+                printCmdVars()
+                return
+            }
 
-            "status" -> printStatus(state, rng)
+            "status" -> {
+                printCmdInput(trimmed, state, rng)
+                printCmdVars()
+                printStatus(state, rng)
+            }
 
             "list" -> {
-                if (parts.size < 2) continue
-                when (parts[1].lowercase()) {
+                printCmdInput(trimmed, state, rng)
+                if (parts.size < 2) {
+                    printCmdVars("error" to "missing target", "usage" to "list inbox|board|active|returns")
+                    println("Usage: list inbox|board|active|returns")
+                    continue
+                }
+                val target = parts[1].lowercase()
+                printCmdVars("target" to target)
+                when (target) {
                     "inbox" -> printInbox(state)
                     "board" -> printBoard(state)
                     "active" -> printActive(state)
                     "returns", "return" -> printReturns(state)
-                    else -> println("unknown command: $trimmed")
+                    else -> unknownCommand(trimmed)
                 }
             }
 
             "day", "advance" -> {
-                val cmd = AdvanceDay(cmdId = nextCmdId++)
+                printCmdInput(trimmed, state, rng)
+                val cmdId = nextCmdId++
+                printCmdVars("cmdId" to cmdId)
+                val cmd = AdvanceDay(cmdId = cmdId)
                 val (newState, newSnapshot) = applyAndPrintWithAnalytics(state, cmd, rng, prevDaySnapshot)
                 state = newState
                 prevDaySnapshot = newSnapshot
             }
 
             "post" -> {
+                printCmdInput(trimmed, state, rng)
                 if (parts.size < 4) {
+                    printCmdVars("error" to "missing args", "usage" to "post <inboxId> <fee> <salvage>")
                     println("Usage: post <inboxId> <fee> <salvage>")
                     println("  salvage: GUILD | HERO | SPLIT")
                     continue
                 }
-                val inboxId = parts[1].toLongOrNull() ?: continue
-                val fee = parts[2].toIntOrNull() ?: continue
+
+                val inboxIdRaw = parts[1]
+                val feeRaw = parts[2]
                 val salvageStr = parts[3].uppercase()
+
+                val inboxId = inboxIdRaw.toLongOrNull()
+                if (inboxId == null) {
+                    printCmdVars("error" to "invalid inboxId", "inboxIdRaw" to inboxIdRaw)
+                    println("Invalid inboxId: $inboxIdRaw")
+                    continue
+                }
+
+                val fee = feeRaw.toIntOrNull()
+                if (fee == null) {
+                    printCmdVars("error" to "invalid fee", "feeRaw" to feeRaw)
+                    println("Invalid fee: $feeRaw")
+                    continue
+                }
+
                 val salvage = try {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
                 } catch (e: IllegalArgumentException) {
+                    printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
                     println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
                 }
+
+                val cmdId = nextCmdId++
+                printCmdVars(
+                    "cmdId" to cmdId,
+                    "inboxId" to inboxId,
+                    "fee" to fee,
+                    "salvage" to salvage
+                )
 
                 val cmd = PostContract(
                     inboxId = inboxId,
                     fee = fee,
                     salvage = salvage,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "close" -> {
-                if (parts.size < 2) continue
-                val activeId = parts[1].toLongOrNull() ?: continue
+                printCmdInput(trimmed, state, rng)
+                if (parts.size < 2) {
+                    printCmdVars("error" to "missing activeId", "usage" to "close <activeId>")
+                    println("Usage: close <activeId>")
+                    continue
+                }
+
+                val activeIdRaw = parts[1]
+                val activeId = activeIdRaw.toLongOrNull()
+                if (activeId == null) {
+                    printCmdVars("error" to "invalid activeId", "activeIdRaw" to activeIdRaw)
+                    println("Invalid activeId: $activeIdRaw")
+                    continue
+                }
+
+                val cmdId = nextCmdId++
+                printCmdVars("cmdId" to cmdId, "activeId" to activeId)
 
                 val cmd = CloseReturn(
                     activeContractId = activeId,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "sell" -> {
+                printCmdInput(trimmed, state, rng)
+
                 val amount = if (parts.size == 1) {
                     0
                 } else {
-                    parts[1].toIntOrNull() ?: continue
+                    val raw = parts[1]
+                    val parsed = raw.toIntOrNull()
+                    if (parsed == null) {
+                        printCmdVars("error" to "invalid amount", "amountRaw" to raw, "usage" to "sell <amount>")
+                        println("Invalid amount: $raw")
+                        continue
+                    }
+                    parsed
                 }
+
+                val cmdId = nextCmdId++
+                printCmdVars("cmdId" to cmdId, "amount" to amount)
+
                 val cmd = SellTrophies(
                     amount = amount,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "tax" -> {
+                printCmdInput(trimmed, state, rng)
                 if (parts.size >= 3 && parts[1].lowercase() == "pay") {
-                    val amount = parts[2].toIntOrNull() ?: continue
-                    val cmd = PayTax(amount = amount, cmdId = nextCmdId++)
+                    val amountRaw = parts[2]
+                    val amount = amountRaw.toIntOrNull()
+                    if (amount == null) {
+                        printCmdVars("error" to "invalid amount", "amountRaw" to amountRaw, "usage" to "tax pay <amount>")
+                        println("Invalid amount: $amountRaw")
+                        continue
+                    }
+                    val cmdId = nextCmdId++
+                    printCmdVars("cmdId" to cmdId, "amount" to amount)
+                    val cmd = PayTax(amount = amount, cmdId = cmdId)
                     state = applyAndPrint(state, cmd, rng)
                 } else {
+                    printCmdVars("error" to "invalid subcommand", "usage" to "tax pay <amount>")
                     println("Usage: tax pay <amount>")
                 }
             }
 
             "create" -> {
+                printCmdInput(trimmed, state, rng)
                 if (parts.size < 5) {
-                    println("Usage: create <title> <rank> <difficulty> <reward> <salvage>")
+                    printCmdVars("error" to "missing args", "usage" to "create <title> <rank> <difficulty> <reward> [salvage]")
+                    println("Usage: create <title> <rank> <difficulty> <reward> [salvage]")
                     println("  rank: F|E|D|C|B|A|S")
                     println("  difficulty: 0-100")
                     println("  salvage: GUILD|HERO|SPLIT")
                     continue
                 }
+
                 val title = parts[1]
                 val rankStr = parts[2].uppercase()
-                val difficulty = parts[3].toIntOrNull() ?: continue
-                val reward = parts[4].toIntOrNull() ?: continue
+
+                val difficultyRaw = parts[3]
+                val rewardRaw = parts[4]
                 val salvageStr = parts.getOrNull(5)?.uppercase() ?: "GUILD"
+
+                val difficulty = difficultyRaw.toIntOrNull()
+                if (difficulty == null) {
+                    printCmdVars("error" to "invalid difficulty", "difficultyRaw" to difficultyRaw)
+                    println("Invalid difficulty: $difficultyRaw")
+                    continue
+                }
+
+                val reward = rewardRaw.toIntOrNull()
+                if (reward == null) {
+                    printCmdVars("error" to "invalid reward", "rewardRaw" to rewardRaw)
+                    println("Invalid reward: $rewardRaw")
+                    continue
+                }
 
                 val rank = try {
                     core.primitives.Rank.valueOf(rankStr)
                 } catch (e: IllegalArgumentException) {
+                    printCmdVars("error" to "invalid rank", "rankRaw" to rankStr)
                     println("Invalid rank: $rankStr. Use F, E, D, C, B, A, or S")
                     continue
                 }
@@ -140,9 +246,20 @@ fun main() {
                 val salvage = try {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
                 } catch (e: IllegalArgumentException) {
+                    printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
                     println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
                 }
+
+                val cmdId = nextCmdId++
+                printCmdVars(
+                    "cmdId" to cmdId,
+                    "title" to title,
+                    "rank" to rank,
+                    "difficulty" to difficulty,
+                    "reward" to reward,
+                    "salvage" to salvage
+                )
 
                 val cmd = CreateContract(
                     title = title,
@@ -150,20 +267,30 @@ fun main() {
                     difficulty = difficulty,
                     reward = reward,
                     salvage = salvage,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "update" -> {
+                printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
+                    printCmdVars("error" to "missing contractId", "usage" to "update <contractId> [fee=<fee>] [salvage=<salvage>]")
                     println("Usage: update <contractId> [fee=<fee>] [salvage=<salvage>]")
                     println("  Example: update 5 fee=100")
                     println("  Example: update 5 salvage=HERO")
                     println("  Example: update 5 fee=80 salvage=SPLIT")
                     continue
                 }
-                val contractId = parts[1].toLongOrNull() ?: continue
+
+                val contractIdRaw = parts[1]
+                val contractId = contractIdRaw.toLongOrNull()
+                if (contractId == null) {
+                    printCmdVars("error" to "invalid contractId", "contractIdRaw" to contractIdRaw)
+                    println("Invalid contractId: $contractIdRaw")
+                    continue
+                }
+
                 var newFee: Int? = null
                 var newSalvage: core.primitives.SalvagePolicy? = null
 
@@ -171,64 +298,125 @@ fun main() {
                     val param = parts[i]
                     when {
                         param.startsWith("fee=") -> {
-                            newFee = param.substringAfter("fee=").toIntOrNull()
+                            val raw = param.substringAfter("fee=")
+                            val parsed = raw.toIntOrNull()
+                            if (parsed == null) {
+                                println("Invalid fee: $raw")
+                            } else {
+                                newFee = parsed
+                            }
                         }
                         param.startsWith("salvage=") -> {
-                            val salvageStr = param.substringAfter("salvage=").uppercase()
+                            val salvageRaw = param.substringAfter("salvage=").uppercase()
                             newSalvage = try {
-                                core.primitives.SalvagePolicy.valueOf(salvageStr)
+                                core.primitives.SalvagePolicy.valueOf(salvageRaw)
                             } catch (e: IllegalArgumentException) {
-                                println("Invalid salvage policy: $salvageStr")
-                                continue
+                                println("Invalid salvage policy: $salvageRaw")
+                                null
                             }
                         }
                     }
                 }
 
                 if (newFee == null && newSalvage == null) {
+                    printCmdVars("contractId" to contractId, "newFee" to newFee, "newSalvage" to newSalvage, "error" to "no params")
                     println("Must specify at least one parameter: fee=<value> or salvage=<policy>")
                     continue
                 }
+
+                val cmdId = nextCmdId++
+                printCmdVars("cmdId" to cmdId, "contractId" to contractId, "newFee" to newFee, "newSalvage" to newSalvage)
 
                 val cmd = UpdateContractTerms(
                     contractId = contractId,
                     newFee = newFee,
                     newSalvage = newSalvage,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "cancel" -> {
+                printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
+                    printCmdVars("error" to "missing contractId", "usage" to "cancel <contractId>")
                     println("Usage: cancel <contractId>")
                     continue
                 }
-                val contractId = parts[1].toLongOrNull() ?: continue
+
+                val contractIdRaw = parts[1]
+                val contractId = contractIdRaw.toLongOrNull()
+                if (contractId == null) {
+                    printCmdVars("error" to "invalid contractId", "contractIdRaw" to contractIdRaw)
+                    println("Invalid contractId: $contractIdRaw")
+                    continue
+                }
+
+                val cmdId = nextCmdId++
+                printCmdVars("cmdId" to cmdId, "contractId" to contractId)
 
                 val cmd = CancelContract(
                     contractId = contractId,
-                    cmdId = nextCmdId++
+                    cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
             }
 
             "auto" -> {
-                if (parts.size < 2) continue
-                val n = parts[1].toIntOrNull() ?: continue
-                if (n < 0) continue
+                printCmdInput(trimmed, state, rng)
+                if (parts.size < 2) {
+                    printCmdVars("error" to "missing n", "usage" to "auto <n>")
+                    println("Usage: auto <n>")
+                    continue
+                }
+
+                val nRaw = parts[1]
+                val n = nRaw.toIntOrNull()
+                if (n == null) {
+                    printCmdVars("error" to "invalid n", "nRaw" to nRaw)
+                    println("Invalid n: $nRaw")
+                    continue
+                }
+                if (n < 0) {
+                    printCmdVars("error" to "n<0", "n" to n)
+                    println("Invalid n: $n (must be >= 0)")
+                    continue
+                }
+
+                printCmdVars("count" to n)
 
                 repeat(n) {
-                    val cmd = AdvanceDay(cmdId = nextCmdId++)
+                    val cmdId = nextCmdId++
+                    println("AUTO_STEP: index=${it + 1}/$n")
+                    printCmdVars("cmdId" to cmdId)
+                    val cmd = AdvanceDay(cmdId = cmdId)
                     val (newState, newSnapshot) = applyAndPrintWithAnalytics(state, cmd, rng, prevDaySnapshot)
                     state = newState
                     prevDaySnapshot = newSnapshot
                 }
             }
 
-            else -> println("unknown command: $trimmed")
+            else -> unknownCommand(trimmed)
         }
     }
+}
+
+private fun unknownCommand(input: String) {
+    println("Неизвестная команда: $input")
+    println("Введите 'help' для списка команд.")
+}
+
+private fun printCmdInput(input: String, state: GameState, rng: Rng) {
+    println("IN: \"$input\"")
+    println("CTX: day=${state.meta.dayIndex} rev=${state.meta.revision} rngDraws=${rng.draws}")
+}
+
+private fun printCmdVars(vararg kv: Pair<String, Any?>) {
+    if (kv.isEmpty()) {
+        println("VARS: (none)")
+        return
+    }
+    println("VARS: " + kv.joinToString(" ") { "${it.first}=${it.second}" })
 }
 
 private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
@@ -333,7 +521,7 @@ Commands:
   list inbox|board|active|returns
   day | advance
   post <inboxId> <fee> <salvage>    (salvage: GUILD|HERO|SPLIT)
-  create <title> <rank> <difficulty> <reward> <salvage>
+  create <title> <rank> <difficulty> <reward> [salvage]
   update <contractId> [fee=<fee>] [salvage=<salvage>]
   cancel <contractId>
   close <activeId>

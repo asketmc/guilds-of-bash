@@ -8,8 +8,7 @@ import core.primitives.Rank
 import core.primitives.SalvagePolicy
 import core.state.initialState
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * P1_022: UpdateContractTerms Command Tests

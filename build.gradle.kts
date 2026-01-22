@@ -9,20 +9,23 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    kotlin("jvm") version "1.9.23" apply false
-    kotlin("plugin.serialization") version "1.9.23" apply false
+    kotlin("jvm") version "2.2.21" apply false
+    kotlin("plugin.serialization") version "2.2.21" apply false
 
     // === DOKKA (docs-as-artifact) ===
-    id("org.jetbrains.dokka") version "2.1.0"
+    id("org.jetbrains.dokka") version "2.2.0-Beta"
 
     // === KOVER ROOT AGGREGATOR ===
-    id("org.jetbrains.kotlinx.kover") version "0.8.3"
+    id("org.jetbrains.kotlinx.kover") version "0.9.3"
 
     // === DETEKT (static analysis for Kotlin) ===
-    id("io.gitlab.arturbosch.detekt") version "1.23.7"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
+
+    // === SHADOW (fat JAR) ===
+    id("com.gradleup.shadow") version "9.2.2" apply false
 
     // === PITEST (mutation testing for quality assurance) ===
-    id("info.solidsoft.pitest") version "1.15.0" apply false
+    id("info.solidsoft.pitest") version "1.19.0-rc.3" apply false
 }
 
 repositories {
@@ -119,15 +122,13 @@ subprojects {
 }
 
 // Detekt configuration for the root project (applies to subprojects)
-// We configure sensible defaults and generate HTML/XML reports under build/reports/detekt
-// Limit detekt root sources to production sources only (avoid build scripts)
 val detektSourceFiles = files(rootProject.subprojects.mapNotNull { p ->
     val f = file("${p.projectDir}/src/main/kotlin")
     if (f.exists()) f else null
 })
 
 detekt {
-    toolVersion = "1.23.7"
+    toolVersion = "1.23.8"
     buildUponDefaultConfig = true
     config.setFrom("config/detekt/detekt.yml")
     baseline = file("config/detekt/detekt-baseline.xml")

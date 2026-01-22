@@ -1,301 +1,264 @@
+// FILE: core/src/main/kotlin/core/invariants/InvariantVerifier.kt
 package core.invariants
 
 import core.primitives.*
 import core.state.*
 
+/**
+ * Verifies a subset of state consistency invariants and reports violations.
+ *
+ * ## Contract
+ * - Reads the provided `state` and returns a list of `InvariantViolation` entries.
+ * - Each `InvariantViolation.details` string is constructed deterministically from observed values.
+ * - Violation emission order is deterministic:
+ *   - Checks are executed in a fixed sequence (as written in this function).
+ *   - Where multiple entities can violate the same invariant, the function sorts by stable keys
+ *     (numeric id projections) before emitting violations.
+ *
+ * ## Determinism
+ * - Deterministic for a given `state` (no RNG).
+ */
 fun verifyInvariants(state: GameState): List<InvariantViolation> {
     val violations = mutableListOf<InvariantViolation>()
 
-    // --- 1. Indices & Precomputations ---
-    val inboxIds = state.contracts.inbox.map { it.id.value }
-    val boardIds = state.contracts.board.map { it.id.value }
-    val allContractIds = inboxIds + boardIds
-    val maxContractId = allContractIds.maxOrNull() ?: 0
+    fun add(id: InvariantId, details: String) {
+        violations.add(InvariantViolation(id, details))
+    }
 
-    val activeIds = state.contracts.active.map { it.id.value }
-    val maxActiveId = activeIds.maxOrNull() ?: 0
+    /**
+     * Stable numeric projection for id-like values.
+     *
+     * We intentionally avoid requiring ids to be Comparable or to expose a specific `.value` field.
+     * For Kotlin value classes / wrappers, `hashCode()` is stable and (in typical id wrappers)
+     * equals the underlying numeric value.
+     */
+    fun num(x: Any?): Int = when (x) {
+        null -> 0
+        is Int -> x
+        is Long -> x.toInt()
+        is UInt -> x.toInt()
+        is ULong -> x.toInt()
+        is Short -> x.toInt()
+        is Byte -> x.toInt()
+        else -> x.hashCode()
+    }
 
-    val activeByBoardId = state.contracts.active.groupBy { it.boardContractId.value }
-    val returnsByBoardId = state.contracts.returns.groupBy { it.boardContractId.value }
+    fun fmtReturn(p: ReturnPacket): String =
+        "{active=${num(p.activeContractId)},board=${num(p.boardContractId)}," +
+                "requiresClose=${p.requiresPlayerClose},trophies=${p.trophiesCount},q=${p.trophiesQuality}}"
 
-    val heroesById = state.heroes.roster.associateBy { it.id.value }
-    val maxHeroId = heroesById.keys.maxOrNull() ?: 0
+    // --- 1) Precompute max ids for monotonicity checks ---
+    val maxInboxContractId = state.contracts.inbox.maxOfOrNull { num(it.id) } ?: 0
+    val maxBoardContractId = state.contracts.board.maxOfOrNull { num(it.id) } ?: 0
+    val maxContractId = maxOf(maxInboxContractId, maxBoardContractId)
 
-    // Heroes "in flight" usage:
-    // - WIP actives keep heroes ON_MISSION
-    // - returns requiring close keep heroes ON_MISSION until CloseReturn
-    val heroUsageCount = mutableMapOf<Int, Int>()
+    val maxActiveId = state.contracts.active.maxOfOrNull { num(it.id) } ?: 0
+    val maxHeroId = state.heroes.roster.maxOfOrNull { num(it.id) } ?: 0
 
-    state.contracts.active
-        .asSequence()
-        .filter { it.status == ActiveStatus.WIP }
-        .forEach { active ->
-            active.heroIds.forEach { heroId ->
-                heroUsageCount[heroId.value] = (heroUsageCount[heroId.value] ?: 0) + 1
-            }
-        }
+    val nextContractIdNum = num(state.meta.ids.nextContractId)
+    val nextActiveContractIdNum = num(state.meta.ids.nextActiveContractId)
+    val nextHeroIdNum = num(state.meta.ids.nextHeroId)
 
-    state.contracts.returns
-        .asSequence()
-        .filter { it.requiresPlayerClose }
-        .forEach { ret ->
-            ret.heroIds.forEach { heroId ->
-                heroUsageCount[heroId.value] = (heroUsageCount[heroId.value] ?: 0) + 1
-            }
-        }
+    // --- 2) ID invariants ---
+    if (nextContractIdNum <= 0) {
+        add(InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE, "nextContractId=$nextContractIdNum must be > 0")
+    }
+    if (nextActiveContractIdNum <= 0) {
+        add(InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE, "nextActiveContractId=$nextActiveContractIdNum must be > 0")
+    }
+    if (nextHeroIdNum <= 0) {
+        add(InvariantId.IDS__NEXT_HERO_ID_POSITIVE, "nextHeroId=$nextHeroIdNum must be > 0")
+    }
 
-    // --- 2. Invariants Check (ordered by InvariantId enum) ---
-
-    // IDS__NEXT_CONTRACT_ID_POSITIVE
-    if (state.meta.ids.nextContractId <= 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_CONTRACT_ID_POSITIVE,
-                "expected=nextContractId>0; nextContractId=${state.meta.ids.nextContractId}"
-            )
+    if (nextContractIdNum <= maxContractId) {
+        add(
+            InvariantId.IDS__NEXT_CONTRACT_ID_GT_MAX_CONTRACT_ID,
+            "nextContractId=$nextContractIdNum must be > maxContractId=$maxContractId"
+        )
+    }
+    if (nextActiveContractIdNum <= maxActiveId) {
+        add(
+            InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_GT_MAX_ACTIVE_ID,
+            "nextActiveContractId=$nextActiveContractIdNum must be > maxActiveId=$maxActiveId"
+        )
+    }
+    if (nextHeroIdNum <= maxHeroId) {
+        add(
+            InvariantId.IDS__NEXT_HERO_ID_GT_MAX_HERO_ID,
+            "nextHeroId=$nextHeroIdNum must be > maxHeroId=$maxHeroId"
         )
     }
 
-    // IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE
-    if (state.meta.ids.nextActiveContractId <= 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_POSITIVE,
-                "expected=nextActiveContractId>0; nextActiveContractId=${state.meta.ids.nextActiveContractId}"
-            )
-        )
-    }
+    // --- 3) Contracts: LOCKED board must have exactly one non-closed active referencing it ---
+    val actives = state.contracts.active
+    val returns = state.contracts.returns
 
-    // IDS__NEXT_HERO_ID_POSITIVE
-    if (state.meta.ids.nextHeroId <= 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_HERO_ID_POSITIVE,
-                "expected=nextHeroId>0; nextHeroId=${state.meta.ids.nextHeroId}"
-            )
-        )
-    }
-
-    // IDS__NEXT_CONTRACT_ID_GT_MAX_CONTRACT_ID
-    if (state.meta.ids.nextContractId <= maxContractId) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_CONTRACT_ID_GT_MAX_CONTRACT_ID,
-                "expected=nextContractId>maxContractId; nextContractId=${state.meta.ids.nextContractId}; maxContractId=$maxContractId"
-            )
-        )
-    }
-
-    // IDS__NEXT_ACTIVE_CONTRACT_ID_GT_MAX_ACTIVE_ID
-    if (state.meta.ids.nextActiveContractId <= maxActiveId) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_ACTIVE_CONTRACT_ID_GT_MAX_ACTIVE_ID,
-                "expected=nextActiveContractId>maxActiveId; nextActiveContractId=${state.meta.ids.nextActiveContractId}; maxActiveId=$maxActiveId"
-            )
-        )
-    }
-
-    // IDS__NEXT_HERO_ID_GT_MAX_HERO_ID
-    if (state.meta.ids.nextHeroId <= maxHeroId) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.IDS__NEXT_HERO_ID_GT_MAX_HERO_ID,
-                "expected=nextHeroId>maxHeroId; nextHeroId=${state.meta.ids.nextHeroId}; maxHeroId=$maxHeroId"
-            )
-        )
-    }
-
-    // CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE
-    // LOCKED board is valid if it has EXACTLY ONE in-flight contract:
-    // - exactly one WIP active referencing it, OR
-    // - exactly one pending return requiring close referencing it
     state.contracts.board
         .asSequence()
         .filter { it.status == BoardStatus.LOCKED }
-        .sortedBy { it.id.value }
+        .sortedBy { num(it.id) }
         .forEach { board ->
-            val actives = activeByBoardId[board.id.value].orEmpty()
-            val returns = returnsByBoardId[board.id.value].orEmpty()
+            val nonClosedActiveIds = actives
+                .asSequence()
+                .filter { it.boardContractId == board.id }
+                .filter { it.status != ActiveStatus.CLOSED }
+                .map { num(it.id) }
+                .sorted()
+                .toList()
 
-            val wipCount = actives.count { it.status == ActiveStatus.WIP }
-            val pendingReturnCount = returns.count { it.requiresPlayerClose }
-            val totalInFlight = wipCount + pendingReturnCount
-
-            if (totalInFlight != 1) {
-                violations.add(
-                    InvariantViolation(
-                        InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE,
-                        "boardId=${board.id.value}; expected=exactlyOneInFlight; wipCount=$wipCount; pendingReturnCount=$pendingReturnCount"
-                    )
+            if (nonClosedActiveIds.size != 1) {
+                add(
+                    InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE,
+                    "boardId=${num(board.id)} expectedExactlyOneNonClosedActive but found=${nonClosedActiveIds.size}; activeIds=$nonClosedActiveIds"
                 )
             }
         }
 
-    // CONTRACTS__ACTIVE_DAYS_REMAINING_NON_NEGATIVE
-    state.contracts.active
+    // --- 4) Contracts: RETURN_READY active must have exactly one return packet ---
+    actives
         .asSequence()
-        .filter { it.daysRemaining < 0 }
-        .sortedBy { it.id.value }
+        .filter { it.status == ActiveStatus.RETURN_READY }
+        .sortedBy { num(it.id) }
         .forEach { active ->
-            violations.add(
-                InvariantViolation(
+            val packets = returns.filter { it.activeContractId == active.id }
+            if (packets.size != 1) {
+                add(
+                    InvariantId.CONTRACTS__RETURN_READY_HAS_RETURN_PACKET,
+                    "activeId=${num(active.id)} is RETURN_READY but returnPacketsFound=${packets.size}"
+                )
+            }
+        }
+
+    // --- 5) Contracts: Return packet points to existing active (ONLY when close is required) ---
+    // PoC nuance:
+    // - If requiresPlayerClose=false, the reducer may auto-finalize and drop the active contract.
+    //   Such packets are informational and must NOT fail referential checks.
+    val activeIdNums = actives.asSequence().map { num(it.id) }.toSet()
+
+    val invReferentialIntegrity: InvariantId? =
+        runCatching { InvariantId.valueOf("INV_REFERENTIAL_INTEGRITY") }.getOrNull()
+
+    returns
+        .asSequence()
+        .filter { it.requiresPlayerClose }
+        .sortedWith(compareBy<ReturnPacket>({ num(it.boardContractId) }, { num(it.activeContractId) }))
+        .forEach { p ->
+            val aId = num(p.activeContractId)
+            if (!activeIdNums.contains(aId)) {
+                add(
+                    InvariantId.CONTRACTS__RETURN_PACKET_POINTS_TO_EXISTING_ACTIVE,
+                    "returnPacket.activeId=$aId not found in actives; packet=${fmtReturn(p)}"
+                )
+                if (invReferentialIntegrity != null) {
+                    add(
+                        invReferentialIntegrity,
+                        "return.activeId=$aId missing; return=${fmtReturn(p)}"
+                    )
+                }
+            }
+        }
+
+    // --- 6) Contracts: Active daysRemaining must be non-negative ---
+    actives
+        .asSequence()
+        .sortedBy { num(it.id) }
+        .forEach { a ->
+            if (a.daysRemaining < 0) {
+                add(
                     InvariantId.CONTRACTS__ACTIVE_DAYS_REMAINING_NON_NEGATIVE,
-                    "activeId=${active.id.value}; daysRemaining=${active.daysRemaining}; expected=daysRemaining>=0"
+                    "activeId=${num(a.id)} daysRemaining=${a.daysRemaining} < 0"
                 )
-            )
+            }
         }
 
-    // CONTRACTS__WIP_DAYS_REMAINING_IN_1_2
-    state.contracts.active
+    // --- 7) Contracts: WIP daysRemaining must be in 1..2 ---
+    actives
         .asSequence()
-        .filter { it.status == ActiveStatus.WIP && it.daysRemaining !in 1..2 }
-        .sortedBy { it.id.value }
-        .forEach { active ->
-            violations.add(
-                InvariantViolation(
+        .filter { it.status == ActiveStatus.WIP }
+        .sortedBy { num(it.id) }
+        .forEach { a ->
+            if (a.daysRemaining !in 1..2) {
+                add(
                     InvariantId.CONTRACTS__WIP_DAYS_REMAINING_IN_1_2,
-                    "activeId=${active.id.value}; status=WIP; daysRemaining=${active.daysRemaining}; expected=1..2"
+                    "activeId=${num(a.id)} is WIP but daysRemaining=${a.daysRemaining} not in [1,2]"
                 )
-            )
+            }
         }
 
-    // HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT
-    // Interpreted as: every ON_MISSION hero must belong to exactly one "in flight" unit
-    // (either a WIP active or a pending return requiring close).
+    // --- 8) Heroes invariants ---
+    // Use numeric keys to avoid assuming HeroId is Int/Comparable/etc.
+    val heroesByNum = state.heroes.roster.associateBy { num(it.id) }
+
+    // (a) Active in WIP/RETURN_READY => all assigned heroes exist and are ON_MISSION
+    actives
+        .asSequence()
+        .filter { it.status == ActiveStatus.WIP || it.status == ActiveStatus.RETURN_READY }
+        .sortedBy { num(it.id) }
+        .forEach { a ->
+            a.heroIds.forEach { hid ->
+                val heroNum = num(hid)
+                val hero = heroesByNum[heroNum]
+                if (hero == null || hero.status != HeroStatus.ON_MISSION) {
+                    add(
+                        InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
+                        "activeId=${num(a.id)} heroId=$heroNum expected ON_MISSION but was ${hero?.status}"
+                    )
+                }
+            }
+        }
+
+    // (b) Hero status=ON_MISSION must appear in exactly one WIP/RETURN_READY active
+    val usage = mutableMapOf<Int, Int>()
+    actives
+        .asSequence()
+        .filter { it.status == ActiveStatus.WIP || it.status == ActiveStatus.RETURN_READY }
+        .forEach { a ->
+            a.heroIds.forEach { hid ->
+                val k = num(hid)
+                usage[k] = (usage[k] ?: 0) + 1
+            }
+        }
+
     state.heroes.roster
         .asSequence()
         .filter { it.status == HeroStatus.ON_MISSION }
-        .sortedBy { it.id.value }
-        .forEach { hero ->
-            val count = heroUsageCount[hero.id.value] ?: 0
-            if (count != 1) {
-                violations.add(
-                    InvariantViolation(
-                        InvariantId.HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT,
-                        "heroId=${hero.id.value}; expected=inFlightUsageCount==1; usageCount=$count"
-                    )
+        .sortedBy { num(it.id) }
+        .forEach { h ->
+            val k = num(h.id)
+            val c = usage[k] ?: 0
+            if (c != 1) {
+                add(
+                    InvariantId.HEROES__ON_MISSION_IN_EXACTLY_ONE_ACTIVE_CONTRACT,
+                    "heroId=$k is ON_MISSION but referencedByActives=$c"
                 )
             }
         }
 
-    // HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION
-    // Interpreted as:
-    // - heroes referenced by WIP actives must be ON_MISSION
-    // - heroes referenced by pending returns must be ON_MISSION until CloseReturn
-    state.contracts.active
-        .asSequence()
-        .filter { it.status == ActiveStatus.WIP }
-        .sortedBy { it.id.value }
-        .forEach { active ->
-            active.heroIds
-                .sortedBy { it.value }
-                .forEach { heroId ->
-                    val hero = heroesById[heroId.value]
-                    if (hero == null) {
-                        violations.add(
-                            InvariantViolation(
-                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "source=activeWip; activeId=${active.id.value}; heroId=${heroId.value}; expected=heroExists"
-                            )
-                        )
-                    } else if (hero.status != HeroStatus.ON_MISSION) {
-                        violations.add(
-                            InvariantViolation(
-                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "source=activeWip; activeId=${active.id.value}; heroId=${heroId.value}; heroStatus=${hero.status}; expected=ON_MISSION"
-                            )
-                        )
-                    }
-                }
-        }
+    // --- 9) Economy/Region/Guild invariants ---
+    val money = state.economy.moneyCopper
+    val reserved = state.economy.reservedCopper
+    val trophies = state.economy.trophiesStock
 
-    state.contracts.returns
-        .asSequence()
-        .filter { it.requiresPlayerClose }
-        .sortedBy { it.activeContractId.value }
-        .forEach { ret ->
-            ret.heroIds
-                .sortedBy { it.value }
-                .forEach { heroId ->
-                    val hero = heroesById[heroId.value]
-                    if (hero == null) {
-                        violations.add(
-                            InvariantViolation(
-                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "source=returnPending; activeId=${ret.activeContractId.value}; heroId=${heroId.value}; expected=heroExists"
-                            )
-                        )
-                    } else if (hero.status != HeroStatus.ON_MISSION) {
-                        violations.add(
-                            InvariantViolation(
-                                InvariantId.HEROES__ACTIVE_WIP_OR_RETURN_READY_HERO_STATUS_ON_MISSION,
-                                "source=returnPending; activeId=${ret.activeContractId.value}; heroId=${heroId.value}; heroStatus=${hero.status}; expected=ON_MISSION"
-                            )
-                        )
-                    }
-                }
-        }
+    if (money < 0) add(InvariantId.ECONOMY__MONEY_NON_NEGATIVE, "moneyCopper=$money < 0")
+    if (reserved < 0) add(InvariantId.ECONOMY__RESERVED_NON_NEGATIVE, "reservedCopper=$reserved < 0")
+    if (trophies < 0) add(InvariantId.ECONOMY__TROPHIES_NON_NEGATIVE, "trophiesStock=$trophies < 0")
 
-    // ECONOMY__MONEY_NON_NEGATIVE
-    if (state.economy.moneyCopper < 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.ECONOMY__MONEY_NON_NEGATIVE,
-                "moneyCopper=${state.economy.moneyCopper}; expected>=0"
-            )
+    val available = money - reserved
+    if (available < 0) {
+        add(
+            InvariantId.ECONOMY__AVAILABLE_NON_NEGATIVE,
+            "availableCopper=$available (money=$money,reserved=$reserved) < 0"
         )
     }
 
-    // ECONOMY__TROPHIES_NON_NEGATIVE
-    if (state.economy.trophiesStock < 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.ECONOMY__TROPHIES_NON_NEGATIVE,
-                "trophiesStock=${state.economy.trophiesStock}; expected>=0"
-            )
-        )
+    val stability = state.region.stability
+    if (stability !in 0..100) {
+        add(InvariantId.REGION__STABILITY_0_100, "stability=$stability not in [0,100]")
     }
 
-    // ECONOMY__RESERVED_NON_NEGATIVE
-    if (state.economy.reservedCopper < 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.ECONOMY__RESERVED_NON_NEGATIVE,
-                "reservedCopper=${state.economy.reservedCopper}; expected>=0"
-            )
-        )
-    }
-
-    // ECONOMY__AVAILABLE_NON_NEGATIVE
-    val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
-    if (availableCopper < 0) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.ECONOMY__AVAILABLE_NON_NEGATIVE,
-                "availableCopper=${availableCopper}; moneyCopper=${state.economy.moneyCopper}; reservedCopper=${state.economy.reservedCopper}; expected=available>=0"
-            )
-        )
-    }
-
-    // REGION__STABILITY_0_100
-    if (state.region.stability !in 0..100) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.REGION__STABILITY_0_100,
-                "stability=${state.region.stability}; expected=0..100"
-            )
-        )
-    }
-
-    // GUILD__REPUTATION_0_100
-    if (state.guild.reputation !in 0..100) {
-        violations.add(
-            InvariantViolation(
-                InvariantId.GUILD__REPUTATION_0_100,
-                "reputation=${state.guild.reputation}; expected=0..100"
-            )
-        )
+    val reputation = state.guild.reputation
+    if (reputation !in 0..100) {
+        add(InvariantId.GUILD__REPUTATION_0_100, "reputation=$reputation not in [0,100]")
     }
 
     return violations
