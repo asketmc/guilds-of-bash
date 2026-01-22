@@ -1,11 +1,12 @@
 package test
 
 import core.*
+import core.invariants.InvariantId
+import core.invariants.verifyInvariants
 import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
  * Shared test utilities for PoC scenario replays.
@@ -213,4 +214,58 @@ fun printScenarioResult(result: ScenarioResult, includeEvents: Boolean = false) 
     }
 
     println("=======================\n")
+}
+
+// --- Invariant helpers ---
+
+fun violationsOf(state: GameState, invariantId: InvariantId) =
+    verifyInvariants(state).filter { it.invariantId == invariantId }
+
+fun assertNoViolations(state: GameState, invariantId: InvariantId, message: String = "") {
+    val v = violationsOf(state, invariantId)
+    assertTrue(v.isEmpty(), buildString {
+        if (message.isNotBlank()) append(message).append("\n")
+        append("Expected no violations of ").append(invariantId.code).append(", got=").append(v)
+    })
+}
+
+fun assertHasViolation(state: GameState, invariantId: InvariantId, message: String = "") {
+    val v = violationsOf(state, invariantId)
+    assertTrue(v.isNotEmpty(), buildString {
+        if (message.isNotBlank()) append(message).append("\n")
+        append("Expected at least one violation of ").append(invariantId.code).append(", got=").append(v)
+    })
+}
+
+fun assertNoLockedBoardViolations(state: GameState, message: String = "") =
+    assertNoViolations(state, InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE, message)
+
+fun assertHasLockedBoardViolation(state: GameState, message: String = "") =
+    assertHasViolation(state, InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE, message)
+
+// --- Step helpers ---
+
+fun assertSequentialSeq(events: List<Event>, label: String) {
+    if (events.isEmpty()) return
+    events.forEachIndexed { index, e ->
+        assertEquals((index + 1).toLong(), e.seq, "$label: seq must be sequential")
+    }
+}
+
+fun assertStepOk(events: List<Event>, label: String) {
+    assertNoInvariantViolations(events, "$label: must not emit InvariantViolated")
+    assertNoRejections(events, "$label: must not reject")
+    assertSequentialSeq(events, label)
+}
+
+// --- Contract inbox helpers (small, 20/80 additions) ---
+
+fun assertContractPresentInInbox(state: GameState, contractId: Int, message: String = "") {
+    val exists = state.inbox.any { it.id.value == contractId }
+    assertTrue(exists, if (message.isNotBlank()) message else "Expected contract $contractId to be present in inbox")
+}
+
+fun assertContractAbsentInInbox(state: GameState, contractId: Int, message: String = "") {
+    val exists = state.inbox.any { it.id.value == contractId }
+    assertTrue(!exists, if (message.isNotBlank()) message else "Expected contract $contractId to be absent from inbox")
 }
