@@ -9,7 +9,7 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: Edge Cases PoC Test.
+ * P2: Edge Cases PoC Test.
  * Validates edge case behaviors explicitly called out in PoC specification.
  *
  * Edge Cases:
@@ -17,6 +17,7 @@ import kotlin.test.*
  * - EC_POC_DOUBLE_TAKE: Multiple heroes wanting same contract (tie-break)
  * - EC_POC_PROCESS_TWICE: Attempt to close already-closed return
  */
+@P2
 class P1_016_EdgeCasesPoCTest {
 
     @Test

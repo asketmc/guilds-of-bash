@@ -11,11 +11,12 @@ import org.junit.jupiter.api.Test
 import kotlin.test.*
 
 /**
- * P1_022: UpdateContractTerms Command Tests
+ * P2: UpdateContractTerms Command Tests
  *
  * Validates R1 lifecycle command: UpdateContractTerms
  * Tests updating fee and salvage policy for both inbox and board contracts
  */
+@P2
 class P1_022_UpdateContractTermsTest {
 
     @Test

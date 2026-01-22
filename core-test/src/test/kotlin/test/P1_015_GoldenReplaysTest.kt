@@ -12,6 +12,7 @@ import kotlin.test.*
  * P1 CRITICAL: Golden Replay Tests (GR1–GR3).
  * Validates end-to-end PoC scenarios with deterministic seeds and expected event sequences.
  */
+@P1
 class P1_015_GoldenReplaysTest {
 
     @Test

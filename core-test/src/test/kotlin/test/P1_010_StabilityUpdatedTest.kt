@@ -7,9 +7,10 @@ import core.state.*
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: StabilityUpdated event tests.
+ * P2: StabilityUpdated event tests.
  * Tests the deterministic stability update mechanism during AdvanceDay.
  */
+@P2
 class P1_StabilityUpdatedTest {
 
     @Test

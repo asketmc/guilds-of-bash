@@ -11,6 +11,7 @@ import kotlin.test.*
  * P1 CRITICAL: Command validation tests.
  * Invalid commands could corrupt game state.
  */
+@P1
 @Smoke
 class P1_005_CommandValidationTest {
 

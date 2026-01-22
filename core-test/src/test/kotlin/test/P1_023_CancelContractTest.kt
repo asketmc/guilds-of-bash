@@ -10,13 +10,14 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1_023: CancelContract Command Tests
+ * P2: CancelContract Command Tests
  *
  * Validates R1 lifecycle command: CancelContract
  * - Cancelling drafts from inbox
  * - Cancelling OPEN contracts from board (escrow release)
  * - Rejections for missing / non-OPEN contracts
  */
+@P2
 class P1_023_CancelContractTest {
 
     @Test

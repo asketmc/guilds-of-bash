@@ -9,7 +9,6 @@ import core.rng.Rng
 import core.state.initialState
 import kotlin.test.*
 
-@Smoke
 /**
  * P1 CRITICAL: Invariants After Each Step Test.
  * Validates that invariants hold after EVERY step in golden scenarios.
@@ -23,6 +22,9 @@ import kotlin.test.*
  * - `verifyInvariants(state)` must return empty list after each accepted command
  * - Rejected commands must also leave state in valid state (invariants hold)
  */
+@P1
+@Smoke
+class P1_020_InvariantsAfterEachStepTest {
 class P1_020_InvariantsAfterEachStepTest {
 
     @Test

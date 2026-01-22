@@ -6,8 +6,10 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: GameState initialization tests.
+ * P0 CRITICAL: GameState initialization tests.
+ * Core startup functionality - must pass for app to start.
  */
+@P0
 @Smoke
 class P1_012_GameStateInitializationTest {
 

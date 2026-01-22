@@ -13,6 +13,7 @@ import kotlin.test.Test
  * P1 CRITICAL: LOCKED board invariant tests.
  * Tests that LOCKED boards are properly unlocked when all actives are closed.
  */
+@P1
 class P1_InvariantLockedBoardTest {
 
     private val lockedBoardInvariant = InvariantId.CONTRACTS__LOCKED_BOARD_HAS_NON_CLOSED_ACTIVE

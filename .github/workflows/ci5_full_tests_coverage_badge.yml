@@ -23,7 +23,7 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run FULL (no perf) + adapter tests + generate Kover reports (captured)
+      - name: Run FULL (all non-perf tests) + adapter tests + generate Kover reports (captured)
         shell: bash
         run:
           |
@@ -34,7 +34,7 @@ jobs:
           ./gradlew \
             --console=plain \
             --warning-mode=all \
-            :core-test:testFull \
+            :core-test:testAllNoPerf \
             :adapter-console:test \
             koverXmlReport \
             koverHtmlReport \

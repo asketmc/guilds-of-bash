@@ -14,6 +14,7 @@ import kotlin.test.assertTrue
  * P1 CRITICAL: Trophy pipeline tests.
  * Tests trophy generation on resolve, deposit on CloseReturn, and selling.
  */
+@P1
 class P1_002_TrophyPipelineTest {
 
     @Test

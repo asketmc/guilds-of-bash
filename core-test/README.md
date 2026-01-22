@@ -1,12 +1,54 @@
-core-test — P1 unit tests
+core-test — P0-P3 unit tests
 
 Purpose
 -------
-This folder contains the project's highest-priority unit tests (filename prefix `P1_`). These tests exercise critical business flows (contracts, trophies, fees) and are intended to be stable, deterministic, and runnable locally by developers.
+This folder contains the project's unit tests organized by priority (P0-P3). These tests exercise critical business flows (contracts, trophies, fees) and are intended to be stable, deterministic, and runnable locally by developers.
 
-What "P1" means
-----------------
-- P1: Critical unit tests. Failures indicate regressions for production-critical logic and must be fixed before releases.
+Test Priority Levels (P0-P3)
+---------------------------
+Tests are tagged using JUnit5 meta-annotations for priority-based execution:
+
+- **P0**: Core/heart - app won't start or core loop unusable
+  - Examples: Reducer critical behavior, GameState initialization
+  - Tagged with `@P0` annotation
+  - Always runs in PR and push pipelines
+  
+- **P1**: Feature broken / critical regression
+  - Examples: Invariants, determinism contracts, serialization, golden replays
+  - Tagged with `@P1` annotation
+  - Runs in PR and push pipelines
+  
+- **P2**: Normal correctness (non-critical)
+  - Examples: Fee escrow, trophy selling, contract management, edge cases
+  - Tagged with `@P2` annotation
+  - Runs only in push pipeline (not PR)
+  
+- **P3**: Low value / edge / long tail (non-perf)
+  - Tagged with `@P3` annotation
+  - Runs only in push pipeline (not PR)
+
+Execution Tags (Orthogonal)
+--------------------------
+- **@Smoke**: Fastest subset of tests for PR gate (overlaps with P0/P1)
+- **@Perf**: Performance/load tests, excluded from PR and push (nightly only)
+- **@Flaky**: Quarantined tests, excluded from all standard pipelines
+
+Execution Policy
+---------------
+- **PR workflow**: `./gradlew :core-test:testPr`
+  - Includes: smoke, p0, p1
+  - Excludes: perf, flaky
+  - Fast feedback for pull requests
+
+- **Push to master**: `./gradlew :core-test:testAllNoPerf`
+  - Includes: all tests except perf
+  - Excludes: perf, flaky
+  - Comprehensive validation before merge
+
+- **Nightly/weekly**: `./gradlew :core-test:testPerf`
+  - Includes: perf
+  - Excludes: flaky
+  - Performance regression detection
 
 Guidelines
 ----------
@@ -140,6 +182,8 @@ To ensure golden replay stability:
 
 ## Test Naming Convention
 
-- `P1_NNN_DescriptionTest.kt` — P1 critical tests (NNN = 001-020+)
+- `P1_NNN_DescriptionTest.kt` — Test files are prefixed with their original P1 numbering for continuity
+- Tests are tagged with `@P0`, `@P1`, `@P2`, or `@P3` annotations to indicate actual priority
+- File prefixes (P1_NNN) are historical; actual priority is determined by the tag annotation
 - Tests are numbered for organization, not execution order
-- New P1 tests should increment the highest existing number
+- New tests should use the next available number and appropriate priority tag

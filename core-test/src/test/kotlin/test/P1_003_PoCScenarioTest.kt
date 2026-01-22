@@ -15,6 +15,7 @@ import kotlin.test.*
  * P1 CRITICAL: PoC end-to-end scenario tests.
  * Validates the complete micro-game loop from contracts to trophies to money.
  */
+@P1
 class P1_003_PoCScenarioTest {
 
     @Test

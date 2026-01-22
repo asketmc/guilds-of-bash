@@ -7,7 +7,7 @@ import kotlin.test.Test
 import org.junit.jupiter.api.Tag
 
 /**
- * P3: performance/load smoke (manual only).
+ * P3/Perf: performance/load smoke (manual only).
  *
  * Characteristics:
  * - Environment-dependent (JIT / CPU / GC)
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Tag
  *   -Dperf.steps=<int>
  *   -Dperf.warmup=<int>
  */
-@Tag("perf")
+@Perf
 class P3_001_CorePerfLoadTest {
 
     private val stateSeed = 42u

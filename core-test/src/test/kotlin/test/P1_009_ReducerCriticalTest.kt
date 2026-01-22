@@ -10,8 +10,10 @@ import core.invariants.verifyInvariants
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: Reducer critical behavior tests.
+ * P0 CRITICAL: Reducer critical behavior tests.
+ * Core loop functionality - must pass for app to be functional.
  */
+@P0
 @Smoke
 class P1_009_ReducerCriticalTest {
 

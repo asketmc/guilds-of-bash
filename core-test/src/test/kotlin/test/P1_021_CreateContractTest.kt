@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 import kotlin.test.*
 
 /**
- * P1_021: CreateContract Command Tests
+ * P2: CreateContract Command Tests
  *
  * Validates R1 lifecycle command: CreateContract
  * Tests contract draft creation in inbox with validation rules
@@ -19,6 +19,7 @@ import kotlin.test.*
  * - initialState(...) seeds the inbox with initial drafts. Tests must not assume empty inbox unless
  *   they explicitly clear it.
  */
+@P2
 class P1_021_CreateContractTest {
 
     @Test

@@ -15,6 +15,7 @@ import kotlin.test.*
  * P1 CRITICAL: Hashing tests.
  * Replay validation depends on stable hashing.
  */
+@P1
 class P1_HashingTest {
 
     @Test
