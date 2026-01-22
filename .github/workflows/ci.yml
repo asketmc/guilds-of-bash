@@ -96,11 +96,11 @@ jobs:
     permissions:
       contents: read
 
-nightly-full-and-quarantine:
-  name: |
-    Nightly: PITEST ALL + perf + quarantine [schedule]
-  if: ${{ github.event_name == 'schedule' }}
-  uses: ./.github/workflows/ci8_nightly_full_quarantine.yml
-  permissions:
-    contents: read
-    issues: write
+  nightly-full-and-quarantine:
+    name: |
+      Nightly: PITEST ALL + perf + quarantine [schedule]
+    if: ${{ github.event_name == 'schedule' }}
+    uses: ./.github/workflows/ci8_nightly_full_quarantine.yml
+    permissions:
+      contents: read
+      issues: write
