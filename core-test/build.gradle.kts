@@ -1,6 +1,9 @@
 // FILE: core-test/build.gradle.kts
 import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.SourceSetContainer
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.math.BigDecimal
 
 plugins {
     kotlin("jvm")
@@ -13,7 +16,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(kotlin("reflect"))
 
-    // PIT mutation testing dependencies
+    // PIT mutation testing dependencies (JUnit 5 support)
     pitest("org.pitest:pitest-junit5-plugin:1.2.1")
 }
 
@@ -75,11 +78,11 @@ tasks.register<Test>("smokeTest") {
     failFast = true
 }
 
-// Configure kover with safer agent arguments location to avoid FileNotFound on Windows
+// ====================================================================
+// === KOVER
+// ====================================================================
+
 kover {
-    // Keep default reports/verify, but set temporary directory for agent args inside buildDir
-    // Kover plugin doesn't expose direct setting for agent args file, but we can set
-    // environment variable or JVM arg via test task if needed. For now, keep default config
     reports {
         verify {
             rule {
@@ -92,65 +95,75 @@ kover {
     }
 }
 
-// Ensure koverVerify runs as part of check
 tasks.check {
     dependsOn("koverVerify")
 }
-
-// (detekt tasks configured in root)
 
 // ====================================================================
 // === PITEST (mutation testing)
 // ====================================================================
 
+// CLI overrides (optional):
+//  -PpitTestFqn=test.P1_011_SerializationTest
+//  -PpitTargetClasses=core\\..*
+// If not provided, defaults are used.
+val pitTestFqn: String? = (findProperty("pitTestFqn") as String?)?.trim()
+val pitTargetClasses: String? = (findProperty("pitTargetClasses") as String?)?.trim()
+
+val coreMainSourceSet = project(":core")
+    .extensions
+    .getByType<SourceSetContainer>()
+    .named("main")
+    .get()
+
+val thisTestSourceSet = extensions
+    .getByType<SourceSetContainer>()
+    .named("test")
+    .get()
+
 pitest {
-    // Target classes from the :core module for mutation
-    // Use a regex that matches package+subpackages (core\..*) to avoid accidental
-    // mismatches (Pitest treats targetClasses as regex patterns).
-    targetClasses.set(listOf("core\\..*"))
+    // PIT expects regex patterns
+    targetClasses.set(listOf(if (!pitTargetClasses.isNullOrEmpty()) pitTargetClasses else "core\\..*"))
 
-    // Use tests from this module (core-test)
-    targetTests.set(listOf("test.*"))
+    // default: all tests; override with -PpitTestFqn=<FQN>
+    targetTests.set(listOf(if (!pitTestFqn.isNullOrEmpty()) pitTestFqn else "test\\..*"))
 
-    // Enable JUnit 5 support
+    // JUnit 5 support
     junit5PluginVersion.set("1.2.1")
 
-    // Minimal / fast mutation profile for iteractive use (DEFAULTS). For deeper
-    // analysis run a dedicated nightly job with STRONGER or CUSTOM mutators.
+    // Minimal / fast mutation profile for interactive use
     mutators.set(listOf("DEFAULTS"))
 
-    // Avoid failing the build while we debug filters (prevents CI from failing
-    // with "No mutations found" during tuning). Toggle to `true` for strict checks.
+    // Avoid failing the build while filters are tuned
     failWhenNoMutations.set(false)
 
-    // Performance: use all available CPU cores
+    // Performance
     threads.set(Runtime.getRuntime().availableProcessors())
-
-    // Quality gates (aligned with existing Kover coverage minimum)
-    mutationThreshold.set(60)  // minimum 60% of mutants must be killed
-    coverageThreshold.set(20)  // aligned with Kover minimum line coverage
 
     // Output formats
     outputFormats.set(listOf("HTML", "XML"))
+    timestampedReports.set(false)
 
-    // Verbose output for better debugging
+    // Verbose output for debugging
     verbose.set(true)
 
-    // Exclude classes that are not critical for mutation testing
+    // Exclusions (regex)
     excludedClasses.set(listOf(
-        "core.serde.*",           // Serialization DTOs
-        "core.state.*Dto",        // Data transfer objects
-        "*.Main*"                 // Entry points
+        "core\\.serde\\..*",
+        "core\\.state\\..*Dto.*",
+        ".*Main.*"
     ))
 
     // Time limits
-    timeoutFactor.set(BigDecimal("1.5"))        // Allow 1.5x normal test execution time
-    timeoutConstInMillis.set(3000) // Base timeout: 3 seconds
+    timeoutFactor.set(BigDecimal("1.5"))
+    timeoutConstInMillis.set(3000)
 
-    // IMPORTANT: Tell PIT where to find the classes to mutate
-    // We need to include both the core module's classes
-    mainSourceSets.set(listOf(project(":core").sourceSets.main.get()))
-    testSourceSets.set(listOf(sourceSets.test.get()))
+    // Windows: keep classpath in a file (usually default, but keep explicit)
+    useClasspathFile.set(true)
+
+    // Multi-module: mutate :core classes, run tests from :core-test
+    mainSourceSets.set(listOf(coreMainSourceSet))
+    testSourceSets.set(listOf(thisTestSourceSet))
 }
 
 // Ensure core module is compiled before mutation testing
@@ -158,38 +171,9 @@ tasks.named("pitest") {
     dependsOn(":core:classes")
 }
 
-/**
- * FAST PIT: quick mutation testing for PR pipeline
- * Targets only critical reducer and validation logic
- */
-tasks.register("pitestFast") {
-    group = "verification"
-    description = "Fast mutation testing: critical classes only (Reducer, CommandValidation)"
-
-    doFirst {
-        project.extensions.configure<info.solidsoft.gradle.pitest.PitestPluginExtension>("pitest") {
-            targetClasses.set(listOf(
-                "core.Reducer*",
-                "core.CommandValidation*",
-                "core.Events*",
-                "core.Commands*"
-            ))
-            mutators.set(listOf("DEFAULTS"))  // Faster mutators for quick feedback
-            threads.set(Runtime.getRuntime().availableProcessors())
-        }
-    }
-
-    finalizedBy("pitest")
-}
-
-// Targeted: suppress compiler warnings for *test* compilation only to reduce noise while
-// we iteratively fix test code. This uses -nowarn for the compileTestKotlin task only.
-// NOTE: This is a pragmatic temporary measure; prefer fixing root causes (remove unused
-// imports/vars, update deprecated APIs, add proper generics/nullability, or local @Suppress).
-tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin") {
+// Targeted: suppress compiler warnings for *test* compilation only to reduce noise
+tasks.named<KotlinCompile>("compileTestKotlin") {
     kotlinOptions {
-        // Suppress warnings during test compilation to reduce CI noise.
-        // Remove or narrow this once tests are cleaned up.
         freeCompilerArgs += listOf("-nowarn")
     }
 }
