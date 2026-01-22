@@ -22,7 +22,7 @@ plugins {
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
 
     // === SHADOW (fat JAR) ===
-    id("com.gradleup.shadow") version "9.2.2" apply false
+    id("com.gradleup.shadow") version "9.3.1" apply false
 
     // === PITEST (mutation testing for quality assurance) ===
     id("info.solidsoft.pitest") version "1.19.0-rc.3" apply false
@@ -122,6 +122,8 @@ subprojects {
 }
 
 // Detekt configuration for the root project (applies to subprojects)
+// We configure sensible defaults and generate HTML/XML reports under build/reports/detekt
+// Limit detekt root sources to production sources only (avoid build scripts)
 val detektSourceFiles = files(rootProject.subprojects.mapNotNull { p ->
     val f = file("${p.projectDir}/src/main/kotlin")
     if (f.exists()) f else null
