@@ -9,7 +9,7 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: Abuse Technical PoC Test.
+ * P2: Abuse Technical PoC Test.
  * Validates anti-abuse technical safeguards in the PoC reducer.
  *
  * Abuse Cases:
@@ -17,6 +17,7 @@ import kotlin.test.*
  * - AB_POC_INVALID_MUTATION: State mutation outside reducer (conceptual)
  * - AB_POC_SELL_BOUNDARY: Sell trophies boundary behaviors
  */
+@P2
 class P1_017_AbuseTechnicalPoCTest {
 
     @Test

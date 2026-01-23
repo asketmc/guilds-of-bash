@@ -21,6 +21,7 @@ import kotlin.test.*
  *   branch-dependent RNG usage (e.g., extra draws for trophy count/theft only on some outcomes).
  * - Therefore, tests that assumed draw-count invariance across different outcomes have been adjusted.
  */
+@P1
 class P1_019_RngDrawOrderGoldenTest {
 
     @Test

@@ -12,6 +12,7 @@ import kotlin.test.*
  * P1 CRITICAL: Serialization/deserialization tests.
  * Save/load corruption breaks the entire game.
  */
+@P1
 class P1_011_SerializationTest {
 
     @Test

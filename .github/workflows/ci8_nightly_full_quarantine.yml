@@ -23,7 +23,7 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run FULL (excluding @Tag("flaky")) (captured)
+      - name: Run FULL (all non-perf tests, excluding @Tag("flaky")) (captured)
         shell: bash
         run:
           |
@@ -34,7 +34,7 @@ jobs:
           ./gradlew \
             --console=plain \
             --warning-mode=all \
-            :core-test:testFull \
+            :core-test:testAllNoPerf \
             >"${log}" 2>&1 || {
               echo "FAIL: Nightly FULL suite failed."
               echo "Failure block (max 25 lines):"

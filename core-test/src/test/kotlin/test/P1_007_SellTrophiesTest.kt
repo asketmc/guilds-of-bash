@@ -9,8 +9,10 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: SellTrophies command tests.
+ * P2: SellTrophies command tests.
+ * Important feature-level tests for trophy selling.
  */
+@P2
 class P1_SellTrophiesTest {
 
     @Test

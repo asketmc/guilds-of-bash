@@ -51,10 +51,33 @@ tasks.register<Test>("smokeTest") {
     failFast = true
 }
 
+tasks.register<Test>("testPr") {
+    group = "verification"
+    description = "PR gate tests: smoke + p0 + p1 (excludes perf, flaky)"
+    useJUnitPlatform {
+        includeTags("smoke", "p0", "p1")
+        excludeTags("perf", "flaky")
+    }
+    failFast = true
+}
+
+tasks.register<Test>("testAllNoPerf") {
+    group = "verification"
+    description = "All tests except perf and flaky"
+    useJUnitPlatform {
+        excludeTags("perf", "flaky")
+    }
+}
+
 tasks.register<Test>("perfTest") {
     group = "verification"
     description = "Runs perf/load tests only (manual)"
-    useJUnitPlatform { includeTags("perf") }
+    useJUnitPlatform {
+        includeTags("perf")
+        excludeTags("flaky")
+        // Exclude JUnit Platform Suite classes that are used for other test filtering
+        excludeEngines("junit-platform-suite")
+    }
 }
 
 // ====================================================================

@@ -10,7 +10,7 @@ import core.state.initialState
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: Outcome Branches Test.
+ * P2: Outcome Branches Test.
  *
  * Contract-focused goals (stable under RNG stream shifts):
  * - Determinism: same (stateSeed, rngSeed) => same outcome for the same scenario
@@ -20,6 +20,7 @@ import kotlin.test.*
  * NOTE: This suite intentionally avoids asserting that a particular outcome (e.g. FAIL) must
  * appear within a small, hardcoded seed set, because RNG draw order and upstream draws may shift.
  */
+@P2
 class P1_018_OutcomeBranchesTest {
 
     /**

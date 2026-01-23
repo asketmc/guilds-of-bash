@@ -8,6 +8,7 @@ import core.primitives.*
 import core.state.*
 import kotlin.test.*
 
+@P1
 @Smoke
 class P1_004_InvariantVerificationTest {
 

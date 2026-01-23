@@ -14,6 +14,7 @@ import kotlin.test.*
  * - Catch missing or renamed commands/events
  * - Document PoC scope through test assertions
  */
+@P1
 class P1_014_PoCManifestCoverageTest {
 
     /**

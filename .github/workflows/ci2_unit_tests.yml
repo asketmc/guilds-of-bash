@@ -23,7 +23,7 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Run PR gate tests (SMOKE + adapter tests) (captured)
+      - name: Run PR gate tests (smoke + P0 + P1 + adapter tests) (captured)
         shell: bash
         run:
           |
@@ -34,10 +34,10 @@ jobs:
           ./gradlew \
             --console=plain \
             --warning-mode=all \
-            :core-test:smokeTest \
+            :core-test:testPr \
             :adapter-console:test \
             >"${log}" 2>&1 || {
-              echo "FAIL: PR gate failed (SMOKE/adapter)."
+              echo "FAIL: PR gate failed (smoke/P0/P1/adapter)."
               echo "Failure block (max 25 lines):"
               awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
               echo "Tail (last 40 lines):"

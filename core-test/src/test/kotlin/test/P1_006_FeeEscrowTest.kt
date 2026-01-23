@@ -9,8 +9,10 @@ import core.rng.Rng
 import kotlin.test.*
 
 /**
- * P1 CRITICAL: Fee escrow tests.
+ * P2: Fee escrow tests.
+ * Important feature-level tests for fee handling.
  */
+@P2
 class P1_006_FeeEscrowTest {
 
     @Test
