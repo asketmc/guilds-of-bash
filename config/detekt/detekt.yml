@@ -35,21 +35,17 @@ complexity:
   TooManyFunctions:
     active: false
 
-  CognitiveComplexMethod:
+  CyclomaticComplexMethod:
     active: true
-    allowedComplexity: 20
+    threshold: 20
 
   LongMethod:
     active: true
-    allowedLines: 80
-
-  CyclomaticComplexMethod:
-    active: true
-    allowedComplexity: 20
+    threshold: 80
 
   NestedBlockDepth:
     active: true
-    allowedDepth: 5
+    threshold: 5
 
 style:
   active: true
