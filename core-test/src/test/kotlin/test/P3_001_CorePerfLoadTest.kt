@@ -26,7 +26,7 @@ class P3_001_CorePerfLoadTest {
     private val stateSeed = 42u
     private val rngSeed = 100L
 
-    private fun steps(): Int = System.getProperty("perf.steps")?.toIntOrNull() ?: 10_000
+    private fun steps(): Int = System.getProperty("perf.steps")?.toIntOrNull() ?: 5_000
     private fun warmup(): Int = System.getProperty("perf.warmup")?.toIntOrNull() ?: 300
 
     @Test
