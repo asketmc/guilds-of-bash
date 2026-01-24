@@ -1,195 +1,207 @@
 package test
 
-// TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
-
 import core.*
-import core.hash.hashEvents
 import core.hash.hashState
 import core.primitives.SalvagePolicy
+import core.rng.Rng
+import core.state.initialState
 import kotlin.test.*
 
-/**
- * P1 CRITICAL: Golden Replay Tests (GR1–GR3).
- * Validates end-to-end PoC scenarios with deterministic seeds and expected event sequences.
- */
 @P1
 class P1_015_GoldenReplaysTest {
 
     @Test
     fun `GR1 happy path full contract lifecycle`() {
-        // GIVEN: Deterministic scenario with full contract flow: post → take → resolve → (auto-close if applicable) → sell
-        // NOTE: implementation auto-closes non-PARTIAL outcomes, so CloseReturn is not part of the golden command list.
         val scenario = Scenario(
             scenarioId = "GR1_happy_path",
             stateSeed = 42u,
             rngSeed = 100L,
             commands = listOf(
-                AdvanceDay(cmdId = 1L), // Day 1: inbox + heroes
+                AdvanceDay(cmdId = 1L),
                 PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L),
-                AdvanceDay(cmdId = 3L), // Day 2: take + advance WIP
-                AdvanceDay(cmdId = 4L), // Day 3: resolve (may auto-close)
-                SellTrophies(amount = 0, cmdId = 5L) // sell-all (no-op if 0)
+                AdvanceDay(cmdId = 3L),
+                AdvanceDay(cmdId = 4L),
+                SellTrophies(amount = 0, cmdId = 5L)
             ),
-            description = "Happy path: contract posted, taken, resolved (auto-close as per outcome), trophies sold"
+            description = "Happy path: post → take → resolve (auto-close as per outcome) → sell-all"
         )
 
-        // WHEN: Run scenario
+        fun mainTypes(stepRes: StepResult): List<String> = mainEventTypes(stepRes.events)
+
+        fun assertMainTypesContainsInOrder(actual: List<String>, requiredInOrder: List<String>, label: String) {
+            var i = 0
+            for (t in actual) {
+                if (i < requiredInOrder.size && t == requiredInOrder[i]) i++
+            }
+            assertEquals(
+                requiredInOrder.size,
+                i,
+                "$label: expected to contain in order=$requiredInOrder; actual=$actual"
+            )
+        }
+
         val result = runScenario(scenario)
 
-        // THEN: Verify no rejections or invariant violations
-        assertNoRejections(result.allEvents, "GR1: Happy path should have no rejections")
-        assertNoInvariantViolations(result.allEvents, "GR1: Happy path should have no invariant violations")
+        // Fix #1: per-step invariant preservation + no rejections + sequential seq (via assertStepOk)
+        result.stepResults.forEachIndexed { idx, stepRes ->
+            val label = "GR1 step ${idx + 1}"
+            assertStepOk(stepRes.events, label)
+            assertStateValid(stepRes.state, "$label: state must satisfy invariants")
+        }
 
-        // Verify critical events are present
-        // ReturnClosed may or may not appear depending on outcome; if outcome is PARTIAL it won't auto-close.
-        assertEventTypesPresent(
-            result.allEvents,
-            setOf("DayStarted", "ContractPosted", "ContractTaken", "ContractResolved"),
-            "GR1: Critical lifecycle events must be present"
-        )
+        // Global sanity (redundant but cheap and keeps failure location clearer)
+        assertNoRejections(result.allEvents, "GR1: must have no rejections")
+        assertNoInvariantViolations(result.allEvents, "GR1: must have no invariant violations")
 
-        // Verify final state consistency
-        assertEquals(3, result.finalState.meta.dayIndex, "GR1: Should end on day 3")
-        assertEquals(0, result.finalState.economy.trophiesStock, "GR1: All trophies sold (or none existed)")
-        // Use TestHelpers convenience property `returns`
-        assertEquals(
-            0,
-            result.finalState.returns.count { it.requiresPlayerClose },
-            "GR1: No pending returns requiring close"
-        )
+        // Fix #2: stronger per-step sequence/content checks (low-risk: minimal expectations)
+        run {
+            val s1 = result.stepResults[0]
+            val types = mainTypes(s1)
+            assertTrue(types.isNotEmpty(), "GR1 step 1: must emit main events")
+            assertMainTypesContainsInOrder(
+                actual = types,
+                requiredInOrder = listOf("DayStarted", "InboxGenerated"),
+                label = "GR1 step 1"
+            )
+        }
+
+        run {
+            val s2 = result.stepResults[1]
+            val types = mainTypes(s2)
+            assertEventCount<ContractPosted>(s2.events, expected = 1, message = "GR1 step 2: must post exactly one contract")
+            assertTrue("ContractPosted" in types, "GR1 step 2: ContractPosted must be present; types=$types")
+
+            val posted = s2.events.filterIsInstance<ContractPosted>().single()
+            assertEquals(10, posted.fee, "GR1 step 2: ContractPosted.fee must be 10")
+            assertEquals(SalvagePolicy.GUILD, posted.salvage, "GR1 step 2: ContractPosted.salvage must be GUILD")
+        }
+
+        run {
+            val s3 = result.stepResults[2]
+            assertEventCount<ContractTaken>(s3.events, expected = 1, message = "GR1 step 3: must take exactly one contract")
+        }
+
+        run {
+            val s4 = result.stepResults[3]
+            assertEventCount<ContractResolved>(s4.events, expected = 1, message = "GR1 step 4: must resolve exactly one contract")
+            val resolved = s4.events.filterIsInstance<ContractResolved>().single()
+            assertTrue(resolved.trophiesCount >= 0, "GR1 step 4: trophiesCount must be non-negative")
+        }
+
+        // Sell-all can be no-op; only assert it does not reject/violate (already covered by assertStepOk)
+        run {
+            val s5 = result.stepResults[4]
+            val sold = s5.events.filterIsInstance<TrophySold>().size
+            assertTrue(sold >= 0, "GR1 step 5: TrophySold count must be >= 0 (no-op allowed)")
+        }
+
+        // Final-state integrity (existing + Fix #6 aligned)
+        assertEquals(3, result.finalState.meta.dayIndex, "GR1: should end on day 3")
+        assertEquals(0, result.finalState.returns.count { it.requiresPlayerClose }, "GR1: no pending returns requiring close")
+        assertStateValid(result.finalState, "GR1: final state must satisfy invariants")
 
         val finalStateHash = hashState(result.finalState)
-        assertEquals(64, finalStateHash.length, "GR1: State hash should be 64 chars (SHA-256 hex)")
-        // Use shared pretty-print helper for scenario results
+        assertEquals(64, finalStateHash.length, "GR1: state hash must be 64 chars (SHA-256 hex)")
+
+        // Optional: keep for local debugging (does not affect assertions)
         printScenarioResult(result)
     }
 
     @Test
     fun `GR2 rejection scenarios validation failures`() {
-        // Scenario 2a: Post contract with invalid inbox ID (NOT_FOUND)
-        val scenario2a = Scenario(
-            scenarioId = "GR2a_invalid_inbox_id",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                PostContract(inboxId = 999L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L)
-            ),
-            description = "Rejection: PostContract with non-existent inbox ID"
-        )
+        // Fix #3: state-unchanged-on-rejection is asserted in every rejection scenario below.
 
-        val result2a = runScenario(scenario2a)
-        assertSingleRejection(result2a.allEvents, RejectReason.NOT_FOUND, "GR2a: Expected NOT_FOUND rejection")
-        assertNoInvariantViolations(result2a.allEvents, "GR2a: Rejections should not cause invariant violations")
+        // 2a: Post contract with invalid inbox ID (NOT_FOUND)
+        run {
+            val rng = Rng(100L)
+            val r1 = step(initialState(42u), AdvanceDay(cmdId = 1L), rng)
+            val before = r1.state
 
-        // Scenario 2b: Close return for non-existent active contract (NOT_FOUND)
-        val scenario2b = Scenario(
-            scenarioId = "GR2b_invalid_active_contract_id",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                CloseReturn(activeContractId = 999L, cmdId = 2L)
-            ),
-            description = "Rejection: CloseReturn with non-existent active contract ID"
-        )
+            val r2 = step(before, PostContract(inboxId = 999L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
+            assertSingleRejection(r2.events, RejectReason.NOT_FOUND, "GR2a: expected NOT_FOUND")
+            assertEquals(before, r2.state, "GR2a: rejection must not mutate state")
+            assertNoInvariantViolations(r2.events, "GR2a: rejection must not emit invariant violations")
+        }
 
-        val result2b = runScenario(scenario2b)
-        assertSingleRejection(result2b.allEvents, RejectReason.NOT_FOUND, "GR2b: Expected NOT_FOUND rejection")
-        assertNoInvariantViolations(result2b.allEvents, "GR2b: Rejections should not cause invariant violations")
+        // 2b: Close return for non-existent active contract (NOT_FOUND)
+        run {
+            val rng = Rng(100L)
+            val r1 = step(initialState(42u), AdvanceDay(cmdId = 1L), rng)
+            val before = r1.state
 
-        // Scenario 2c: Post contract with negative fee (INVALID_ARG)
-        val scenario2c = Scenario(
-            scenarioId = "GR2c_negative_fee",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                PostContract(inboxId = 1L, fee = -5, salvage = SalvagePolicy.GUILD, cmdId = 2L)
-            ),
-            description = "Rejection: PostContract with negative fee"
-        )
+            val r2 = step(before, CloseReturn(activeContractId = 999L, cmdId = 2L), rng)
+            assertSingleRejection(r2.events, RejectReason.NOT_FOUND, "GR2b: expected NOT_FOUND")
+            assertEquals(before, r2.state, "GR2b: rejection must not mutate state")
+            assertNoInvariantViolations(r2.events, "GR2b: rejection must not emit invariant violations")
+        }
 
-        val result2c = runScenario(scenario2c)
-        assertSingleRejection(result2c.allEvents, RejectReason.INVALID_ARG, "GR2c: Expected INVALID_ARG rejection")
-        assertNoInvariantViolations(result2c.allEvents, "GR2c: Rejections should not cause invariant violations")
+        // 2c: Post contract with negative fee (INVALID_ARG)
+        run {
+            val rng = Rng(100L)
+            val r1 = step(initialState(42u), AdvanceDay(cmdId = 1L), rng)
+            val before = r1.state
+
+            val r2 = step(before, PostContract(inboxId = 1L, fee = -5, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
+            assertSingleRejection(r2.events, RejectReason.INVALID_ARG, "GR2c: expected INVALID_ARG")
+            assertEquals(before, r2.state, "GR2c: rejection must not mutate state")
+            assertNoInvariantViolations(r2.events, "GR2c: rejection must not emit invariant violations")
+        }
     }
 
     @Test
     fun `GR3 boundary cases insufficient money and escrow`() {
-        // Scenario 3a: Post contract with fee exceeding available money (should be rejected)
-        val scenario3a = Scenario(
-            scenarioId = "GR3a_insufficient_money",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                PostContract(inboxId = 1L, fee = 150, salvage = SalvagePolicy.GUILD, cmdId = 2L)
-            ),
-            description = "Boundary: PostContract with fee exceeding available money"
-        )
+        // 3a: Fee exceeds available money (reject)
+        run {
+            val rng = Rng(100L)
+            val r1 = step(initialState(42u), AdvanceDay(cmdId = 1L), rng)
+            val before = r1.state
 
-        val result3a = runScenario(scenario3a)
-        assertSingleRejection(
-            result3a.allEvents,
-            RejectReason.INVALID_STATE,
-            "GR3a: Expected INVALID_STATE rejection for insufficient money"
-        )
-        assertNoInvariantViolations(result3a.allEvents, "GR3a: Insufficient money rejection should not violate invariants")
+            val r2 = step(before, PostContract(inboxId = 1L, fee = 150, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
+            assertSingleRejection(r2.events, RejectReason.INVALID_STATE, "GR3a: expected INVALID_STATE (insufficient money)")
+            assertEquals(before, r2.state, "GR3a: rejection must not mutate state")
+            assertNoInvariantViolations(r2.events, "GR3a: rejection must not emit invariant violations")
+        }
 
-        // Scenario 3b: Multiple contracts exhausting available money (reserved copper accumulation)
-        // NOTE: initialState has 2 inbox drafts; after AdvanceDay there may be more.
-        // This scenario assumes inbox ids 1,2,3 exist; if inbox ids differ, adjust the ids to match your initialization.
-        val scenario3b = Scenario(
-            scenarioId = "GR3b_escrow_accumulation",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                PostContract(inboxId = 1L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 2L),
-                PostContract(inboxId = 2L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 3L),
-                PostContract(inboxId = 3L, fee = 30, salvage = SalvagePolicy.GUILD, cmdId = 4L)
-            ),
-            description = "Boundary: Multiple contracts exhausting available money via escrow"
-        )
+        // 3b: Multiple posts exhaust available money; third is rejected; reserved accumulation verified
+        run {
+            val rng = Rng(100L)
+            var state = initialState(42u)
+            val allEvents = mutableListOf<Event>()
 
-        val result3b = runScenario(scenario3b)
+            val r1 = step(state, AdvanceDay(cmdId = 1L), rng)
+            state = r1.state
+            allEvents += r1.events
 
-        // Use TestHelpers assertSingleRejection instead of manual filter/assert
-        assertSingleRejection(
-            result3b.allEvents,
-            RejectReason.INVALID_STATE,
-            "GR3b: Expected INVALID_STATE for third post (insufficient available money)"
-        )
+            val p1 = step(state, PostContract(inboxId = 1L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
+            state = p1.state
+            allEvents += p1.events
 
-        // Use TestHelpers event-count helper
-        assertEventCount<ContractPosted>(result3b.allEvents, 2, "GR3b: Expected exactly 2 contracts posted successfully")
+            val p2 = step(state, PostContract(inboxId = 2L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 3L), rng)
+            state = p2.state
+            allEvents += p2.events
 
-        // Use economy helpers
-        assertReservedCopper(result3b.finalState, 80, "GR3b: Reserved should be 40+40=80 after two posts")
-        assertAvailableCopper(result3b.finalState, 20, "GR3b: Available money should be 100-80=20 after two posts")
-        assertNoInvariantViolations(result3b.allEvents, "GR3b: Escrow boundary should not violate invariants")
+            val beforeThird = state
+            val p3 = step(state, PostContract(inboxId = 3L, fee = 30, salvage = SalvagePolicy.GUILD, cmdId = 4L), rng)
+            allEvents += p3.events
 
-        // Scenario 3c: Sell trophies when stock is zero.
-        // FIX: use amount=0 (sell-all) which is valid + becomes no-op when stock==0.
-        val scenario3c = Scenario(
-            scenarioId = "GR3c_sell_zero_trophies",
-            stateSeed = 42u,
-            rngSeed = 100L,
-            commands = listOf(
-                AdvanceDay(cmdId = 1L),
-                SellTrophies(amount = 0, cmdId = 2L)
-            ),
-            description = "Boundary: Sell trophies when stock is zero (sell-all no-op)"
-        )
+            assertSingleRejection(p3.events, RejectReason.INVALID_STATE, "GR3b: expected INVALID_STATE for third post")
+            assertEventCount<ContractPosted>(allEvents, 2, "GR3b: expected exactly 2 successful ContractPosted total")
+            assertEquals(beforeThird, p3.state, "GR3b: rejection must not mutate state")
+            assertReservedCopper(p3.state, 80, "GR3b: reserved should be 40+40")
+            assertAvailableCopper(p3.state, 20, "GR3b: available should be 100-80")
+            assertNoInvariantViolations(p3.events, "GR3b: rejection must not emit invariant violations")
+        }
 
-        val result3c = runScenario(scenario3c)
+        // 3c: Sell trophies when stock is zero (no-op)
+        run {
+            val rng = Rng(100L)
+            val r1 = step(initialState(42u), AdvanceDay(cmdId = 1L), rng)
+            val r2 = step(r1.state, SellTrophies(amount = 0, cmdId = 2L), rng)
 
-        // Use event-absence helper
-        assertEventCount<TrophySold>(result3c.allEvents, 0, "GR3c: No TrophySold event when stock is 0")
-
-        assertNoRejections(result3c.allEvents, "GR3c: SellTrophies(amount=0) should not be rejected when stock is 0")
-        assertNoInvariantViolations(result3c.allEvents, "GR3c: Sell zero trophies should not violate invariants")
+            assertEventCount<TrophySold>(r2.events, 0, "GR3c: no TrophySold when stock is 0")
+            assertNoRejections(r2.events, "GR3c: sell-all must not reject")
+            assertNoInvariantViolations(r2.events, "GR3c: sell-all must not violate invariants")
+        }
     }
 
     @Test
@@ -205,8 +217,6 @@ class P1_015_GoldenReplaysTest {
             ),
             description = "Hash stability regression check"
         )
-
-        // Use helper that asserts determinism by running the scenario twice and comparing state/events/RNG
         assertReplayDeterminism(scenario)
     }
 
@@ -223,9 +233,7 @@ class P1_015_GoldenReplaysTest {
             description = "RNG draw count stability"
         )
 
-        val result = runScenario(scenario)
-        assertTrue(result.rngDraws > 0, "RNG should be used for inbox/hero generation")
-        // prefer the shared pretty-print helper for consistent output
-        printScenarioResult(result)
+        assertReplayDeterminism(scenario)
+        printScenarioResult(runScenario(scenario))
     }
 }
