@@ -1,11 +1,23 @@
+// FILE: core-test/src/test/kotlin/test/P1_016_EdgeCasesPoCTest.kt
 package test
 
 // TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
 
 import core.*
 import core.primitives.SalvagePolicy
-import core.rng.Rng
-import core.state.initialState
+import test.helpers.advanceDay
+import test.helpers.assertEventCount
+import test.helpers.assertNoInvariantViolations
+import test.helpers.assertNoRejections
+import test.helpers.assertSingleRejection
+import test.helpers.assertStepDeterministic
+import test.helpers.closeReturn
+import test.helpers.postContractFromInbox
+import test.helpers.requireReturnRequiringClose
+import test.helpers.requireTrophyStockPositive
+import test.helpers.run
+import test.helpers.sellTrophies
+import test.helpers.session
 import kotlin.test.*
 
 /**
@@ -22,200 +34,160 @@ class P1_016_EdgeCasesPoCTest {
 
     @Test
     fun `EC_POC_EMPTY_OPEN_BOARD AdvanceDay with empty board`() {
-        // GIVEN: State with empty board (no contracts to take)
-        var state = initialState(42u)
-        val rng = Rng(100L)
+        val s = session(stateSeed = 42u, rngSeed = 100L)
 
-        // Initial state has no board contracts
-        assertEquals(0, state.contracts.board.size, "Board should be empty initially")
+        assertEquals(0, s.state.contracts.board.size, "Board should be empty initially")
 
-        // WHEN: AdvanceDay without posting any contracts
-        val result = step(state, AdvanceDay(cmdId = 1L), rng)
-        state = result.state
+        val r = s.advanceDay()
 
-        // THEN: No ContractTaken events should be emitted
-        val contractTakenEvents = result.events.filterIsInstance<ContractTaken>()
-        assertEquals(0, contractTakenEvents.size, "No contracts should be taken from empty board")
-
-        // State should be valid (no invariant violations)
-        assertNoInvariantViolations(result.events, "EC_EMPTY_OPEN_BOARD: No invariant violations expected")
-
-        // Inbox should still be generated (day progression works normally)
-        val inboxGeneratedEvents = result.events.filterIsInstance<InboxGenerated>()
-        assertEquals(1, inboxGeneratedEvents.size, "Inbox should still be generated on day advance")
+        assertEventCount<ContractTaken>(
+            r.events,
+            expected = 0,
+            message = "No contracts should be taken from empty board"
+        )
+        assertNoInvariantViolations(r.events, "EC_EMPTY_OPEN_BOARD: No invariant violations expected")
+        assertEventCount<InboxGenerated>(
+            r.events,
+            expected = 1,
+            message = "Inbox should still be generated on day advance"
+        )
     }
 
     @Test
     fun `EC_POC_DOUBLE_TAKE deterministic tie-break when multiple heroes want same contract`() {
-        // GIVEN: State with 1 board contract and multiple heroes (deterministic tie-break)
-        var state = initialState(42u)
-        val rng = Rng(100L)
-        var cmdId = 1L
+        val s = session(stateSeed = 42u, rngSeed = 100L)
 
         // Day 1: Generate inbox and heroes
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
+        s.advanceDay()
 
         // Post exactly 1 contract
-        val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(
-            state,
-            PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.HERO, cmdId = cmdId++),
-            rng
-        ).state
+        s.postContractFromInbox(inboxIndex = 0, fee = 10, salvage = SalvagePolicy.HERO)
 
-        // Verify: exactly 1 board contract, multiple heroes available
-        assertEquals(1, state.contracts.board.size, "Exactly 1 contract on board")
-        assertTrue(state.heroes.roster.size >= 2, "Multiple heroes should be available for tie-break scenario")
+        assertEquals(1, s.state.contracts.board.size, "Exactly 1 contract on board")
+        assertTrue(s.state.heroes.roster.size >= 2, "Multiple heroes should be available for tie-break scenario")
 
-        // WHEN: AdvanceDay triggers contract-taking logic
-        val result = step(state, AdvanceDay(cmdId = cmdId++), rng)
-        state = result.state
+        // Determinism check for this single step:
+        // (same state snapshot + same cmd + same rng seed => identical hashed outputs)
+        val cmd = AdvanceDay(cmdId = s.cmdId) // DO NOT increment; command must be identical for both runs
+        assertStepDeterministic(
+            state = s.state,
+            cmd = cmd,
+            rngSeed = 100L,
+            message = "EC_DOUBLE_TAKE: AdvanceDay must be deterministic for fixed state/cmd/seed"
+        )
 
-        // THEN: Exactly 1 ContractTaken event (not multiple takes of same contract)
-        val contractTakenEvents = result.events.filterIsInstance<ContractTaken>()
-        assertTrue(contractTakenEvents.size <= 1, "At most 1 contract can be taken (tie-break prevents double-take)")
+        // Execute the step once for semantic assertions
+        val r = s.advanceDay()
 
-        if (contractTakenEvents.isNotEmpty()) {
-            val takenEvent = contractTakenEvents.first()
-            val activeForBoard = state.contracts.active.filter { it.boardContractId.value == takenEvent.boardContractId }
+        val taken = r.events.filterIsInstance<ContractTaken>()
+        assertTrue(taken.size <= 1, "At most 1 contract can be taken (tie-break prevents double-take)")
+
+        if (taken.isNotEmpty()) {
+            val takenEvent = taken.first()
+            val activeForBoard = s.state.contracts.active.filter { it.boardContractId.value == takenEvent.boardContractId }
             assertEquals(1, activeForBoard.size, "Exactly 1 active contract should reference the board contract")
         }
 
-        assertNoInvariantViolations(result.events, "EC_DOUBLE_TAKE: No invariant violations expected")
+        assertNoInvariantViolations(r.events, "EC_DOUBLE_TAKE: No invariant violations expected")
     }
 
     @Test
     fun `EC_POC_PROCESS_TWICE attempt to close already-closed return`() {
-        // GIVEN: Scenario where return is closed, then attempt to close again
-        var state = initialState(42u)
-        val rng = Rng(300L) // seed likely to produce PARTIAL (but not guaranteed)
-        var cmdId = 1L
+        val s = session(stateSeed = 42u, rngSeed = 300L)
 
-        // Full flow: post → take → resolve → close (if requiresPlayerClose)
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
-        val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(
-            state,
-            PostContract(inboxId = inboxId, fee = 100, salvage = SalvagePolicy.HERO, cmdId = cmdId++),
-            rng
-        ).state
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state // take + advance
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state // resolve
+        // post → take → resolve → close → close again (expects NOT_FOUND on second close)
+        s.advanceDay()
+        s.postContractFromInbox(inboxIndex = 0, fee = 100, salvage = SalvagePolicy.HERO)
+        s.advanceDay()
+        s.advanceDay()
 
-        val returnsRequiringClose = state.contracts.returns.filter { it.requiresPlayerClose }
-        if (returnsRequiringClose.isEmpty()) {
-            // Not an error: outcome auto-closed, nothing to close.
-            return
-        }
+        val rp = requireReturnRequiringClose(
+            state = s.state,
+            message = "EC_PROCESS_TWICE: expected requiresPlayerClose=true for this seed/flow"
+        )
+        val activeId = rp.activeContractId.value.toLong()
 
-        val returnPacket = returnsRequiringClose.first()
-        val activeId = returnPacket.activeContractId.value.toLong()
+        val r1 = s.closeReturn(activeContractId = activeId)
+        assertEventCount<ReturnClosed>(r1.events, expected = 1, message = "First close should succeed")
 
-        // WHEN: Close return successfully (first time)
-        val result1 = step(state, CloseReturn(activeContractId = activeId, cmdId = cmdId++), rng)
-        state = result1.state
-
-        val returnClosedEvents = result1.events.filterIsInstance<ReturnClosed>()
-        assertEquals(1, returnClosedEvents.size, "First close should succeed")
-
-        // THEN: Attempt to close same return again
-        val result2 = step(state, CloseReturn(activeContractId = activeId, cmdId = cmdId++), rng)
-
+        val r2 = s.closeReturn(activeContractId = activeId)
         assertSingleRejection(
-            result2.events,
+            r2.events,
             RejectReason.NOT_FOUND,
             "EC_PROCESS_TWICE: Second close attempt should be rejected (return already closed)"
         )
-        assertEquals(state, result2.state, "State should be unchanged after rejected command")
-        assertNoInvariantViolations(result2.events, "EC_PROCESS_TWICE: No invariant violations expected")
+        assertEquals(s.state, r2.state, "State should be unchanged after rejected command")
+        assertNoInvariantViolations(r2.events, "EC_PROCESS_TWICE: No invariant violations expected")
     }
 
     @Test
     fun `edge case multiple AdvanceDay calls in sequence without player commands`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-        var cmdId = 1L
+        val s = session(stateSeed = 42u, rngSeed = 100L)
 
         repeat(5) { iteration ->
-            val result = step(state, AdvanceDay(cmdId = cmdId++), rng)
-            state = result.state
-
-            assertNoRejections(result.events, "Day $iteration should succeed")
-            assertNoInvariantViolations(result.events, "Day $iteration should have no invariant violations")
+            val r = s.advanceDay()
+            assertNoRejections(r.events, "Day $iteration should succeed")
+            assertNoInvariantViolations(r.events, "Day $iteration should have no invariant violations")
         }
 
-        assertEquals(5, state.meta.dayIndex, "Should advance to day 5")
-        assertTrue(state.contracts.inbox.size >= 5, "Inbox should accumulate contracts from each day")
+        assertEquals(5, s.state.meta.dayIndex, "Should advance to day 5")
+        assertTrue(s.state.contracts.inbox.size >= 5, "Inbox should accumulate contracts from each day")
     }
 
     @Test
     fun `edge case post all inbox contracts then AdvanceDay`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-        var cmdId = 1L
+        val s = session(stateSeed = 42u, rngSeed = 100L)
 
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
-        val inboxSize = state.contracts.inbox.size
+        s.advanceDay()
+        val inboxSize = s.state.contracts.inbox.size
         assertTrue(inboxSize >= 2, "Need at least 2 inbox contracts for this test")
 
-        val inboxIds = state.contracts.inbox.map { it.id.value.toLong() }
+        val inboxIds = s.state.contracts.inbox.map { it.id.value.toLong() }
         for (id in inboxIds) {
-            val result = step(state, PostContract(inboxId = id, fee = 5, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng)
-            state = result.state
-            assertNoRejections(result.events, "Post inboxId=$id should succeed")
+            val r = s.run(PostContract(inboxId = id, fee = 5, salvage = SalvagePolicy.GUILD, cmdId = s.cmdId++))
+            assertNoRejections(r.events, "Post inboxId=$id should succeed")
         }
 
-        assertEquals(0, state.contracts.inbox.size, "Inbox should be empty after posting all")
-        assertEquals(inboxSize, state.contracts.board.size, "Board should have all posted contracts")
+        assertEquals(0, s.state.contracts.inbox.size, "Inbox should be empty after posting all")
+        assertEquals(inboxSize, s.state.contracts.board.size, "Board should have all posted contracts")
 
-        val result = step(state, AdvanceDay(cmdId = cmdId++), rng)
-        state = result.state
-
-        assertNoInvariantViolations(result.events, "Full board AdvanceDay should not violate invariants")
+        val r = s.advanceDay()
+        assertNoInvariantViolations(r.events, "Full board AdvanceDay should not violate invariants")
     }
 
     @Test
     fun `edge case sell trophies with amount exceeding stock`() {
-        // This test is FIXED to match current validation-first semantics:
-        // - amount > 0 and amount > stock => CommandRejected(INVALID_STATE)
-        // - if you want clamping/no-op behavior, production validation must be relaxed.
-        var state = initialState(42u)
-        val rng = Rng(100L)
-        var cmdId = 1L
+        val s = session(stateSeed = 42u, rngSeed = 100L)
 
         // Create trophies via flow (may or may not end up in guild stock depending on outcome + close)
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
-        val inboxId = state.contracts.inbox.first().id.value.toLong()
-        state = step(state, PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++), rng).state
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state // take + wip
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state // resolve
+        s.advanceDay()
+        s.postContractFromInbox(inboxIndex = 0, fee = 10, salvage = SalvagePolicy.GUILD)
+        s.advanceDay()
+        s.advanceDay()
 
-        val returnsRequiringClose = state.contracts.returns.filter { it.requiresPlayerClose }
+        val returnsRequiringClose = s.state.contracts.returns.filter { it.requiresPlayerClose }
         if (returnsRequiringClose.isNotEmpty()) {
             val activeId = returnsRequiringClose.first().activeContractId.value.toLong()
-            state = step(state, CloseReturn(activeContractId = activeId, cmdId = cmdId++), rng).state
+            s.closeReturn(activeContractId = activeId)
         }
 
-        val trophyStock = state.economy.trophiesStock
-        if (trophyStock == 0) {
-            // Not enough setup to test "exceeds stock" case deterministically with this seed.
-            return
-        }
+        val trophyStock = requireTrophyStockPositive(
+            state = s.state,
+            message = "SellTrophies(amount > stock) test requires deterministic trophiesStock>0 setup"
+        )
 
         val excessiveAmount = trophyStock + 100
-        val result = step(state, SellTrophies(amount = excessiveAmount, cmdId = cmdId++), rng)
+        val r = s.sellTrophies(amount = excessiveAmount)
 
-        // THEN: must be rejected by validation (INVALID_STATE), and state must not change.
         assertSingleRejection(
-            result.events,
+            r.events,
             RejectReason.INVALID_STATE,
             "SellTrophies(amount > stock) should be rejected by validation"
         )
-        assertEquals(state, result.state, "State should be unchanged after rejected SellTrophies")
-        assertNoInvariantViolations(result.events, "Rejected SellTrophies should not violate invariants")
+        assertEquals(s.state, r.state, "State should be unchanged after rejected SellTrophies")
+        assertNoInvariantViolations(r.events, "Rejected SellTrophies should not violate invariants")
 
-        // And: selling-all (amount<=0) is the supported non-rejecting path.
-        val sellAll = step(state, SellTrophies(amount = 0, cmdId = cmdId++), rng)
+        val sellAll = s.sellTrophies(amount = 0)
         assertNoRejections(sellAll.events, "SellTrophies(amount=0) should not reject")
         assertNoInvariantViolations(sellAll.events, "Sell-all should not violate invariants")
     }

@@ -3,6 +3,9 @@ package test
 // TEST LEVEL: P1 — Critical unit tests (priority P1). See core-test/README.md for test-level meaning.
 
 import core.*
+import test.helpers.assertSealedSubclassExists
+import test.helpers.sealedSubclassNamesOf
+import test.helpers.sealedSubclassesMissingField
 import kotlin.test.*
 
 /**

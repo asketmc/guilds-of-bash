@@ -6,6 +6,8 @@ import core.*
 import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
+import test.helpers.Scenario
+import test.helpers.runScenario
 import kotlin.test.*
 
 /**

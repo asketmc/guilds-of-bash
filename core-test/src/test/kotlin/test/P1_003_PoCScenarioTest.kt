@@ -9,6 +9,10 @@ import core.invariants.verifyInvariants
 import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
+import test.helpers.assertEventTypesPresent
+import test.helpers.assertStepOk
+import test.helpers.board
+import test.helpers.inbox
 import kotlin.test.*
 
 /**

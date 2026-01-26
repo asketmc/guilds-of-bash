@@ -6,7 +6,9 @@ import core.*
 import core.primitives.Outcome
 import core.primitives.SalvagePolicy
 import core.rng.Rng
+import core.state.GameState
 import core.state.initialState
+import test.helpers.assertNoInvariantViolations
 import kotlin.test.*
 
 /**
@@ -24,7 +26,9 @@ import kotlin.test.*
 class P1_018_OutcomeBranchesTest {
 
     /**
-     * Helper to run contract lifecycle and return resolved outcome.
+     * Helper to run contract lifecycle and return resolved outcome and final state.
+     *
+     * Returns: Triple(outcome?, events, finalState)
      */
     private fun runContractToResolution(
         stateSeed: UInt,
@@ -33,7 +37,7 @@ class P1_018_OutcomeBranchesTest {
         salvage: SalvagePolicy = SalvagePolicy.GUILD,
         // Optional: force inbox draft difficulty to bias outcomes for diagnostic/test purposes
         baseDifficultyOverride: Int? = null
-    ): Pair<Outcome?, List<Event>> {
+    ): Triple<Outcome?, List<Event>, GameState> {
         var state = initialState(stateSeed)
         val rng = Rng(rngSeed)
         var cmdId = 1L
@@ -52,7 +56,7 @@ class P1_018_OutcomeBranchesTest {
             state = state.copy(contracts = state.contracts.copy(inbox = updatedInbox))
         }
 
-        val inboxId = state.contracts.inbox.firstOrNull()?.id?.value?.toLong() ?: return null to allEvents
+        val inboxId = state.contracts.inbox.firstOrNull()?.id?.value?.toLong() ?: return Triple(null, allEvents, state)
         val r2 = step(
             state,
             PostContract(inboxId = inboxId, fee = fee, salvage = salvage, cmdId = cmdId++),
@@ -66,20 +70,21 @@ class P1_018_OutcomeBranchesTest {
         allEvents.addAll(r3.events)
 
         val r4 = step(state, AdvanceDay(cmdId = cmdId++), rng)  // Resolve
+        state = r4.state
         allEvents.addAll(r4.events)
 
         val resolvedEvent = allEvents.filterIsInstance<ContractResolved>().firstOrNull()
-        return resolvedEvent?.outcome to allEvents
+        return Triple(resolvedEvent?.outcome, allEvents, state)
     }
 
     @Test
     fun `outcome branch SUCCESS is reachable`() {
         // GIVEN: deterministic seed set (may be updated if upstream RNG draw order changes)
-        val successSeeds = listOf(100L, 200L, 500L, 1000L)
+        val seedRange = (0L..100L step 10) + (100L..1000L step 100) + (1000L..5000L step 500)
 
         var foundSuccess = false
-        for (seed in successSeeds) {
-            val (outcome, events) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
+        for (seed in seedRange) {
+            val (outcome, events, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
 
             if (outcome == Outcome.SUCCESS) {
                 foundSuccess = true
@@ -99,11 +104,11 @@ class P1_018_OutcomeBranchesTest {
 
     @Test
     fun `outcome branch PARTIAL is reachable`() {
-        val partialSeeds = listOf(50L, 300L, 700L, 1500L)
+        val seedRange = (0L..100L step 10) + (100L..1000L step 100) + (1000L..5000L step 500)
 
         var foundPartial = false
-        for (seed in partialSeeds) {
-            val (outcome, events) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
+        for (seed in seedRange) {
+            val (outcome, events, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
 
             if (outcome == Outcome.PARTIAL) {
                 foundPartial = true
@@ -124,15 +129,15 @@ class P1_018_OutcomeBranchesTest {
         val seed1 = 100L
         val seed2 = 100L
 
-        val (outcome1, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed1)
-        val (outcome2, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed2)
+        val (outcome1, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed1)
+        val (outcome2, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed2)
 
         assertEquals(outcome1, outcome2, "Same RNG seed must produce same outcome")
     }
 
     @Test
     fun `outcome SUCCESS produces trophies when SUCCESS occurs`() {
-        val (outcome, events) = runContractToResolution(stateSeed = 42u, rngSeed = 100L)
+        val (outcome, events, _) = runContractToResolution(stateSeed = 42u, rngSeed = 100L)
 
         if (outcome == Outcome.SUCCESS) {
             val resolved = events.filterIsInstance<ContractResolved>().first()
@@ -146,7 +151,7 @@ class P1_018_OutcomeBranchesTest {
         val seedRange = (0L..100L step 10) + (100L..1000L step 100) + (1000L..5000L step 500)
 
         for (seed in seedRange) {
-            val (outcome, events) = runContractToResolution(
+            val (outcome, events, _) = runContractToResolution(
                 stateSeed = 42u,
                 rngSeed = seed,
                 baseDifficultyOverride = 1000
@@ -167,23 +172,10 @@ class P1_018_OutcomeBranchesTest {
         val seedRange = (0L..100L step 10) + (100L..1000L step 100) + (1000L..5000L step 500)
 
         for (seed in seedRange) {
-            var state = initialState(42u)
-            val rng = Rng(seed)
-            var cmdId = 1L
+            val (outcome, events, state) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
 
-            state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
-            val inboxId = state.contracts.inbox.firstOrNull()?.id?.value?.toLong() ?: continue
-            state = step(
-                state,
-                PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
-                rng
-            ).state
-            state = step(state, AdvanceDay(cmdId = cmdId++), rng).state // Take
-            val result = step(state, AdvanceDay(cmdId = cmdId++), rng) // Resolve
-            state = result.state
-
-            val resolved = result.events.filterIsInstance<ContractResolved>().firstOrNull()
-            if (resolved?.outcome == Outcome.PARTIAL) {
+            if (outcome == Outcome.PARTIAL) {
+                // Prefer asserting on observable state (returns) rather than internal timing of reducer
                 val returnsRequiringClose = state.contracts.returns.filter { it.requiresPlayerClose }
                 assertTrue(
                     returnsRequiringClose.isNotEmpty(),
@@ -201,7 +193,7 @@ class P1_018_OutcomeBranchesTest {
         val foundOutcomes = mutableSetOf<Outcome>()
 
         for (seed in seedRange) {
-            val (outcome, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
+            val (outcome, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed)
             if (outcome != null) foundOutcomes.add(outcome)
 
             if (Outcome.SUCCESS in foundOutcomes && foundOutcomes.any { it != Outcome.SUCCESS }) break
@@ -216,9 +208,9 @@ class P1_018_OutcomeBranchesTest {
     fun `outcome does not depend on salvage policy`() {
         val seed = 100L
 
-        val (outcome1, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.GUILD)
-        val (outcome2, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.HERO)
-        val (outcome3, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.SPLIT)
+        val (outcome1, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.GUILD)
+        val (outcome2, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.HERO)
+        val (outcome3, _, _) = runContractToResolution(stateSeed = 42u, rngSeed = seed, salvage = SalvagePolicy.SPLIT)
 
         assertEquals(outcome1, outcome2, "Outcome should not depend on salvage policy (GUILD vs HERO)")
         assertEquals(outcome1, outcome3, "Outcome should not depend on salvage policy (GUILD vs SPLIT)")

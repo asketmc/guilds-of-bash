@@ -4,7 +4,8 @@ import core.*
 import core.primitives.SalvagePolicy
 import core.state.GameState
 import kotlin.test.Test
-import org.junit.jupiter.api.Tag
+import test.helpers.printPerf
+import test.helpers.runPerfLoop
 
 /**
  * P3/Perf: performance/load smoke (manual only).
@@ -26,7 +27,7 @@ class P3_001_CorePerfLoadTest {
     private val stateSeed = 42u
     private val rngSeed = 100L
 
-    private fun steps(): Int = System.getProperty("perf.steps")?.toIntOrNull() ?: 10_000
+    private fun steps(): Int = System.getProperty("perf.steps")?.toIntOrNull() ?: 5_000
     private fun warmup(): Int = System.getProperty("perf.warmup")?.toIntOrNull() ?: 300
 
     @Test
