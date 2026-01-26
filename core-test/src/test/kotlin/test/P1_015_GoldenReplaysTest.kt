@@ -5,6 +5,20 @@ import core.hash.hashState
 import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
+import test.helpers.Scenario
+import test.helpers.assertAvailableCopper
+import test.helpers.assertEventCount
+import test.helpers.assertNoInvariantViolations
+import test.helpers.assertNoRejections
+import test.helpers.assertReplayDeterminism
+import test.helpers.assertReservedCopper
+import test.helpers.assertSingleRejection
+import test.helpers.assertStateValid
+import test.helpers.assertStepOk
+import test.helpers.mainEventTypes
+import test.helpers.printScenarioResult
+import test.helpers.returns
+import test.helpers.runScenario
 import kotlin.test.*
 
 @P1
@@ -68,7 +82,11 @@ class P1_015_GoldenReplaysTest {
         run {
             val s2 = result.stepResults[1]
             val types = mainTypes(s2)
-            assertEventCount<ContractPosted>(s2.events, expected = 1, message = "GR1 step 2: must post exactly one contract")
+            assertEventCount<ContractPosted>(
+                s2.events,
+                expected = 1,
+                message = "GR1 step 2: must post exactly one contract"
+            )
             assertTrue("ContractPosted" in types, "GR1 step 2: ContractPosted must be present; types=$types")
 
             val posted = s2.events.filterIsInstance<ContractPosted>().single()
@@ -78,12 +96,20 @@ class P1_015_GoldenReplaysTest {
 
         run {
             val s3 = result.stepResults[2]
-            assertEventCount<ContractTaken>(s3.events, expected = 1, message = "GR1 step 3: must take exactly one contract")
+            assertEventCount<ContractTaken>(
+                s3.events,
+                expected = 1,
+                message = "GR1 step 3: must take exactly one contract"
+            )
         }
 
         run {
             val s4 = result.stepResults[3]
-            assertEventCount<ContractResolved>(s4.events, expected = 1, message = "GR1 step 4: must resolve exactly one contract")
+            assertEventCount<ContractResolved>(
+                s4.events,
+                expected = 1,
+                message = "GR1 step 4: must resolve exactly one contract"
+            )
             val resolved = s4.events.filterIsInstance<ContractResolved>().single()
             assertTrue(resolved.trophiesCount >= 0, "GR1 step 4: trophiesCount must be non-negative")
         }
@@ -157,7 +183,11 @@ class P1_015_GoldenReplaysTest {
             val before = r1.state
 
             val r2 = step(before, PostContract(inboxId = 1L, fee = 150, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
-            assertSingleRejection(r2.events, RejectReason.INVALID_STATE, "GR3a: expected INVALID_STATE (insufficient money)")
+            assertSingleRejection(
+                r2.events,
+                RejectReason.INVALID_STATE,
+                "GR3a: expected INVALID_STATE (insufficient money)"
+            )
             assertEquals(before, r2.state, "GR3a: rejection must not mutate state")
             assertNoInvariantViolations(r2.events, "GR3a: rejection must not emit invariant violations")
         }

@@ -6,6 +6,12 @@ package test
 import core.invariants.InvariantId
 import core.primitives.*
 import core.state.*
+import test.helpers.assertNoViolations
+import test.helpers.assertStateValid
+import test.helpers.assertViolationDetailsDeterministic
+import test.helpers.baseState
+import test.helpers.expectViolation
+import test.helpers.state
 import kotlin.test.*
 
 @P1
@@ -35,10 +41,24 @@ class P1_004_InvariantVerificationTest {
         expectViolation(seed, InvariantId.REGION__STABILITY_0_100) { copy(region = RegionState(stability = 101)) }
 
         expectViolation(seed, InvariantId.GUILD__REPUTATION_0_100) {
-            copy(guild = GuildState(guildRank = 1, reputation = -1, completedContractsTotal = 0, contractsForNextRank = 1))
+            copy(
+                guild = GuildState(
+                    guildRank = 1,
+                    reputation = -1,
+                    completedContractsTotal = 0,
+                    contractsForNextRank = 1
+                )
+            )
         }
         expectViolation(seed, InvariantId.GUILD__REPUTATION_0_100) {
-            copy(guild = GuildState(guildRank = 1, reputation = 101, completedContractsTotal = 0, contractsForNextRank = 1))
+            copy(
+                guild = GuildState(
+                    guildRank = 1,
+                    reputation = 101,
+                    completedContractsTotal = 0,
+                    contractsForNextRank = 1
+                )
+            )
         }
     }
 
@@ -76,7 +96,13 @@ class P1_004_InvariantVerificationTest {
                     active = emptyList(),
                     returns = emptyList()
                 ),
-                meta = meta.copy(ids = IdCounters(nextContractId = 5, nextHeroId = meta.ids.nextHeroId, nextActiveContractId = meta.ids.nextActiveContractId))
+                meta = meta.copy(
+                    ids = IdCounters(
+                        nextContractId = 5,
+                        nextHeroId = meta.ids.nextHeroId,
+                        nextActiveContractId = meta.ids.nextActiveContractId
+                    )
+                )
             )
         }
     }

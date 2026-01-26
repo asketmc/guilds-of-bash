@@ -5,6 +5,19 @@ package test
 
 import core.*
 import core.primitives.SalvagePolicy
+import test.helpers.advanceDay
+import test.helpers.assertEventCount
+import test.helpers.assertNoInvariantViolations
+import test.helpers.assertNoRejections
+import test.helpers.assertSingleRejection
+import test.helpers.assertStepDeterministic
+import test.helpers.closeReturn
+import test.helpers.postContractFromInbox
+import test.helpers.requireReturnRequiringClose
+import test.helpers.requireTrophyStockPositive
+import test.helpers.run
+import test.helpers.sellTrophies
+import test.helpers.session
 import kotlin.test.*
 
 /**
@@ -27,9 +40,17 @@ class P1_016_EdgeCasesPoCTest {
 
         val r = s.advanceDay()
 
-        assertEventCount<ContractTaken>(r.events, expected = 0, message = "No contracts should be taken from empty board")
+        assertEventCount<ContractTaken>(
+            r.events,
+            expected = 0,
+            message = "No contracts should be taken from empty board"
+        )
         assertNoInvariantViolations(r.events, "EC_EMPTY_OPEN_BOARD: No invariant violations expected")
-        assertEventCount<InboxGenerated>(r.events, expected = 1, message = "Inbox should still be generated on day advance")
+        assertEventCount<InboxGenerated>(
+            r.events,
+            expected = 1,
+            message = "Inbox should still be generated on day advance"
+        )
     }
 
     @Test

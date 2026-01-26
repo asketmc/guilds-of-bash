@@ -7,6 +7,8 @@ import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
 import org.junit.jupiter.api.Test
+import test.helpers.inbox
+import test.helpers.nextContractId
 import kotlin.test.*
 
 /**

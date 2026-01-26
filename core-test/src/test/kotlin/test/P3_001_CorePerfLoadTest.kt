@@ -4,7 +4,8 @@ import core.*
 import core.primitives.SalvagePolicy
 import core.state.GameState
 import kotlin.test.Test
-import org.junit.jupiter.api.Tag
+import test.helpers.printPerf
+import test.helpers.runPerfLoop
 
 /**
  * P3/Perf: performance/load smoke (manual only).

@@ -8,6 +8,8 @@ import core.primitives.Rank
 import core.primitives.SalvagePolicy
 import core.state.initialState
 import org.junit.jupiter.api.Test
+import test.helpers.board
+import test.helpers.inbox
 import kotlin.test.*
 
 /**

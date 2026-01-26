@@ -8,6 +8,7 @@ import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
+import test.helpers.assertNoInvariantViolations
 import kotlin.test.*
 
 /**

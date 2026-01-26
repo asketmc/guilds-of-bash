@@ -7,6 +7,17 @@ import core.invariants.InvariantId
 import core.primitives.ActiveStatus
 import core.primitives.HeroStatus
 import core.primitives.BoardStatus
+import test.helpers.active
+import test.helpers.assertActiveStatusIn
+import test.helpers.assertBoardStatus
+import test.helpers.assertHasLockedBoardViolation
+import test.helpers.assertNoInvariantViolation
+import test.helpers.assertNoLockedBoardViolations
+import test.helpers.closeReturn
+import test.helpers.hero
+import test.helpers.lockedBoardFixture
+import test.helpers.lockedBoardState
+import test.helpers.returnPacket
 import kotlin.test.Test
 
 /**
@@ -43,7 +54,11 @@ class P1_InvariantLockedBoardTest {
         val res = closeReturn(fx.initial, activeContractId = 1L, cmdId = 1L, rng = fx.rng)
 
         assertBoardStatus(res.state, BoardStatus.COMPLETED)
-        assertActiveStatusIn(res.state, activeContractId = 1L, allowed = setOf(ActiveStatus.CLOSED, ActiveStatus.RETURN_READY))
+        assertActiveStatusIn(
+            res.state,
+            activeContractId = 1L,
+            allowed = setOf(ActiveStatus.CLOSED, ActiveStatus.RETURN_READY)
+        )
 
         assertNoInvariantViolation(res.events, lockedBoardInvariant)
         assertNoLockedBoardViolations(res.state)
