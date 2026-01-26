@@ -1,35 +1,53 @@
-// FILE: build.gradle.kts
+# FILE: build.gradle.kts
 
 import java.io.File
-import java.security.MessageDigest
-import org.gradle.api.artifacts.ExternalModuleDependency
-import org.gradle.api.artifacts.ModuleDependency
-import org.gradle.api.artifacts.ProjectDependency
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+        import java.security.MessageDigest
+        import org.gradle.api.artifacts.ExternalModuleDependency
+        import org.gradle.api.artifacts.ModuleDependency
+        import org.gradle.api.artifacts.ProjectDependency
+        import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+        import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-plugins {
-    kotlin("jvm") version "2.2.21" apply false
-    kotlin("plugin.serialization") version "2.2.21" apply false
+        plugins {
+            kotlin("jvm") version "2.2.21" apply false
+            kotlin("plugin.serialization") version "2.2.21" apply false
 
-    // === DOKKA (docs-as-artifact) ===
-    id("org.jetbrains.dokka") version "2.2.0-Beta"
+            // === DOKKA (docs-as-artifact) ===
+            id("org.jetbrains.dokka") version "2.2.0-Beta"
 
-    // === KOVER ROOT AGGREGATOR ===
-    id("org.jetbrains.kotlinx.kover") version "0.9.3"
+            // === KOVER ROOT AGGREGATOR ===
+            id("org.jetbrains.kotlinx.kover") version "0.9.3"
 
-    // === DETEKT (static analysis for Kotlin) ===
-    id("io.gitlab.arturbosch.detekt") version "1.23.8"
+            // === DETEKT (static analysis for Kotlin) ===
+            id("io.gitlab.arturbosch.detekt") version "1.23.8"
 
-    // === SHADOW (fat JAR) ===
-    id("com.gradleup.shadow") version "9.2.2" apply false
+            // === SHADOW (fat JAR) ===
+            id("com.gradleup.shadow") version "9.2.2" apply false
 
-    // === PITEST (mutation testing for quality assurance) ===
-    id("info.solidsoft.pitest") version "1.19.0-rc.3" apply false
-}
+            // === PITEST (mutation testing for quality assurance) ===
+            id("info.solidsoft.pitest") version "1.19.0-rc.3" apply false
+        }
 
 repositories {
     mavenCentral()
+}
+
+// --------------------------------------------------------------------
+// Version wiring (CI can pass -Pversion=...)
+// --------------------------------------------------------------------
+val ciVersion = providers.gradleProperty("version").orNull ?: "unspecified"
+allprojects {
+    version = ciVersion
+}
+
+// --------------------------------------------------------------------
+// Reproducible archives (applies to Jar/ShadowJar/Zip/Tar, etc.)
+// --------------------------------------------------------------------
+subprojects {
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
 }
 
 // === KOVER: declare which modules participate in merged coverage ===
@@ -201,7 +219,7 @@ val aiSymbolDeclRegex = Regex(
 )
 
 val aiEntrypointRegex = Regex("""\bfun\s+main\s*\(""")
-val aiKotlinPluginVersionRegex = Regex("""kotlin\("jvm"\)\s+version\s+"([^"]+)"""")
+val aiKotlinPluginVersionRegex = Regex("""kotlin\(\"jvm\"\)\s+version\s+\"([^\"]+)\"""")
 
 val aiSymbolFocusFunctions = setOf(
     "main","step","canApply","initialState",
