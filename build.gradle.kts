@@ -1,12 +1,14 @@
-# FILE: build.gradle.kts
-
 import java.io.File
-        import java.security.MessageDigest
-        import org.gradle.api.artifacts.ExternalModuleDependency
-        import org.gradle.api.artifacts.ModuleDependency
-        import org.gradle.api.artifacts.ProjectDependency
-        import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-        import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
+import org.gradle.api.artifacts.ExternalModuleDependency
+import org.gradle.api.artifacts.ModuleDependency
+import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
         plugins {
             kotlin("jvm") version "2.2.21" apply false
@@ -241,6 +243,6 @@ fun readAiManifest(file: File): Pair<String, Map<String,String>>? {
         if (parts.size == 2) {
             hashes[parts[0]] = parts[1]
         }
-    }
-    return global to hashes
-}
+     }
+     return global to hashes
+ }
