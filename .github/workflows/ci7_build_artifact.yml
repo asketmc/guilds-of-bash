@@ -1,8 +1,16 @@
 # FILE: .github/workflows/ci7_build_artifact.yml
 name: CI module - Build standalone artifact
 
-'on':
+on:
   workflow_call:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ci7_build_artifact-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-standalone-jar:
@@ -10,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -23,42 +33,162 @@ jobs:
       - name: Make gradlew executable
         run: test -x ./gradlew || chmod +x ./gradlew
 
+      - name: Derive build version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sha="${GITHUB_SHA:-}"
+          short_sha="${sha:0:7}"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="build-${GITHUB_RUN_NUMBER}-${short_sha}"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
       - name: Build standalone fat jar (captured)
         shell: bash
-        run:
-          |
+        run: |
           set -euo pipefail
-          
+
           log="gradle_shadowjar.log"
-          
+
           ./gradlew \
             --console=plain \
             --warning-mode=all \
+            -Pversion="${{ steps.ver.outputs.version }}" \
             :adapter-console:shadowJar \
             >"${log}" 2>&1 || {
-              echo "FAIL: ShadowJar build failed."
-              echo "Failure block (max 25 lines):"
-              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
-              echo "Tail (last 40 lines):"
-              tail -n 40 "${log}" || true
-              exit 1
-            }
+            echo "FAIL: ShadowJar build failed."
+            echo "Failure block (max 25 lines):"
+            awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+            echo "Tail (last 40 lines):"
+            tail -n 40 "${log}" || true
+            exit 1
+          }
 
-      - name: Upload standalone jar artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: adapter-console-standalone-jar
-          path:
-            |
-            adapter-console/build/libs/*-all.jar
-          if-no-files-found: error
-          retention-days: 14
+      - name: Build Dokka multi-module HTML (captured)
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Upload ShadowJar gradle log (on failure)
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs-shadowjar
-          path: gradle_shadowjar.log
-          if-no-files-found: warn
-          retention-days: 14
+          log="gradle_dokka.log"
+
+          ./gradlew \
+            --console=plain \
+            --warning-mode=all \
+            -Pversion="${{ steps.ver.outputs.version }}" \
+            dokkaHtmlMultiModule \
+            >"${log}" 2>&1 || {
+            echo "FAIL: Dokka build failed."
+            echo "Failure block (max 25 lines):"
+            awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+            echo "Tail (last 40 lines):"
+            tail -n 40 "${log}" || true
+            exit 1
+          }
+
+      - name: Normalize artifact name + checksums + build info
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          shopt -s nullglob
+          jars=(adapter-console/build/libs/*-all.jar)
+          shopt -u nullglob
+
+          if (( ${#jars[@]} != 1 )); then
+            echo "FAIL: Expected exactly 1 '*-all.jar' but found ${#jars[@]}."
+            printf '%s\n' "${jars[@]:-<none>}"
+            exit 1
+          fi
+
+          src="${jars[0]}"
+          out="adapter-console-cli-${{ steps.ver.outputs.version }}.jar"
+
+          cp -f "$src" "dist/$out"
+
+          (cd dist && sha256sum "$out" > "${out}.sha256")
+          (cd dist && sha256sum "$out" > "checksums-${{ steps.ver.outputs.version }}.sha256")
+
+          cat > "dist/build-info-${{ steps.ver.outputs.version }}.txt" <<EOF
+version: ${{ steps.ver.outputs.version }}
+commit: ${GITHUB_SHA}
+ref: ${GITHUB_REF}
+workflow: ${GITHUB_WORKFLOW}
+run_id: ${GITHUB_RUN_ID}
+run_number: ${GITHUB_RUN_NUMBER}
+runner: ${RUNNER_OS}
+  EOF
+  
+  cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
+
+- name: Collect Dokka HTML artifact
+  shell: bash
+  run: |
+    set -euo pipefail
+    
+    src_dir="build/reports/dokka/html"
+    if [[ ! -d "$src_dir" ]]; then
+      echo "FAIL: Dokka output directory not found: $src_dir"
+      exit 1
+    fi
+    
+    mkdir -p dist/dokka
+    cp -R "$src_dir"/* dist/dokka/
+    
+    (cd dist && tar -czf "dokka-html-${{ steps.ver.outputs.version }}.tar.gz" dokka)
+    rm -rf dist/dokka
+
+- name: Upload standalone jar artifact (normalized)
+  uses: actions/upload-artifact@v4
+  with:
+    name: adapter-console-standalone-jar-${{ steps.ver.outputs.version }}
+    path: |
+      dist/*
+    if-no-files-found: error
+    retention-days: 14
+
+- name: Upload Dokka HTML (tar.gz)
+  uses: actions/upload-artifact@v4
+  with:
+    name: dokka-html-${{ steps.ver.outputs.version }}
+    path: |
+      dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
+      gradle_dokka.log
+    if-no-files-found: error
+    retention-days: 14
+
+- name: Write job summary
+  shell: bash
+  run: |
+    set -euo pipefail
+    
+    {
+      echo "### Build artifacts"
+      echo "- version: `${{ steps.ver.outputs.version }}`"
+      echo "- commit: `${GITHUB_SHA}`"
+      echo "- jar: `adapter-console-cli-${{ steps.ver.outputs.version }}.jar`"
+      echo "- checksums: `checksums-${{ steps.ver.outputs.version }}.sha256`"
+      echo ""
+      echo "### Verification"
+      echo "```bash"
+      echo "sha256sum -c adapter-console-cli-${{ steps.ver.outputs.version }}.jar.sha256"
+      echo "```"
+    } >> "$GITHUB_STEP_SUMMARY"
+
+- name: Upload ShadowJar gradle log (on failure)
+  if: ${{ failure() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: logs-shadowjar-${{ steps.ver.outputs.short_sha }}
+    path: gradle_shadowjar.log
+    if-no-files-found: warn
+    retention-days: 14
