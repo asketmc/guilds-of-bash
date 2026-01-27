@@ -3,6 +3,12 @@ name: CI module - Build standalone artifact
 
 on:
   workflow_call:
+    inputs:
+      dokka_source_artifact:
+        description: Artifact name produced by ci1_docs.yml to be repackaged
+        type: string
+        required: false
+        default: dokka-html
     outputs:
       version:
         description: Derived build version (tag name or build-<run>-<sha7>)
@@ -96,27 +102,6 @@ jobs:
             :adapter-console:shadowJar \
             >"${log}" 2>&1 || {
               echo "FAIL: ShadowJar build failed."
-              echo "Failure block (max 25 lines):"
-              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
-              echo "Tail (last 40 lines):"
-              tail -n 40 "${log}" || true
-              exit 1
-            }
-
-      - name: Build Dokka multi-module HTML (captured)
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          log="gradle_dokka.log"
-
-          ./gradlew \
-            --console=plain \
-            --warning-mode=all \
-            -Pversion="${{ steps.ver.outputs.version }}" \
-            dokkaHtmlMultiModule \
-            >"${log}" 2>&1 || {
-              echo "FAIL: Dokka build failed."
               echo "Failure block (max 25 lines):"
               awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
               echo "Tail (last 40 lines):"

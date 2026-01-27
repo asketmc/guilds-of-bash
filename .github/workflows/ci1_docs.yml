@@ -25,12 +25,11 @@ jobs:
 
       - name: Generate Dokka HTML (captured)
         shell: bash
-        run:
-          |
+        run: |
           set -euo pipefail
-          
+
           log="gradle_dokka.log"
-          
+
           ./gradlew \
             --console=plain \
             --warning-mode=all \
@@ -45,12 +44,11 @@ jobs:
               exit 1
             }
 
-      - name: Upload Dokka HTML artifact
+      - name: Upload Dokka HTML artifact (for reuse by other jobs)
         uses: actions/upload-artifact@v4
         with:
           name: dokka-html
-          path:
-            |
+          path: |
             core/build/dokka/html/**
             adapter-console/build/dokka/html/**
           if-no-files-found: error
