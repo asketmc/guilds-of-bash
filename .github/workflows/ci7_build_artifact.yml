@@ -3,6 +3,19 @@ name: CI module - Build standalone artifact
 
 on:
   workflow_call:
+    outputs:
+      version:
+        description: Derived build version (tag name or build-<run>-<sha7>)
+        value: ${{ jobs.build-standalone-jar.outputs.version }}
+      short_sha:
+        description: 7-char commit sha
+        value: ${{ jobs.build-standalone-jar.outputs.short_sha }}
+      artifact_jar_name:
+        description: Upload-artifact name for the standalone jar bundle
+        value: ${{ jobs.build-standalone-jar.outputs.artifact_jar_name }}
+      artifact_dokka_name:
+        description: Upload-artifact name for the Dokka HTML tarball
+        value: ${{ jobs.build-standalone-jar.outputs.artifact_dokka_name }}
 
 permissions:
   contents: read
@@ -15,6 +28,12 @@ concurrency:
 jobs:
   build-standalone-jar:
     runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      short_sha: ${{ steps.ver.outputs.short_sha }}
+      artifact_jar_name: ${{ steps.meta.outputs.artifact_jar_name }}
+      artifact_dokka_name: ${{ steps.meta.outputs.artifact_dokka_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +50,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make gradlew executable
+        shell: bash
         run: test -x ./gradlew || chmod +x ./gradlew
 
       - name: Derive build version
@@ -51,6 +71,17 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
 
+      - name: Derive artifact names (outputs)
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          v="${{ steps.ver.outputs.version }}"
+
+          echo "artifact_jar_name=adapter-console-standalone-jar-${v}" >> "$GITHUB_OUTPUT"
+          echo "artifact_dokka_name=dokka-html-${v}" >> "$GITHUB_OUTPUT"
+
       - name: Build standalone fat jar (captured)
         shell: bash
         run: |
@@ -64,13 +95,13 @@ jobs:
             -Pversion="${{ steps.ver.outputs.version }}" \
             :adapter-console:shadowJar \
             >"${log}" 2>&1 || {
-            echo "FAIL: ShadowJar build failed."
-            echo "Failure block (max 25 lines):"
-            awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
-            echo "Tail (last 40 lines):"
-            tail -n 40 "${log}" || true
-            exit 1
-          }
+              echo "FAIL: ShadowJar build failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
 
       - name: Build Dokka multi-module HTML (captured)
         shell: bash
@@ -85,13 +116,13 @@ jobs:
             -Pversion="${{ steps.ver.outputs.version }}" \
             dokkaHtmlMultiModule \
             >"${log}" 2>&1 || {
-            echo "FAIL: Dokka build failed."
-            echo "Failure block (max 25 lines):"
-            awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
-            echo "Tail (last 40 lines):"
-            tail -n 40 "${log}" || true
-            exit 1
-          }
+              echo "FAIL: Dokka build failed."
+              echo "Failure block (max 25 lines):"
+              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
+              echo "Tail (last 40 lines):"
+              tail -n 40 "${log}" || true
+              exit 1
+            }
 
       - name: Normalize artifact name + checksums + build info
         shell: bash
@@ -150,16 +181,15 @@ runner: ${RUNNER_OS}
 - name: Upload standalone jar artifact (normalized)
   uses: actions/upload-artifact@v4
   with:
-    name: adapter-console-standalone-jar-${{ steps.ver.outputs.version }}
-    path: |
-      dist/*
+    name: ${{ steps.meta.outputs.artifact_jar_name }}
+    path: dist/*
     if-no-files-found: error
     retention-days: 14
 
 - name: Upload Dokka HTML (tar.gz)
   uses: actions/upload-artifact@v4
   with:
-    name: dokka-html-${{ steps.ver.outputs.version }}
+    name: ${{ steps.meta.outputs.artifact_dokka_name }}
     path: |
       dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
       gradle_dokka.log
@@ -173,15 +203,17 @@ runner: ${RUNNER_OS}
     
     {
       echo "### Build artifacts"
-      echo "- version: `${{ steps.ver.outputs.version }}`"
-      echo "- commit: `${GITHUB_SHA}`"
-      echo "- jar: `adapter-console-cli-${{ steps.ver.outputs.version }}.jar`"
-      echo "- checksums: `checksums-${{ steps.ver.outputs.version }}.sha256`"
+      echo "- version: \`${{ steps.ver.outputs.version }}\`"
+      echo "- commit: \`${GITHUB_SHA}\`"
+      echo "- jar: \`adapter-console-cli-${{ steps.ver.outputs.version }}.jar\`"
+      echo "- checksums: \`checksums-${{ steps.ver.outputs.version }}.sha256\`"
+      echo "- artifact (jar bundle): \`${{ steps.meta.outputs.artifact_jar_name }}\`"
+      echo "- artifact (dokka): \`${{ steps.meta.outputs.artifact_dokka_name }}\`"
       echo ""
       echo "### Verification"
-      echo "```bash"
+      echo "\`\`\`bash"
       echo "sha256sum -c adapter-console-cli-${{ steps.ver.outputs.version }}.jar.sha256"
-      echo "```"
+      echo "\`\`\`"
     } >> "$GITHUB_STEP_SUMMARY"
 
 - name: Upload ShadowJar gradle log (on failure)
@@ -190,5 +222,14 @@ runner: ${RUNNER_OS}
   with:
     name: logs-shadowjar-${{ steps.ver.outputs.short_sha }}
     path: gradle_shadowjar.log
+    if-no-files-found: warn
+    retention-days: 14
+
+- name: Upload Dokka gradle log (on failure)
+  if: ${{ failure() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: logs-dokka-${{ steps.ver.outputs.short_sha }}
+    path: gradle_dokka.log
     if-no-files-found: warn
     retention-days: 14
