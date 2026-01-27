@@ -146,19 +146,39 @@ jobs:
 
           cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
 
-      - name: Collect Dokka HTML artifact
+      - name: Download Dokka HTML artifact produced by ci1 (reuse)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.dokka_source_artifact }}
+          path: dokka_in
+
+      - name: Package Dokka HTML into versioned tar.gz
         shell: bash
         run: |
           set -euo pipefail
 
-          src_dir="build/reports/dokka/html"
-          if [[ ! -d "$src_dir" ]]; then
-            echo "FAIL: Dokka output directory not found: $src_dir"
-            exit 1
+          mkdir -p dist/dokka
+
+          # Preserve module separation under dist/dokka/
+          if [[ -d "dokka_in/core/build/dokka/html" ]]; then
+            mkdir -p dist/dokka/core
+            cp -R dokka_in/core/build/dokka/html/* dist/dokka/core/
           fi
 
-          mkdir -p dist/dokka
-          cp -R "$src_dir"/* dist/dokka/
+          if [[ -d "dokka_in/adapter-console/build/dokka/html" ]]; then
+            mkdir -p dist/dokka/adapter-console
+            cp -R dokka_in/adapter-console/build/dokka/html/* dist/dokka/adapter-console/
+          fi
+
+          if [[ ! -d "dist/dokka" ]] || [[ -z "$(ls -A dist/dokka 2>/dev/null || true)" ]]; then
+            echo "FAIL: No Dokka HTML content found in downloaded artifact '${{ inputs.dokka_source_artifact }}'." >&2
+            echo "Expected one or both of:" >&2
+            echo "- dokka_in/core/build/dokka/html" >&2
+            echo "- dokka_in/adapter-console/build/dokka/html" >&2
+            echo "Downloaded tree (top 4 levels):" >&2
+            find dokka_in -maxdepth 4 -type d | sort || true
+            exit 1
+          fi
 
           (cd dist && tar -czf "dokka-html-${{ steps.ver.outputs.version }}.tar.gz" dokka)
           rm -rf dist/dokka
@@ -177,7 +197,6 @@ jobs:
           name: ${{ steps.meta.outputs.artifact_dokka_name }}
           path: |
             dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
-            gradle_dokka.log
           if-no-files-found: error
           retention-days: 14
 
@@ -210,11 +229,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload Dokka gradle log (on failure)
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs-dokka-${{ steps.ver.outputs.short_sha }}
-          path: gradle_dokka.log
-          if-no-files-found: warn
-          retention-days: 14
