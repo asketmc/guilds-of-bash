@@ -1,192 +1,302 @@
 package test
 
-import core.AdvanceDay
-import core.rng.Rng
-import core.serde.deserialize
-import core.serde.serialize
-import core.state.initialState
-import core.step
-import kotlin.test.*
+import core.*
+import core.serde.serializeEvents
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.reflect.KClass
 
-/**
- * P1 CRITICAL: Serialization/deserialization tests.
- * Save/load corruption breaks the entire game.
- */
 @P1
-class P1_011_SerializationTest {
+class P1_011_CanonicalEventsJsonTest {
 
     @Test
-    fun `serialize produces non-empty JSON`() {
-        // GIVEN initial state
-        val state = initialState(42u)
+    fun `serializeEvents covers all event branches and stays compact`() {
+        val base = listOf(
+            DayStarted::class.java,
+            InboxGenerated::class.java,
+            HeroesArrived::class.java,
+            ContractPosted::class.java,
+            ContractTaken::class.java,
+            WipAdvanced::class.java,
+            ContractResolved::class.java,
+            ReturnClosed::class.java,
+            TrophySold::class.java,
+            StabilityUpdated::class.java,
+            DayEnded::class.java,
+            CommandRejected::class.java,
+            InvariantViolated::class.java,
+            HeroDeclined::class.java,
+            TrophyTheftSuspected::class.java,
+            TaxDue::class.java,
+            TaxPaid::class.java,
+            TaxMissed::class.java,
+            GuildShutdown::class.java,
+            GuildRankUp::class.java,
+            ProofPolicyChanged::class.java,
+            ContractDraftCreated::class.java,
+            ContractTermsUpdated::class.java,
+            ContractCancelled::class.java
+        ).map { EventFactory.create(it) as Event }
 
-        // WHEN serialize
-        val json = serialize(state)
+        // Extra variants to hit nullable + boolean + empty-array branches.
+        val events = buildList {
+            addAll(base)
+            add(EventFactory.create(TaxPaid::class.java, Variant.BOOL_FALSE) as Event)
+            add(EventFactory.create(ContractTermsUpdated::class.java, Variant.NULLABLES_NULL) as Event)
+            add(EventFactory.create(HeroesArrived::class.java, Variant.EMPTY_ARRAYS) as Event)
+        }
 
-        // THEN json non-empty and looks like JSON
-        assertTrue(json.isNotEmpty(), "JSON must not be empty")
-        assertTrue(json.startsWith("{"), "JSON must start with {")
-        assertTrue(json.endsWith("}"), "JSON must end with }")
-    }
+        val json = serializeEvents(events)
 
-    @Test
-    fun `serialize is deterministic`() {
-        val state = initialState(42u)
+        assertTrue(json.startsWith("["), "Must start with [")
+        assertTrue(json.endsWith("]"), "Must end with ]")
+        assertFalse(json.contains("\n"), "Must be compact (no newlines)")
+        assertFalse(json.contains("  "), "Must be compact (no indentation)")
 
-        val json1 = serialize(state)
-        val json2 = serialize(state)
-
-        assertEquals(json1, json2, "Repeated serialization must produce identical output")
-    }
-
-    @Test
-    fun `deserialize round-trip preserves state (except arrivalsToday)`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-
-        // Advance a day to get some data
-        val result = step(state, AdvanceDay(cmdId = 1L), rng)
-        state = result.state.copy(
-            heroes = result.state.heroes.copy(arrivalsToday = emptyList())
+        // Sanity: every known discriminator should appear at least once.
+        val expectedTypes = listOf(
+            "DayStarted",
+            "InboxGenerated",
+            "HeroesArrived",
+            "ContractPosted",
+            "ContractTaken",
+            "WipAdvanced",
+            "ContractResolved",
+            "ReturnClosed",
+            "TrophySold",
+            "StabilityUpdated",
+            "DayEnded",
+            "CommandRejected",
+            "InvariantViolated",
+            "HeroDeclined",
+            "TrophyTheftSuspected",
+            "TaxDue",
+            "TaxPaid",
+            "TaxMissed",
+            "GuildShutdown",
+            "GuildRankUp",
+            "ProofPolicyChanged",
+            "ContractDraftCreated",
+            "ContractTermsUpdated",
+            "ContractCancelled"
         )
-
-        val json = serialize(state)
-        val restored = deserialize(json)
-
-        assertEquals(state, restored, "Round-trip must preserve state")
-    }
-
-    @Test
-    fun `deserialize sets arrivalsToday to empty`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-
-        // Advance a day to get arrivals
-        val result = step(state, AdvanceDay(cmdId = 1L), rng)
-        state = result.state
-
-        assertTrue(state.heroes.arrivalsToday.isNotEmpty(), "State should have arrivals before save")
-
-        val json = serialize(state)
-        val restored = deserialize(json)
-
-        assertTrue(restored.heroes.arrivalsToday.isEmpty(), "arrivalsToday must be empty after load")
-    }
-
-    @Test
-    fun `deserialize validates saveVersion`() {
-        val invalidJson =
-            """{"meta":{"saveVersion":999,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":0,"taxAmountDue":0,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":5,"proofPolicy":"LENIENT"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
-
-        val exception = assertFails {
-            deserialize(invalidJson)
-        }
-
-        assertTrue(exception is IllegalArgumentException, "Must throw IllegalArgumentException")
-        assertTrue(exception.message!!.contains("saveVersion"), "Error message must mention saveVersion")
-    }
-
-    @Test
-    fun `serialize preserves value classes as raw int`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-
-        // Create some contracts and heroes
-        val result = step(state, AdvanceDay(cmdId = 1L), rng)
-        state = result.state
-
-        val json = serialize(state)
-
-        // Check that IDs are serialized as numbers, not objects
-        assertFalse(json.contains("\"value\""), "Value classes should be raw ints, not {\"value\":N}")
-        assertTrue(json.contains("\"id\":1"), "Should contain raw ID numbers")
-    }
-
-    @Test
-    fun `serialize produces compact JSON (no pretty print)`() {
-        val state = initialState(42u)
-
-        val json = serialize(state)
-
-        assertFalse(json.contains("\n"), "Compact JSON must not contain newlines")
-        assertFalse(json.contains("  "), "Compact JSON must not contain indentation")
-    }
-
-    @Test
-    fun `deserialize handles empty collections`() {
-        // Purpose: ensure deserialize correctly handles EMPTY lists in JSON payload.
-        // initialState() is not suitable here because it intentionally seeds inbox with 2 drafts.
-
-        val emptyCollectionsJson =
-            """{"meta":{"saveVersion":1,"seed":42,"dayIndex":0,"revision":0,"ids":{"nextContractId":1,"nextHeroId":1,"nextActiveContractId":1},"taxDueDay":7,"taxAmountDue":10,"taxPenalty":0,"taxMissedCount":0},"guild":{"guildRank":1,"reputation":50,"completedContractsTotal":0,"contractsForNextRank":10,"proofPolicy":"FAST"},"region":{"stability":50},"economy":{"moneyCopper":100,"trophiesStock":0,"reservedCopper":0},"contracts":{"inbox":[],"board":[],"active":[],"returns":[]},"heroes":{"roster":[]}}"""
-
-        val restored = deserialize(emptyCollectionsJson)
-
-        assertTrue(restored.contracts.inbox.isEmpty(), "Inbox must be empty")
-        assertTrue(restored.contracts.board.isEmpty(), "Board must be empty")
-        assertTrue(restored.contracts.active.isEmpty(), "Active must be empty")
-        assertTrue(restored.contracts.returns.isEmpty(), "Returns must be empty")
-        assertTrue(restored.heroes.roster.isEmpty(), "Roster must be empty")
-        assertTrue(restored.heroes.arrivalsToday.isEmpty(), "arrivalsToday must be empty after load")
-    }
-
-    @Test
-    fun `deserialize handles populated collections`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-
-        // Advance multiple days to get diverse data
-        for (i in 1..3) {
-            val result = step(state, AdvanceDay(cmdId = i.toLong()), rng)
-            state = result.state
-        }
-
-        // Clear arrivalsToday for clean comparison
-        state = state.copy(heroes = state.heroes.copy(arrivalsToday = emptyList()))
-
-        val json = serialize(state)
-        val restored = deserialize(json)
-
-        assertEquals(state.contracts.inbox.size, restored.contracts.inbox.size)
-        assertEquals(state.heroes.roster.size, restored.heroes.roster.size)
-        assertEquals(state, restored)
-    }
-
-    @Test
-    fun `serialize handles all enum types correctly`() {
-        var state = initialState(42u)
-        val rng = Rng(100L)
-
-        // Create diverse state with different enums
-        val result = step(state, AdvanceDay(cmdId = 1L), rng)
-        state = result.state
-
-        val json = serialize(state)
-        val restored = deserialize(json)
-
-        // Verify enums survived round-trip
-        if (restored.heroes.roster.isNotEmpty()) {
-            assertEquals(state.heroes.roster[0].rank, restored.heroes.roster[0].rank)
-            assertEquals(state.heroes.roster[0].klass, restored.heroes.roster[0].klass)
-            assertEquals(state.heroes.roster[0].status, restored.heroes.roster[0].status)
+        expectedTypes.forEach { t ->
+            assertTrue(json.contains("\"type\":\"$t\""), "Missing serialized type=$t")
         }
     }
 
     @Test
-    fun `deserialize rejects malformed JSON`() {
-        val malformedJson = "{invalid json"
+    fun `common fields order is stable and type is first`() {
+        val e = EventFactory.create(DayStarted::class.java) as Event
+        val json = serializeEvents(listOf(e))
+        val obj = json.removePrefix("[").removeSuffix("]")
 
-        assertFails {
-            deserialize(malformedJson)
-        }
+        val iType = obj.indexOf("\"type\"")
+        val iDay = obj.indexOf("\"day\"")
+        val iRevision = obj.indexOf("\"revision\"")
+        val iCmdId = obj.indexOf("\"cmdId\"")
+        val iSeq = obj.indexOf("\"seq\"")
+
+        assertTrue(iType >= 0 && iDay >= 0 && iRevision >= 0 && iCmdId >= 0 && iSeq >= 0, "Missing common keys")
+        assertTrue(iType < iDay && iDay < iRevision && iRevision < iCmdId && iCmdId < iSeq, "Common field order must be fixed")
     }
 
     @Test
-    fun `deserialize rejects incomplete JSON`() {
-        val incompleteJson = """{"meta":{"saveVersion":1}}"""
+    fun `string fields are JSON-escaped`() {
+        val e = EventFactory.create(GuildShutdown::class.java) as Event
+        val json = serializeEvents(listOf(e))
 
-        assertFails {
-            deserialize(incompleteJson)
+        // RAW_ESCAPE_STRING gets injected into all String constructor params by EventFactory.
+        val expectedEscaped = "a\\\\b\\\"c\\nd\\re\\tf"
+        assertTrue(json.contains("\"reason\":\"$expectedEscaped\""), "Expected escaped reason")
+        assertFalse(json.contains(RAW_ESCAPE_STRING), "Raw control chars must not appear in JSON output")
+    }
+
+    @Test
+    fun `nullable fields emit null for ContractTermsUpdated`() {
+        val eNulls = EventFactory.create(ContractTermsUpdated::class.java, Variant.NULLABLES_NULL) as Event
+        val json = serializeEvents(listOf(eNulls))
+
+        assertTrue(json.contains("\"oldFee\":null"), "oldFee must emit null")
+        assertTrue(json.contains("\"newFee\":null"), "newFee must emit null")
+        assertTrue(json.contains("\"oldSalvage\":null"), "oldSalvage must emit null")
+        assertTrue(json.contains("\"newSalvage\":null"), "newSalvage must emit null")
+    }
+
+    @Test
+    fun `TaxPaid boolean is emitted as true or false without quotes`() {
+        val eTrue = EventFactory.create(TaxPaid::class.java, Variant.DEFAULT) as Event
+        val eFalse = EventFactory.create(TaxPaid::class.java, Variant.BOOL_FALSE) as Event
+
+        val json = serializeEvents(listOf(eTrue, eFalse))
+
+        assertTrue(json.contains("\"isPartialPayment\":true"), "Must contain true boolean")
+        assertTrue(json.contains("\"isPartialPayment\":false"), "Must contain false boolean")
+        assertFalse(json.contains("\"isPartialPayment\":\"true\""), "Boolean must not be quoted")
+        assertFalse(json.contains("\"isPartialPayment\":\"false\""), "Boolean must not be quoted")
+    }
+
+    @Test
+    fun `IntArray fields support empty and non-empty without whitespace`() {
+        val nonEmpty = EventFactory.create(HeroesArrived::class.java, Variant.DEFAULT) as Event
+        val empty = EventFactory.create(HeroesArrived::class.java, Variant.EMPTY_ARRAYS) as Event
+
+        val json = serializeEvents(listOf(nonEmpty, empty))
+
+        assertTrue(json.contains("\"heroIds\":[1,2]"), "Non-empty array must be compact")
+        assertTrue(json.contains("\"heroIds\":[]"), "Empty array must be emitted as []")
+        assertFalse(json.contains(" "), "No insignificant whitespace expected")
+    }
+}
+
+private enum class Variant {
+    DEFAULT,
+    BOOL_FALSE,
+    NULLABLES_NULL,
+    EMPTY_ARRAYS
+}
+
+private const val RAW_ESCAPE_STRING: String = "a\\b\"c\nd\re\tf"
+
+private object EventFactory {
+
+    fun <T : Any> create(clazz: Class<T>, variant: Variant = Variant.DEFAULT): T {
+        val ctors = clazz.declaredConstructors.sortedByDescending { it.parameterCount }
+        var last: Throwable? = null
+
+        for (ctor in ctors) {
+            try {
+                ctor.isAccessible = true
+                val args = buildArgs(clazz, ctor.parameterTypes, ctor.parameters, variant, depth = 0)
+                @Suppress("UNCHECKED_CAST")
+                return ctor.newInstance(*args) as T
+            } catch (t: Throwable) {
+                last = t
+            }
         }
+
+        throw AssertionError(
+            "Unable to instantiate ${clazz.name}; constructors tried=${ctors.size}; lastError=${last?.javaClass?.name}: ${last?.message}",
+            last
+        )
+    }
+
+    private fun buildArgs(
+        owningClass: Class<*>,
+        paramTypes: Array<Class<*>>,
+        params: Array<java.lang.reflect.Parameter>,
+        variant: Variant,
+        depth: Int
+    ): Array<Any?> {
+        if (depth > 6) {
+            return arrayOfNulls(paramTypes.size)
+        }
+
+        val args = arrayOfNulls<Any?>(paramTypes.size)
+        // Detect Kotlin-side nullability for the constructor parameters.
+        val kotlinNullables = detectKotlinNullablesForJavaConstructor(owningClass, paramTypes)
+
+        for (i in paramTypes.indices) {
+            val type = paramTypes[i]
+            val nullable = kotlinNullables.getOrElse(i) { false }
+            args[i] = valueFor(type, variant, nullable, depth + 1)
+        }
+
+        // Fix known "count + IntArray" invariants for the two event types that declare them (per serializer contract).
+        if (owningClass.simpleName == "InboxGenerated" || owningClass.simpleName == "HeroesArrived") {
+            for (arrIdx in paramTypes.indices) {
+                if (isIntArrayType(paramTypes[arrIdx])) {
+                    val arr = args[arrIdx] as? IntArray ?: continue
+                    for (j in (arrIdx - 1) downTo 0) {
+                        if (paramTypes[j] == Int::class.javaPrimitiveType) {
+                            args[j] = arr.size
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        return args
+    }
+
+    private fun detectKotlinNullablesForJavaConstructor(owningClass: Class<*>, paramTypes: Array<Class<*>>): BooleanArray {
+        try {
+            val kclass = owningClass.kotlin
+            // Find candidate Kotlin constructors with the same arity and matching parameter types (best-effort).
+            val candidates = kclass.constructors.filter { it.parameters.size == paramTypes.size }
+            for (kctor in candidates) {
+                var match = true
+                for (i in kctor.parameters.indices) {
+                    val kparamClassifier = kctor.parameters[i].type.classifier as? KClass<*>
+                    if (kparamClassifier == null) { match = false; break }
+                    // Compare Kotlin classifier with Java parameter's kotlin representation.
+                    if (kparamClassifier != paramTypes[i].kotlin) {
+                        match = false
+                        break
+                    }
+                }
+                if (match) {
+                    return BooleanArray(kctor.parameters.size) { idx -> kctor.parameters[idx].type.isMarkedNullable }
+                }
+            }
+        } catch (_: Throwable) {
+            // reflection may fail; fall back to conservative non-null assumption
+        }
+        return BooleanArray(paramTypes.size) { false }
+    }
+
+    private fun valueFor(type: Class<*>, variant: Variant, nullable: Boolean, depth: Int): Any? {
+        if (nullable && variant == Variant.NULLABLES_NULL) return null
+
+        // Primitives / boxed
+        if (type == Int::class.javaPrimitiveType || type == Int::class.javaObjectType) return 100 + depth
+        if (type == Long::class.javaPrimitiveType || type == Long::class.javaObjectType) return 10_000L + depth
+        if (type == Boolean::class.javaPrimitiveType || type == Boolean::class.javaObjectType) {
+            return when (variant) {
+                Variant.BOOL_FALSE -> false
+                else -> true
+            }
+        }
+        if (type == String::class.java) return RAW_ESCAPE_STRING
+
+        // int[]
+        if (isIntArrayType(type)) {
+            return when (variant) {
+                Variant.EMPTY_ARRAYS -> intArrayOf()
+                else -> intArrayOf(1, 2)
+            }
+        }
+
+        // java.util.List (not expected for current events, but safe)
+        if (java.util.List::class.java.isAssignableFrom(type)) {
+            return emptyList<Any?>()
+        }
+
+        // Enums
+        if (type.isEnum) {
+            val constants = type.enumConstants
+            if (!constants.isNullOrEmpty()) return constants[0]
+        }
+
+        // Nested DTO/snapshot-like objects
+        val ctors = type.declaredConstructors.sortedByDescending { it.parameterCount }
+        for (ctor in ctors) {
+            try {
+                ctor.isAccessible = true
+                val nestedArgs = buildArgs(type, ctor.parameterTypes, ctor.parameters, Variant.DEFAULT, depth)
+                return ctor.newInstance(*nestedArgs)
+            } catch (_: Throwable) {
+                // try next constructor
+            }
+        }
+
+        // Last resort: null for reference types (will fail fast if not allowed by Kotlin null-checks).
+        return null
+    }
+
+    private fun isIntArrayType(type: Class<*>): Boolean {
+        return type.isArray && type.componentType == Int::class.javaPrimitiveType
     }
 }

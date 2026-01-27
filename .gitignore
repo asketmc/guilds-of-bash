@@ -12,6 +12,7 @@
 *.ipr
 *.iws
 out/
+.ai/
 
 # === VS Code ===
 .vscode/
