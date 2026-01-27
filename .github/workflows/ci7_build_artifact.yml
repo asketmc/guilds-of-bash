@@ -3,6 +3,12 @@ name: CI module - Build standalone artifact
 
 on:
   workflow_call:
+    inputs:
+      dokka_source_artifact:
+        description: Artifact name produced by ci1_docs.yml to be repackaged
+        type: string
+        required: false
+        default: dokka-html
     outputs:
       version:
         description: Derived build version (tag name or build-<run>-<sha7>)
@@ -103,27 +109,6 @@ jobs:
               exit 1
             }
 
-      - name: Build Dokka multi-module HTML (captured)
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          log="gradle_dokka.log"
-
-          ./gradlew \
-            --console=plain \
-            --warning-mode=all \
-            -Pversion="${{ steps.ver.outputs.version }}" \
-            dokkaHtmlMultiModule \
-            >"${log}" 2>&1 || {
-              echo "FAIL: Dokka build failed."
-              echo "Failure block (max 25 lines):"
-              awk 'BEGIN{p=0} /^FAILURE: /{p=1} p{print} /^BUILD FAILED/{exit}' "${log}" | head -n 25 || true
-              echo "Tail (last 40 lines):"
-              tail -n 40 "${log}" || true
-              exit 1
-            }
-
       - name: Normalize artifact name + checksums + build info
         shell: bash
         run: |
@@ -149,32 +134,60 @@ jobs:
           (cd dist && sha256sum "$out" > "${out}.sha256")
           (cd dist && sha256sum "$out" > "checksums-${{ steps.ver.outputs.version }}.sha256")
 
-          cat > "dist/build-info-${{ steps.ver.outputs.version }}.txt" <<EOF
-          version: ${{ steps.ver.outputs.version }}
-          commit: ${GITHUB_SHA}
-          ref: ${GITHUB_REF}
-          workflow: ${GITHUB_WORKFLOW}
-          run_id: ${GITHUB_RUN_ID}
-          run_number: ${GITHUB_RUN_NUMBER}
-          runner: ${RUNNER_OS}
-          EOF
-
-          cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
-
-      - name: Collect Dokka HTML artifact
+      - name: Write build-info
         shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
 
-          src_dir="build/reports/dokka/html"
-          if [[ ! -d "$src_dir" ]]; then
-            echo "FAIL: Dokka output directory not found: $src_dir"
+          mkdir -p dist
+
+          echo "version: $VERSION" > "dist/build-info-${VERSION}.txt"
+          echo "commit: ${GITHUB_SHA}" >> "dist/build-info-${VERSION}.txt"
+          echo "ref: ${GITHUB_REF}" >> "dist/build-info-${VERSION}.txt"
+          echo "workflow: ${GITHUB_WORKFLOW}" >> "dist/build-info-${VERSION}.txt"
+          echo "run_id: ${GITHUB_RUN_ID}" >> "dist/build-info-${VERSION}.txt"
+          echo "run_number: ${GITHUB_RUN_NUMBER}" >> "dist/build-info-${VERSION}.txt"
+          echo "runner: ${RUNNER_OS}" >> "dist/build-info-${VERSION}.txt"
+
+      - name: Copy gradle_shadowjar log into dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
+
+      - name: Download Dokka HTML artifact produced by ci1 (reuse)
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.dokka_source_artifact }}
+          path: dokka_in
+
+      - name: Package Dokka HTML into versioned tar.gz
+        shell: bash
+        run: |
+          set -euo pipefail
+    
+          mkdir -p dist/dokka
+    
+          # Preserve module separation under dist/dokka/
+          if [[ -d "dokka_in/core/build/dokka/html" ]]; then
+            mkdir -p dist/dokka/core
+            cp -R dokka_in/core/build/dokka/html/* dist/dokka/core/
+          fi
+    
+          if [[ -d "dokka_in/adapter-console/build/dokka/html" ]]; then
+            mkdir -p dist/dokka/adapter-console
+            cp -R dokka_in/adapter-console/build/dokka/html/* dist/dokka/adapter-console/
+          fi
+    
+          if [[ ! -d "dist/dokka" ]] || [[ -z "$(ls -A dist/dokka 2>/dev/null || true)" ]]; then
+            echo "FAIL: No Dokka HTML content found in downloaded artifact '${{ inputs.dokka_source_artifact }}'."
+            echo "Downloaded tree (top 4 levels):"
+            find dokka_in -maxdepth 4 -type d | sort || true
             exit 1
           fi
-
-          mkdir -p dist/dokka
-          cp -R "$src_dir"/* dist/dokka/
-
+    
           (cd dist && tar -czf "dokka-html-${{ steps.ver.outputs.version }}.tar.gz" dokka)
           rm -rf dist/dokka
 
@@ -192,7 +205,6 @@ jobs:
           name: ${{ steps.meta.outputs.artifact_dokka_name }}
           path: |
             dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
-            gradle_dokka.log
           if-no-files-found: error
           retention-days: 14
 
@@ -200,7 +212,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
+    
           {
             echo "### Build artifacts"
             echo "- version: \`${{ steps.ver.outputs.version }}\`"
@@ -222,14 +234,5 @@ jobs:
         with:
           name: logs-shadowjar-${{ steps.ver.outputs.short_sha }}
           path: gradle_shadowjar.log
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload Dokka gradle log (on failure)
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs-dokka-${{ steps.ver.outputs.short_sha }}
-          path: gradle_dokka.log
           if-no-files-found: warn
           retention-days: 14
