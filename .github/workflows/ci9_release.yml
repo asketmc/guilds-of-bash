@@ -64,24 +64,24 @@ jobs:
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           cat > release_notes.md <<EOF
-  - version: ${version}
-  - commit: ${sha_full} (${sha_short})
-  - artifacts: ${jar##*/}, ${sha256_file##*/}
-  - ci_run: ${run_url}
-  EOF
-  
-  prerelease_flag=""
-  if [[ "${{ inputs.prerelease }}" == "true" ]]; then
-  prerelease_flag="--prerelease"
-  fi
-  
-  if gh release view "${tag}" >/dev/null 2>&1; then
-  gh release edit "${tag}" --title "${title}" --notes-file release_notes.md
-  gh release upload "${tag}" "${jar}" "${sha256_file}" --clobber
-  else
-  gh release create "${tag}" "${jar}" "${sha256_file}" \
-  --title "${title}" \
-  --notes-file release_notes.md \
-  --target "${sha_full}" \
-  ${prerelease_flag}
-  fi
+          - version: ${version}
+          - commit: ${sha_full} (${sha_short})
+          - artifacts: ${jar##*/}, ${sha256_file##*/}
+          - ci_run: ${run_url}
+          EOF
+
+          prerelease_flag=""
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release edit "${tag}" --title "${title}" --notes-file release_notes.md
+            gh release upload "${tag}" "${jar}" "${sha256_file}" --clobber
+          else
+            gh release create "${tag}" "${jar}" "${sha256_file}" \
+              --title "${title}" \
+              --notes-file release_notes.md \
+              --target "${sha_full}" \
+              ${prerelease_flag}
+          fi

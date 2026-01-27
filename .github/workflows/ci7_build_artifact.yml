@@ -150,86 +150,86 @@ jobs:
           (cd dist && sha256sum "$out" > "checksums-${{ steps.ver.outputs.version }}.sha256")
 
           cat > "dist/build-info-${{ steps.ver.outputs.version }}.txt" <<EOF
-version: ${{ steps.ver.outputs.version }}
-commit: ${GITHUB_SHA}
-ref: ${GITHUB_REF}
-workflow: ${GITHUB_WORKFLOW}
-run_id: ${GITHUB_RUN_ID}
-run_number: ${GITHUB_RUN_NUMBER}
-runner: ${RUNNER_OS}
-  EOF
-  
-  cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
+          version: ${{ steps.ver.outputs.version }}
+          commit: ${GITHUB_SHA}
+          ref: ${GITHUB_REF}
+          workflow: ${GITHUB_WORKFLOW}
+          run_id: ${GITHUB_RUN_ID}
+          run_number: ${GITHUB_RUN_NUMBER}
+          runner: ${RUNNER_OS}
+          EOF
 
-- name: Collect Dokka HTML artifact
-  shell: bash
-  run: |
-    set -euo pipefail
-    
-    src_dir="build/reports/dokka/html"
-    if [[ ! -d "$src_dir" ]]; then
-      echo "FAIL: Dokka output directory not found: $src_dir"
-      exit 1
-    fi
-    
-    mkdir -p dist/dokka
-    cp -R "$src_dir"/* dist/dokka/
-    
-    (cd dist && tar -czf "dokka-html-${{ steps.ver.outputs.version }}.tar.gz" dokka)
-    rm -rf dist/dokka
+          cp -f gradle_shadowjar.log "dist/gradle_shadowjar.log"
 
-- name: Upload standalone jar artifact (normalized)
-  uses: actions/upload-artifact@v4
-  with:
-    name: ${{ steps.meta.outputs.artifact_jar_name }}
-    path: dist/*
-    if-no-files-found: error
-    retention-days: 14
+      - name: Collect Dokka HTML artifact
+        shell: bash
+        run: |
+          set -euo pipefail
 
-- name: Upload Dokka HTML (tar.gz)
-  uses: actions/upload-artifact@v4
-  with:
-    name: ${{ steps.meta.outputs.artifact_dokka_name }}
-    path: |
-      dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
-      gradle_dokka.log
-    if-no-files-found: error
-    retention-days: 14
+          src_dir="build/reports/dokka/html"
+          if [[ ! -d "$src_dir" ]]; then
+            echo "FAIL: Dokka output directory not found: $src_dir"
+            exit 1
+          fi
 
-- name: Write job summary
-  shell: bash
-  run: |
-    set -euo pipefail
-    
-    {
-      echo "### Build artifacts"
-      echo "- version: \`${{ steps.ver.outputs.version }}\`"
-      echo "- commit: \`${GITHUB_SHA}\`"
-      echo "- jar: \`adapter-console-cli-${{ steps.ver.outputs.version }}.jar\`"
-      echo "- checksums: \`checksums-${{ steps.ver.outputs.version }}.sha256\`"
-      echo "- artifact (jar bundle): \`${{ steps.meta.outputs.artifact_jar_name }}\`"
-      echo "- artifact (dokka): \`${{ steps.meta.outputs.artifact_dokka_name }}\`"
-      echo ""
-      echo "### Verification"
-      echo "\`\`\`bash"
-      echo "sha256sum -c adapter-console-cli-${{ steps.ver.outputs.version }}.jar.sha256"
-      echo "\`\`\`"
-    } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p dist/dokka
+          cp -R "$src_dir"/* dist/dokka/
 
-- name: Upload ShadowJar gradle log (on failure)
-  if: ${{ failure() }}
-  uses: actions/upload-artifact@v4
-  with:
-    name: logs-shadowjar-${{ steps.ver.outputs.short_sha }}
-    path: gradle_shadowjar.log
-    if-no-files-found: warn
-    retention-days: 14
+          (cd dist && tar -czf "dokka-html-${{ steps.ver.outputs.version }}.tar.gz" dokka)
+          rm -rf dist/dokka
 
-- name: Upload Dokka gradle log (on failure)
-  if: ${{ failure() }}
-  uses: actions/upload-artifact@v4
-  with:
-    name: logs-dokka-${{ steps.ver.outputs.short_sha }}
-    path: gradle_dokka.log
-    if-no-files-found: warn
-    retention-days: 14
+      - name: Upload standalone jar artifact (normalized)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_jar_name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Dokka HTML (tar.gz)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_dokka_name }}
+          path: |
+            dist/dokka-html-${{ steps.ver.outputs.version }}.tar.gz
+            gradle_dokka.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write job summary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### Build artifacts"
+            echo "- version: \`${{ steps.ver.outputs.version }}\`"
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- jar: \`adapter-console-cli-${{ steps.ver.outputs.version }}.jar\`"
+            echo "- checksums: \`checksums-${{ steps.ver.outputs.version }}.sha256\`"
+            echo "- artifact (jar bundle): \`${{ steps.meta.outputs.artifact_jar_name }}\`"
+            echo "- artifact (dokka): \`${{ steps.meta.outputs.artifact_dokka_name }}\`"
+            echo ""
+            echo "### Verification"
+            echo "\`\`\`bash"
+            echo "sha256sum -c adapter-console-cli-${{ steps.ver.outputs.version }}.jar.sha256"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ShadowJar gradle log (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-shadowjar-${{ steps.ver.outputs.short_sha }}
+          path: gradle_shadowjar.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Dokka gradle log (on failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-dokka-${{ steps.ver.outputs.short_sha }}
+          path: gradle_dokka.log
+          if-no-files-found: warn
+          retention-days: 14
