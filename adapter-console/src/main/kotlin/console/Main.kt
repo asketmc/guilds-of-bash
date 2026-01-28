@@ -16,8 +16,9 @@ import core.*
 import core.hash.hashEvents
 import core.hash.hashState
 import core.primitives.ActiveStatus
+import core.primitives.BoardStatus
+import core.primitives.HeroClass
 import core.primitives.Outcome
-import core.primitives.Quality
 import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
@@ -144,7 +145,7 @@ fun main() {
 
                 val salvage = try {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
-                } catch (e: IllegalArgumentException) {
+                } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
                     println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
@@ -273,7 +274,7 @@ fun main() {
 
                 val rank = try {
                     core.primitives.Rank.valueOf(rankStr)
-                } catch (e: IllegalArgumentException) {
+                } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid rank", "rankRaw" to rankStr)
                     println("Invalid rank: $rankStr. Use F, E, D, C, B, A, or S")
                     continue
@@ -281,7 +282,7 @@ fun main() {
 
                 val salvage = try {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
-                } catch (e: IllegalArgumentException) {
+                } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
                     println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
@@ -346,7 +347,7 @@ fun main() {
                             val salvageRaw = param.substringAfter("salvage=").uppercase()
                             newSalvage = try {
                                 core.primitives.SalvagePolicy.valueOf(salvageRaw)
-                            } catch (e: IllegalArgumentException) {
+                            } catch (_: IllegalArgumentException) {
                                 println("Invalid salvage policy: $salvageRaw")
                                 null
                             }
@@ -537,6 +538,7 @@ private fun applyAndPrintWithAnalytics(
     rng: Rng,
     prevSnapshot: DaySnapshot?
 ): Pair<GameState, DaySnapshot?> {
+    val prevState = state
     val result = step(state, cmd, rng)
     val newState = result.state
     val events = result.events
@@ -545,10 +547,10 @@ private fun applyAndPrintWithAnalytics(
     for (e in events) println(formatEvent(e))
 
     // Check if DayEnded event is present to compute day analytics
-    val dayEndedEvent = events.filterIsInstance<DayEnded>().firstOrNull()
-    if (dayEndedEvent != null) {
-        val currentSnapshot = events.filterIsInstance<DayEnded>().first().snapshot
+    val currentSnapshot = events.filterIsInstance<DayEnded>().firstOrNull()?.snapshot
+    if (currentSnapshot != null) {
         printDayAnalytics(events, currentSnapshot, prevSnapshot)
+        printDayReport(prevState = prevState, newState = newState, events = events)
 
         val stateHash = hashState(newState)
         val eventsHash = hashEvents(events)
@@ -566,56 +568,104 @@ private fun applyAndPrintWithAnalytics(
     return newState to prevSnapshot
 }
 
-/**
- * Prints day analytics derived strictly from the emitted [Event] list and [DaySnapshot] values.
- *
- * Why event-derived analytics:
- * - Keeps analytics aligned with the "events are telemetry" philosophy.
- * - Avoids introducing hidden reads of state internals that could drift from what adapters/tests observe.
- * - Allows future refactors of state structure without breaking the console's analytics as long as events remain stable.
- *
- * Why these specific signals (S7-S9):
- * - S7 helps detect economic/behavioral deadlocks (e.g., posting without taking).
- * - S8 helps detect balance drift (outcome distribution changes after formula tweaks).
- * - S9 provides a coarse economy sanity check across day boundaries.
- *
- * @param events Events emitted by the command that ended the day.
- * @param currentSnapshot Snapshot from the current [DayEnded] event.
- * @param prevSnapshot Snapshot from the previous day boundary (nullable for the first observed boundary).
- */
-private fun printDayAnalytics(events: List<Event>, currentSnapshot: DaySnapshot, prevSnapshot: DaySnapshot?) {
-    // S7: ContractTakeRate = ContractTaken.count / ContractPosted.count
-    val contractsPosted = events.filterIsInstance<ContractPosted>().size
-    val contractsTaken = events.filterIsInstance<ContractTaken>().size
-    val takeRate = if (contractsPosted > 0) {
-        "$contractsTaken/$contractsPosted"
-    } else {
-        "N/A (no posts)"
-    }
+private fun printDayReport(prevState: GameState, newState: GameState, events: List<Event>) {
+    // Contracts
+    val inboxGenerated = events.filterIsInstance<InboxGenerated>().sumOf { it.count }
+    val posted = events.count { it is ContractPosted }
+    val cancelled = events.count { it is ContractCancelled }
 
-    // S8: OutcomeCounts = aggregate ContractResolved.outcome
-    val outcomeEvents = events.filterIsInstance<ContractResolved>()
-    val outcomeCounts = outcomeEvents.groupingBy { it.outcome }.eachCount()
-    val outcomeStr = if (outcomeCounts.isEmpty()) {
-        "N/A (no resolutions)"
-    } else {
-        outcomeCounts.entries.joinToString(", ") { "${it.key}=${it.value}" }
-    }
+    val boardCounts = newState.contracts.board
+        .groupingBy { it.status }
+        .eachCount()
+        .withDefault { 0 }
+    val boardOpen = boardCounts.getValue(BoardStatus.OPEN)
+    val boardLocked = boardCounts.getValue(BoardStatus.LOCKED)
+    val boardCompleted = boardCounts.getValue(BoardStatus.COMPLETED)
 
-    // S9: MoneyΔ = current.money - prev.money
-    val moneyDelta = if (prevSnapshot != null) {
-        val delta = currentSnapshot.money - prevSnapshot.money
-        val sign = if (delta >= 0) "+" else ""
-        "$sign$delta"
-    } else {
-        "N/A (first day)"
-    }
+    val activeCounts = newState.contracts.active
+        .groupingBy { it.status }
+        .eachCount()
+        .withDefault { 0 }
+    val activeWip = activeCounts.getValue(ActiveStatus.WIP)
+    val activeReturnReady = activeCounts.getValue(ActiveStatus.RETURN_READY)
 
-    println("─── Day Analytics ───")
-    println("S7 ContractTakeRate: $takeRate")
-    println("S8 OutcomeCounts: $outcomeStr")
-    println("S9 MoneyΔDay: $moneyDelta")
-    println("─────────────────────")
+    val returnsNeedingClose = newState.contracts.returns.count { it.requiresPlayerClose }
+
+    // Heroes
+    val rosterSize = newState.heroes.roster.size
+    val arrivalsToday = events.filterIsInstance<HeroesArrived>().sumOf { it.count }
+
+    val arrivalsSet = newState.heroes.arrivalsToday.map { it.value }.toHashSet()
+    val arrivalsHeroes = newState.heroes.roster.filter { arrivalsSet.contains(it.id.value) }
+    val classCountsRaw = arrivalsHeroes.groupingBy { it.klass }.eachCount()
+    val classesToday = fmtEnumCounts(HeroClass.values().toList(), classCountsRaw)
+
+    // Resolutions
+    val resolvedEvents = events.filterIsInstance<ContractResolved>()
+    val resolved = resolvedEvents.size
+    val outcomeCounts = resolvedEvents.groupingBy { it.outcome }.eachCount()
+    val success = outcomeCounts[Outcome.SUCCESS] ?: 0
+    val partial = outcomeCounts[Outcome.PARTIAL] ?: 0
+    val fail = outcomeCounts[Outcome.FAIL] ?: 0
+    val theftSuspected = events.count { it is TrophyTheftSuspected }
+
+    // Economy
+    val money = newState.economy.moneyCopper
+    val moneyDelta = money - prevState.economy.moneyCopper
+    val reserved = newState.economy.reservedCopper
+    val reservedDelta = reserved - prevState.economy.reservedCopper
+    val available = money - reserved
+    val trophies = newState.economy.trophiesStock
+    val trophiesDelta = trophies - prevState.economy.trophiesStock
+
+    // Region/Guild
+    val stability = newState.region.stability
+    val stabilityDelta = stability - prevState.region.stability
+    val rank = newState.guild.guildRank
+    val completedTotal = newState.guild.completedContractsTotal
+    val completedDelta = completedTotal - prevState.guild.completedContractsTotal
+
+    val taxDueDay = newState.meta.taxDueDay
+    val taxDue = newState.meta.taxAmountDue
+    val taxPenalty = newState.meta.taxPenalty
+    val taxMissed = newState.meta.taxMissedCount
+
+    println("─── Day Report ───")
+    println(
+        "Contracts: inboxGenerated=+$inboxGenerated posted=+$posted cancelled=+$cancelled " +
+            "board(open=$boardOpen locked=$boardLocked completed=$boardCompleted) " +
+            "active(wip=$activeWip returnReady=$activeReturnReady) " +
+            "returnsNeedingClose=$returnsNeedingClose"
+    )
+    println("Heroes: roster=$rosterSize arrivalsToday=+$arrivalsToday classesToday={$classesToday}")
+    println(
+        "Resolutions: resolved=+$resolved success=$success partial=$partial fail=$fail theftSuspected=$theftSuspected"
+    )
+    println(
+        "Economy: money=$money ${fmtDelta(moneyDelta)} reserved=$reserved ${fmtDelta(reservedDelta)} " +
+            "available=$available trophies=$trophies ${fmtDelta(trophiesDelta)}"
+    )
+    println(
+        "Region/Guild: stability=$stability ${fmtDelta(stabilityDelta)} rank=$rank " +
+            "completedContractsTotal=$completedTotal ${fmtDelta(completedDelta)} " +
+            "tax(dueDay=$taxDueDay, due=$taxDue, penalty=$taxPenalty, missed=$taxMissed)"
+    )
+    println("──────────────────")
+}
+
+private fun fmtDelta(delta: Int): String = when {
+    delta > 0 -> "(+${delta})"
+    delta < 0 -> "(${delta})"
+    else -> "(0)"
+}
+
+private fun <E : Enum<E>> fmtEnumCounts(all: List<E>, counts: Map<E, Int>): String {
+    val ordered = all.sortedBy { it.name }
+    val parts = ordered.mapNotNull { e ->
+        val c = counts[e] ?: 0
+        if (c == 0) null else "${e.name}=$c"
+    }
+    return if (parts.isEmpty()) "" else parts.joinToString(", ")
 }
 
 /**
@@ -769,3 +819,43 @@ private fun formatEvent(e: Event): String =
         is ProofPolicyChanged -> "E#${e.seq} ProofPolicyChanged day=${e.day} rev=${e.revision} cmdId=${e.cmdId} oldPolicy=${e.oldPolicy} newPolicy=${e.newPolicy}"
         else -> "E#0 UnknownEvent"
     }
+
+/**
+ * Prints day analytics derived strictly from the emitted [Event] list and [DaySnapshot] values.
+ *
+ * NOTE: This block is intentionally unchanged by the Day Report feature.
+ */
+private fun printDayAnalytics(events: List<Event>, currentSnapshot: DaySnapshot, prevSnapshot: DaySnapshot?) {
+    val dayEnded = events.filterIsInstance<DayEnded>().firstOrNull()
+    if (dayEnded == null) return
+
+    val curDay = currentSnapshot.day
+    val prevDay = prevSnapshot?.day
+
+    val s7Inbox = events.filterIsInstance<InboxGenerated>().sumOf { it.count }
+    val s7Arrivals = events.filterIsInstance<HeroesArrived>().sumOf { it.count }
+
+    val resolvedEvents = events.filterIsInstance<ContractResolved>()
+    val s8Resolved = resolvedEvents.size
+    val outcomeCounts = resolvedEvents.groupingBy { it.outcome }.eachCount()
+    val s8Success = outcomeCounts[Outcome.SUCCESS] ?: 0
+    val s8Partial = outcomeCounts[Outcome.PARTIAL] ?: 0
+    val s8Fail = outcomeCounts[Outcome.FAIL] ?: 0
+
+    val s9Money = currentSnapshot.money
+    val s9Trophies = currentSnapshot.trophies
+
+    val moneyDelta: Int? = prevSnapshot?.let { currentSnapshot.money - it.money }
+    val trophiesDelta: Int? = prevSnapshot?.let { currentSnapshot.trophies - it.trophies }
+
+    println("─── Day Analytics ───")
+    println("S7: day=$curDay prevDay=${prevDay ?: "N/A"} inboxGenerated=+$s7Inbox arrivals=+$s7Arrivals")
+    println("S8: resolved=+$s8Resolved success=$s8Success partial=$s8Partial fail=$s8Fail")
+
+    val moneyDeltaStr = moneyDelta?.let { fmtDelta(it) } ?: "(Δ=N/A)"
+    val trophiesDeltaStr = trophiesDelta?.let { fmtDelta(it) } ?: "(Δ=N/A)"
+
+    // Keep the S9 line label/order stable; reserved is not present in the DaySnapshot schema in this repo.
+    println("S9: money=$s9Money $moneyDeltaStr trophies=$s9Trophies $trophiesDeltaStr")
+    println("────────────────────")
+}
