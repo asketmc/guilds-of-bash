@@ -175,6 +175,7 @@ private fun handleAdvanceDay(
                 ContractDraft(
                     id = ContractId(draftId),
                     createdDay = newDay,
+                    nextAutoResolveDay = newDay + 7,
                     title = "Request #$draftId",
                     rankSuggested = Rank.F,
                     feeOffered = 0,
@@ -244,6 +245,74 @@ private fun handleAdvanceDay(
                 heroIds = heroIdsRaw
             )
         )
+    }
+
+    // K9.3.5 — Contract expiry auto-resolve (inbox only, weekly cadence)
+    run {
+        val dueDrafts = workingState.contracts.inbox.filter { it.nextAutoResolveDay <= newDay }
+
+        if (dueDrafts.isNotEmpty()) {
+            val updatedInbox = workingState.contracts.inbox.toMutableList()
+            var cumulativeStabilityDelta = 0
+
+            for (draft in dueDrafts) {
+                val bucketRoll = rng.nextInt(3)
+                val bucket = when (bucketRoll) {
+                    0 -> AutoResolveBucket.GOOD
+                    1 -> AutoResolveBucket.NEUTRAL
+                    2 -> AutoResolveBucket.BAD
+                    else -> AutoResolveBucket.GOOD
+                }
+
+                ctx.emit(
+                    ContractAutoResolved(
+                        day = newDay,
+                        revision = workingState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        draftId = draft.id.value,
+                        bucket = bucket
+                    )
+                )
+
+                when (bucket) {
+                    AutoResolveBucket.GOOD -> {
+                        updatedInbox.removeIf { it.id == draft.id }
+                    }
+                    AutoResolveBucket.NEUTRAL -> {
+                        val idx = updatedInbox.indexOfFirst { it.id == draft.id }
+                        if (idx >= 0) {
+                            updatedInbox[idx] = draft.copy(nextAutoResolveDay = newDay + 7)
+                        }
+                    }
+                    AutoResolveBucket.BAD -> {
+                        updatedInbox.removeIf { it.id == draft.id }
+                        cumulativeStabilityDelta -= 2
+                    }
+                }
+            }
+
+            workingState = workingState.copy(
+                contracts = workingState.contracts.copy(inbox = updatedInbox)
+            )
+
+            if (cumulativeStabilityDelta != 0) {
+                val oldStability = workingState.region.stability
+                val newStability = (oldStability + cumulativeStabilityDelta).coerceIn(0, 100)
+                workingState = workingState.copy(region = workingState.region.copy(stability = newStability))
+
+                ctx.emit(
+                    StabilityUpdated(
+                        day = newDay,
+                        revision = workingState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        oldStability = oldStability,
+                        newStability = newStability
+                    )
+                )
+            }
+        }
     }
 
     // K9.4 — Pickup (optimized: scan)
@@ -893,6 +962,7 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is ContractDraftCreated -> event.copy(seq = seq)
         is ContractTermsUpdated -> event.copy(seq = seq)
         is ContractCancelled -> event.copy(seq = seq)
+        is ContractAutoResolved -> event.copy(seq = seq)
     }
 }
 
@@ -939,8 +1009,9 @@ private fun handleCreateContract(
 
     val draft = ContractDraft(
         id = ContractId(newId),
-        title = cmd.title,
         createdDay = state.meta.dayIndex,
+        nextAutoResolveDay = state.meta.dayIndex + 7,
+        title = cmd.title,
         rankSuggested = cmd.rank,
         feeOffered = 0,
         salvage = cmd.salvage,

@@ -20,7 +20,7 @@ import java.util.SplittableRandom
  * @param seed Seed value used to initialize the underlying PRNG; units: 64-bit seed value.
  * @property draws Monotonic counter of RNG draws performed through this wrapper; units: draw-count (>= 0).
  */
-class Rng(seed: Long) {
+open class Rng(seed: Long) {
     private val random = SplittableRandom(seed)
 
     var draws: Long = 0
@@ -49,7 +49,7 @@ class Rng(seed: Long) {
      * @param bound Exclusive upper bound; units: count; range: `> 0`.
      * @return Pseudo-random `Int` in `[0, bound)`.
      */
-    fun nextInt(bound: Int): Int {
+    open fun nextInt(bound: Int): Int {
         draws++
         return random.nextInt(bound)
     }
@@ -77,7 +77,7 @@ class Rng(seed: Long) {
      * @param bound Exclusive upper bound; units: count; range: `> 0`.
      * @return Pseudo-random `Long` in `[0, bound)`.
      */
-    fun nextLong(bound: Long): Long {
+    open fun nextLong(bound: Long): Long {
         draws++
         return random.nextLong(bound)
     }
@@ -104,7 +104,7 @@ class Rng(seed: Long) {
      *
      * @return Pseudo-random boolean.
      */
-    fun nextBoolean(): Boolean {
+    open fun nextBoolean(): Boolean {
         draws++
         return random.nextBoolean()
     }
@@ -131,7 +131,7 @@ class Rng(seed: Long) {
      *
      * @return Pseudo-random `Double` in `[0.0, 1.0)`.
      */
-    fun nextDouble(): Double {
+    open fun nextDouble(): Double {
         draws++
         return random.nextDouble()
     }

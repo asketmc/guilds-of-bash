@@ -103,6 +103,7 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is ContractDraftCreated -> serializeContractDraftCreated(event, sb)
         is ContractTermsUpdated -> serializeContractTermsUpdated(event, sb)
         is ContractCancelled -> serializeContractCancelled(event, sb)
+        is ContractAutoResolved -> serializeContractAutoResolved(event, sb)
     }
 }
 
@@ -851,3 +852,22 @@ private fun serializeContractCancelled(event: ContractCancelled, sb: StringBuild
     sb.appendIntField("refundedCopper", event.refundedCopper)
     sb.append('}')
 }
+
+/**
+ * Serializes [ContractAutoResolved].
+ *
+ * Emitted additional fields (in order):
+ * - `draftId` (Int)
+ * - `bucket` (String; `event.bucket.name`)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeContractAutoResolved(event: ContractAutoResolved, sb: StringBuilder) {
+    sb.appendCommonFields("ContractAutoResolved", event)
+    sb.appendIntField("draftId", event.draftId)
+    sb.appendStringField("bucket", event.bucket.name)
+    sb.append('}')
+}
+

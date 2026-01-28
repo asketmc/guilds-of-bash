@@ -1,11 +1,12 @@
-package core.rng
+package test
 
+import core.rng.Rng
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Contract tests for [Rng].
+ * Contract tests for [core.rng.Rng].
  *
  * These tests check only stable invariants (ranges + draw counter)
  * and do not assert any specific pseudo-random sequence.

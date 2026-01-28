@@ -1,5 +1,5 @@
-// FILE: core-test/src/test/kotlin/test/SmokeSuite.kt
-package test
+// FILE: core-test/src/test/kotlin/test/suites/SmokeSuite.kt
+package test.suites
 
 import org.junit.platform.suite.api.IncludeTags
 import org.junit.platform.suite.api.SelectPackages
@@ -7,7 +7,11 @@ import org.junit.platform.suite.api.Suite
 
 /**
  * JUnit Platform Suite for smoke tests.
- * This suite is tagged with @Smoke to ensure it only runs in smoke/PR test tasks.
+ *
+ * Runs all tests annotated with @Smoke (tag "smoke") across modules.
+ * Intended for fast PR gate validation.
+ *
+ * Usage: ./gradlew :core-test:test --tests "test.suites.SmokeSuite"
  */
 @Suite
 @SelectPackages(
@@ -16,5 +20,4 @@ import org.junit.platform.suite.api.Suite
     "console"
 )
 @IncludeTags("smoke")
-@Smoke
 class SmokeSuite

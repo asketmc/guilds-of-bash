@@ -61,6 +61,7 @@ data class ContractState(
  *
  * @property id Stable identifier of this draft ([ContractId]).
  * @property createdDay Day-index when the draft was created (>= 0).
+ * @property nextAutoResolveDay Day-index when the draft will auto-resolve if still in inbox (>= createdDay).
  * @property title Human-readable title.
  * @property rankSuggested Suggested guild/hero rank ([Rank]) for the contract.
  * @property feeOffered Offered fee in copper currency units (>= 0).
@@ -71,6 +72,7 @@ data class ContractState(
 data class ContractDraft(
     val id: ContractId,
     val createdDay: Int,
+    val nextAutoResolveDay: Int,
     val title: String,
     val rankSuggested: Rank,
     val feeOffered: Int,

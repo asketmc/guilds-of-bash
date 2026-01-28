@@ -77,6 +77,7 @@ data class ContractStateDto(
 data class ContractDraftDto(
     val id: Int, // ContractId as raw Int
     val createdDay: Int,
+    val nextAutoResolveDay: Int,
     val title: String,
     val rankSuggested: String, // Rank enum as string
     val feeOffered: Int,

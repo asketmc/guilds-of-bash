@@ -1,6 +1,7 @@
 package core
 
 import core.invariants.InvariantId
+import core.primitives.AutoResolveBucket
 import core.primitives.Outcome
 import core.primitives.Quality
 import core.primitives.Rank
@@ -393,3 +394,13 @@ data class ContractCancelled(
     val location: String,  // "inbox" or "board"
     val refundedCopper: Int
 ) : Event
+
+data class ContractAutoResolved(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val draftId: Int,
+    val bucket: AutoResolveBucket
+) : Event
+
