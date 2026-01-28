@@ -92,7 +92,8 @@ data class ContractPosted(
     val fromInboxId: Int,
     val rank: Rank,
     val fee: Int,
-    val salvage: SalvagePolicy
+    val salvage: SalvagePolicy,
+    val clientDeposit: Int = 0
 ) : Event
 
 data class HeroesArrived(

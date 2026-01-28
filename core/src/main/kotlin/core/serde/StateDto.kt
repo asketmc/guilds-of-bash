@@ -83,7 +83,8 @@ data class ContractDraftDto(
     val feeOffered: Int,
     val salvage: String, // SalvagePolicy enum as string
     val baseDifficulty: Int,
-    val proofHint: String
+    val proofHint: String,
+    val clientDeposit: Int = 0
 )
 
 @Serializable
@@ -95,7 +96,8 @@ data class BoardContractDto(
     val fee: Int,
     val salvage: String, // SalvagePolicy enum as string
     val baseDifficulty: Int,
-    val status: String // BoardStatus enum as string
+    val status: String, // BoardStatus enum as string
+    val clientDeposit: Int = 0
 )
 
 @Serializable

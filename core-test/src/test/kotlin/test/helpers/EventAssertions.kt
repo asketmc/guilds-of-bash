@@ -74,6 +74,15 @@ fun assertStepOk(events: List<Event>, label: String) {
     assertSequentialSeq(events, label)
 }
 
+/** Require exactly one main event (excluding InvariantViolated) of type T and return it. */
+inline fun <reified T : Event> requireSingleMainEvent(events: List<Event>, message: String = ""): T {
+    val mains = mainEvents(events)
+    assertEquals(1, mains.size, message.ifBlank { "Expected exactly one main event, found: ${mains.size}" })
+    val e = mains[0]
+    assertTrue(e is T, message.ifBlank { "Expected event of type ${T::class.simpleName}, actual=${e::class.simpleName}" })
+    return e as T
+}
+
 fun printScenarioResult(result: ScenarioResult, includeEvents: Boolean = false) {
     println("=== Scenario Result ===")
     println("Final day: ${result.finalState.meta.dayIndex}")

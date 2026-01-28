@@ -408,6 +408,7 @@ private fun serializeHeroesArrived(event: HeroesArrived, sb: StringBuilder) {
  * - `rank` (String; `event.rank.name`)
  * - `fee` (Int)
  * - `salvage` (String; `event.salvage.name`)
+ * - `clientDeposit` (Int; client's contribution towards the fee)
  *
  * ## Complexity
  * - Time: O(1)
@@ -420,6 +421,7 @@ private fun serializeContractPosted(event: ContractPosted, sb: StringBuilder) {
     sb.appendStringField("rank", event.rank.name)
     sb.appendIntField("fee", event.fee)
     sb.appendStringField("salvage", event.salvage.name)
+    sb.appendIntField("clientDeposit", event.clientDeposit)
     sb.append('}')
 }
 

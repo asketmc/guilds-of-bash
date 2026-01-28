@@ -163,3 +163,46 @@ fun assertAvailableCopper(state: GameState, expected: Int, message: String = "")
     val actual = state.economy.moneyCopper - state.economy.reservedCopper
     assertEquals(expected, actual, message.ifBlank { "Expected available money=$expected, actual=$actual" })
 }
+
+// Contract presence helpers
+fun assertInboxPresent(state: GameState, contractId: Int, message: String = "") {
+    assertTrue(
+        state.inbox.any { it.id.value == contractId },
+        message.ifBlank { "Expected inbox to contain contractId=$contractId, inboxIds=${state.inbox.map { it.id.value }}" }
+    )
+}
+
+fun assertInboxAbsent(state: GameState, contractId: Int, message: String = "") {
+    assertTrue(
+        state.inbox.none { it.id.value == contractId },
+        message.ifBlank { "Expected inbox NOT to contain contractId=$contractId, inboxIds=${state.inbox.map { it.id.value }}" }
+    )
+}
+
+fun assertBoardPresent(state: GameState, contractId: Int, message: String = "") {
+    assertTrue(
+        state.board.any { it.id.value == contractId },
+        message.ifBlank { "Expected board to contain contractId=$contractId, boardIds=${state.board.map { it.id.value }}" }
+    )
+}
+
+fun assertBoardAbsent(state: GameState, contractId: Int, message: String = "") {
+    assertTrue(
+        state.board.none { it.id.value == contractId },
+        message.ifBlank { "Expected board NOT to contain contractId=$contractId, boardIds=${state.board.map { it.id.value }}" }
+    )
+}
+
+// State construction helpers
+fun stateWithEconomy(
+    seed: UInt = 42u,
+    moneyCopper: Int = 100,
+    reservedCopper: Int = 0,
+    trophiesStock: Int = 0
+): GameState = initialState(seed).copy(
+    economy = EconomyState(
+        moneyCopper = moneyCopper,
+        reservedCopper = reservedCopper,
+        trophiesStock = trophiesStock
+    )
+)

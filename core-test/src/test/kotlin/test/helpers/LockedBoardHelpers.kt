@@ -33,6 +33,30 @@ fun boardContract(
     status = status
 )
 
+fun contractDraft(
+    id: Long = 1L,
+    createdDay: Int = 0,
+    nextAutoResolveDay: Int = 7,
+    title: String = "Test",
+    rankSuggested: Rank = Rank.F,
+    feeOffered: Int = 0,
+    salvage: SalvagePolicy = SalvagePolicy.GUILD,
+    baseDifficulty: Int = 1,
+    proofHint: String = "proof",
+    clientDeposit: Int = 0
+): ContractDraft = ContractDraft(
+    id = ContractId(id.toInt()),
+    createdDay = createdDay,
+    nextAutoResolveDay = nextAutoResolveDay,
+    title = title,
+    rankSuggested = rankSuggested,
+    feeOffered = feeOffered,
+    salvage = salvage,
+    baseDifficulty = baseDifficulty,
+    proofHint = proofHint,
+    clientDeposit = clientDeposit
+)
+
 fun hero(
     id: Long,
     name: String = "Hero #$id",
