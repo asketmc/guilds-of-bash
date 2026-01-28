@@ -43,6 +43,7 @@ fun initialState(seed: UInt): GameState {
         ContractDraft(
             id = ContractId(1),
             createdDay = 0,
+            nextAutoResolveDay = 7,
             title = "Request #1",
             rankSuggested = Rank.F,
             feeOffered = 0,
@@ -53,6 +54,7 @@ fun initialState(seed: UInt): GameState {
         ContractDraft(
             id = ContractId(2),
             createdDay = 0,
+            nextAutoResolveDay = 7,
             title = "Request #2",
             rankSuggested = Rank.F,
             feeOffered = 0,
