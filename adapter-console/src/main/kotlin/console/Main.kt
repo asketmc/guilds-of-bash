@@ -598,7 +598,7 @@ private fun printDayReport(prevState: GameState, newState: GameState, events: Li
     val arrivalsSet = newState.heroes.arrivalsToday.map { it.value }.toHashSet()
     val arrivalsHeroes = newState.heroes.roster.filter { arrivalsSet.contains(it.id.value) }
     val classCountsRaw = arrivalsHeroes.groupingBy { it.klass }.eachCount()
-    val classesToday = fmtEnumCounts(HeroClass.values().toList(), classCountsRaw)
+    val classesToday = fmtEnumCounts(HeroClass.entries.toList(), classCountsRaw)
 
     // Resolutions
     val resolvedEvents = events.filterIsInstance<ContractResolved>()
@@ -817,7 +817,7 @@ private fun formatEvent(e: Event): String =
         is ContractTermsUpdated -> "E#${e.seq} ContractTermsUpdated day=${e.day} rev=${e.revision} cmdId=${e.cmdId} contractId=${e.contractId} location=${e.location} oldFee=${e.oldFee} newFee=${e.newFee} oldSalvage=${e.oldSalvage} newSalvage=${e.newSalvage}"
         is ContractCancelled -> "E#${e.seq} ContractCancelled day=${e.day} rev=${e.revision} cmdId=${e.cmdId} contractId=${e.contractId} location=${e.location} refundedCopper=${e.refundedCopper}"
         is ProofPolicyChanged -> "E#${e.seq} ProofPolicyChanged day=${e.day} rev=${e.revision} cmdId=${e.cmdId} oldPolicy=${e.oldPolicy} newPolicy=${e.newPolicy}"
-        else -> "E#0 UnknownEvent"
+        is ContractAutoResolved -> "E#${e.seq} ContractAutoResolved day=${e.day} rev=${e.revision} cmdId=${e.cmdId} draftId=${e.draftId} bucket=${e.bucket}"
     }
 
 /**
