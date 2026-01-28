@@ -5,23 +5,14 @@ import core.invariants.verifyInvariants
 import core.primitives.*
 import core.rng.Rng
 import core.state.*
+import core.partial.PartialOutcomeResolver
+import core.partial.PartialResolutionInput
+import core.partial.TrophiesQuality
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-private const val DEFAULT_N_INBOX = 2
-private const val DEFAULT_N_HEROES = 2
-private const val DAYS_REMAINING_INIT = 2
-private const val TAX_INTERVAL_DAYS = 7
-private const val TAX_BASE_AMOUNT = 10
-private const val TAX_PENALTY_PERCENT = 10
-private const val TAX_MAX_MISSED = 3
-
-private const val AUTO_RESOLVE_INTERVAL_DAYS = 7
-private const val PERCENT_ROLL_MAX = 100
-private const val DECLINE_HARD_THRESHOLD = -30
-private const val STABILITY_PENALTY_BAD_AUTO_RESOLVE = 2
 
 private const val DEBUG_REJECTIONS = false
 
@@ -106,7 +97,7 @@ private fun resolveTheft(
     }
 
     val theftChance = computeTheftChance(hero, board)
-    val theftRoll = rng.nextInt(PERCENT_ROLL_MAX)
+    val theftRoll = rng.nextInt(BalanceSettings.PERCENT_ROLL_MAX)
 
     return if (theftRoll < theftChance) {
         val stolenAmount = (baseTrophiesCount + 1) / 2
@@ -123,7 +114,7 @@ private fun resolveOutcome(hero: Hero?, contractDifficulty: Int, rng: Rng): Outc
         BalanceSettings.SUCCESS_FORMULA_MULTIPLIER
 
     // Clamp success chance to valid range, leaving room for FAIL_CHANCE_MIN
-    val maxSuccessForFail = PERCENT_ROLL_MAX - BalanceSettings.PARTIAL_CHANCE_FIXED - BalanceSettings.FAIL_CHANCE_MIN
+    val maxSuccessForFail = BalanceSettings.PERCENT_ROLL_MAX - BalanceSettings.PARTIAL_CHANCE_FIXED - BalanceSettings.FAIL_CHANCE_MIN
     val pSuccess = rawSuccessChance.coerceIn(BalanceSettings.SUCCESS_CHANCE_MIN, maxSuccessForFail)
 
     // Fixed partial chance
@@ -132,7 +123,7 @@ private fun resolveOutcome(hero: Hero?, contractDifficulty: Int, rng: Rng): Outc
     // Fail is the remainder, guaranteed >= FAIL_CHANCE_MIN by construction
     // pFail = 100 - pSuccess - pPartial >= FAIL_CHANCE_MIN
 
-    val roll = rng.nextInt(PERCENT_ROLL_MAX)
+    val roll = rng.nextInt(BalanceSettings.PERCENT_ROLL_MAX)
     return when {
         roll < pSuccess -> Outcome.SUCCESS
         roll < pSuccess + pPartial -> Outcome.PARTIAL
@@ -260,8 +251,8 @@ private fun handleAdvanceDay(
 
     val rankOrdinal = workingState.guild.guildRank.coerceIn(1, RANK_THRESHOLDS.size)
     val rankThreshold = RANK_THRESHOLDS.firstOrNull { it.rankOrdinal == rankOrdinal }
-    val nInbox = rankThreshold?.inboxMultiplier?.times(2) ?: DEFAULT_N_INBOX
-    val nHeroes = rankThreshold?.heroesMultiplier?.times(2) ?: DEFAULT_N_HEROES
+    val nInbox = rankThreshold?.inboxMultiplier?.times(2) ?: BalanceSettings.DEFAULT_N_INBOX
+    val nHeroes = rankThreshold?.heroesMultiplier?.times(2) ?: BalanceSettings.DEFAULT_N_HEROES
 
     workingState = phaseInboxGeneration(workingState, cmd, rng, ctx, newDay, nInbox)
     workingState = phaseHeroArrivals(workingState, cmd, rng, ctx, newDay, nHeroes)
@@ -301,7 +292,7 @@ private fun phaseInboxGeneration(
             ContractDraft(
                 id = ContractId(draftId),
                 createdDay = newDay,
-                nextAutoResolveDay = newDay + AUTO_RESOLVE_INTERVAL_DAYS,
+                nextAutoResolveDay = newDay + BalanceSettings.AUTO_RESOLVE_INTERVAL_DAYS,
                 title = "Request #$draftId",
                 rankSuggested = Rank.F,
                 feeOffered = 0,
@@ -419,12 +410,12 @@ private fun phaseAutoResolveInbox(
             AutoResolveBucket.NEUTRAL -> {
                 val idx = updatedInbox.indexOfFirst { it.id == draft.id }
                 if (idx >= 0) {
-                    updatedInbox[idx] = draft.copy(nextAutoResolveDay = newDay + AUTO_RESOLVE_INTERVAL_DAYS)
+                    updatedInbox[idx] = draft.copy(nextAutoResolveDay = newDay + BalanceSettings.AUTO_RESOLVE_INTERVAL_DAYS)
                 }
             }
             AutoResolveBucket.BAD -> {
                 updatedInbox.removeIf { it.id == draft.id }
-                cumulativeStabilityDelta -= STABILITY_PENALTY_BAD_AUTO_RESOLVE
+                cumulativeStabilityDelta -= BalanceSettings.STABILITY_PENALTY_BAD_AUTO_RESOLVE
             }
         }
     }
@@ -506,7 +497,7 @@ private fun phasePickup(
                     seq = 0L,
                     heroId = heroId.value,
                     boardContractId = chosen.id.value,
-                    reason = if (bestScore < DECLINE_HARD_THRESHOLD) "unprofitable" else "too_risky"
+                    reason = if (bestScore < BalanceSettings.DECLINE_HARD_THRESHOLD) "unprofitable" else "too_risky"
                 )
             )
             continue
@@ -518,7 +509,7 @@ private fun phasePickup(
                 id = ActiveContractId(activeId),
                 boardContractId = chosen.id,
                 takenDay = newDay,
-                daysRemaining = DAYS_REMAINING_INIT,
+                daysRemaining = BalanceSettings.DAYS_REMAINING_INIT,
                 heroIds = listOf(heroId),
                 status = ActiveStatus.WIP
             )
@@ -536,7 +527,7 @@ private fun phasePickup(
                 activeContractId = activeId,
                 boardContractId = chosen.id.value,
                 heroIds = intArrayOf(heroId.value),
-                daysRemaining = DAYS_REMAINING_INIT
+                daysRemaining = BalanceSettings.DAYS_REMAINING_INIT
             )
         )
     }
@@ -832,7 +823,7 @@ private fun phaseTax(
 
     val totalDue = state.meta.taxAmountDue + state.meta.taxPenalty
     if (totalDue > 0) {
-        val penaltyAdded = (totalDue * TAX_PENALTY_PERCENT) / 100
+        val penaltyAdded = (totalDue * BalanceSettings.TAX_PENALTY_PERCENT) / 100
         val newTaxPenalty = state.meta.taxPenalty + penaltyAdded
         val newMissed = state.meta.taxMissedCount + 1
 
@@ -840,8 +831,8 @@ private fun phaseTax(
             meta = state.meta.copy(
                 taxPenalty = newTaxPenalty,
                 taxMissedCount = newMissed,
-                taxDueDay = state.meta.taxDueDay + TAX_INTERVAL_DAYS,
-                taxAmountDue = calculateTaxAmount(state.guild.guildRank, TAX_BASE_AMOUNT)
+                taxDueDay = state.meta.taxDueDay + BalanceSettings.TAX_INTERVAL_DAYS,
+                taxAmountDue = calculateTaxAmount(state.guild.guildRank, BalanceSettings.TAX_BASE_AMOUNT)
             )
         )
 
@@ -857,7 +848,7 @@ private fun phaseTax(
             )
         )
 
-        if (newMissed >= TAX_MAX_MISSED) {
+        if (newMissed >= BalanceSettings.TAX_MAX_MISSED) {
             ctx.emit(
                 GuildShutdown(
                     day = newDay,
@@ -873,8 +864,8 @@ private fun phaseTax(
     } else {
         val newState = state.copy(
             meta = state.meta.copy(
-                taxDueDay = state.meta.taxDueDay + TAX_INTERVAL_DAYS,
-                taxAmountDue = calculateTaxAmount(state.guild.guildRank, TAX_BASE_AMOUNT)
+                taxDueDay = state.meta.taxDueDay + BalanceSettings.TAX_INTERVAL_DAYS,
+                taxAmountDue = calculateTaxAmount(state.guild.guildRank, BalanceSettings.TAX_BASE_AMOUNT)
             )
         )
 
@@ -1023,8 +1014,27 @@ private fun handleCloseReturn(
     val fee = board?.fee ?: 0
     val clientDeposit = board?.clientDeposit ?: 0
     val playerTopUp = (fee - clientDeposit).coerceAtLeast(0)
-    val newReservedCopper = state.economy.reservedCopper - playerTopUp
-    val newMoneyCopper = if (ret.outcome == Outcome.FAIL) state.economy.moneyCopper else state.economy.moneyCopper - playerTopUp
+
+    // PARTIAL policy: apply deterministic normalization via resolver (PoC: floor( normal / 2 )).
+    val (newReservedCopper, newMoneyCopper) = if (ret.outcome == Outcome.PARTIAL) {
+        val resolved = PartialOutcomeResolver.resolve(
+            PartialResolutionInput(
+                outcome = ret.outcome,
+                normalMoneyValueCopper = fee,
+                trophiesCount = ret.trophiesCount,
+                trophiesQuality = TrophiesQuality.fromCoreQuality(ret.trophiesQuality),
+                suspectedTheft = ret.suspectedTheft
+            )
+        )
+        // Keep escrow/top-up semantics stable: release reserved, then pay out resolved value.
+        val reservedAfter = state.economy.reservedCopper - playerTopUp
+        val moneyAfter = state.economy.moneyCopper + resolved.moneyValueCopper
+        reservedAfter to moneyAfter
+    } else {
+        val reservedAfter = state.economy.reservedCopper - playerTopUp
+        val moneyAfter = if (ret.outcome == Outcome.FAIL) state.economy.moneyCopper else state.economy.moneyCopper - playerTopUp
+        reservedAfter to moneyAfter
+    }
 
     val updatedBoard = if (board != null && board.status == BoardStatus.LOCKED) {
         val hasNonClosedActives = updatedActives.any { active -> active.boardContractId == board.id && active.status != ActiveStatus.CLOSED }
@@ -1076,7 +1086,7 @@ private fun handleCloseReturn(
     return newState
 }
 
-@Suppress("UNUSED_PARAMETER", "ReturnCount")
+@Suppress("UNUSED_PARAMETER")
 private fun handlePayTax(
     state: GameState,
     cmd: PayTax,
@@ -1161,7 +1171,7 @@ private fun handleCreateContract(
     val draft = ContractDraft(
         id = ContractId(newId),
         createdDay = state.meta.dayIndex,
-        nextAutoResolveDay = state.meta.dayIndex + AUTO_RESOLVE_INTERVAL_DAYS,
+        nextAutoResolveDay = state.meta.dayIndex + BalanceSettings.AUTO_RESOLVE_INTERVAL_DAYS,
         title = cmd.title,
         rankSuggested = cmd.rank,
         feeOffered = 0,
