@@ -107,6 +107,7 @@ fun toDto(draft: ContractDraft): ContractDraftDto {
     return ContractDraftDto(
         id = draft.id.value,
         createdDay = draft.createdDay,
+        nextAutoResolveDay = draft.nextAutoResolveDay,
         title = draft.title,
         rankSuggested = draft.rankSuggested.name,
         feeOffered = draft.feeOffered,
@@ -246,6 +247,7 @@ fun fromDtoDraft(dto: ContractDraftDto): ContractDraft {
     return ContractDraft(
         id = ContractId(dto.id),
         createdDay = dto.createdDay,
+        nextAutoResolveDay = dto.nextAutoResolveDay,
         title = dto.title,
         rankSuggested = Rank.valueOf(dto.rankSuggested),
         feeOffered = dto.feeOffered,
