@@ -9,6 +9,20 @@ import core.partial.PartialOutcomeResolver
 import core.partial.PartialResolutionInput
 import core.partial.TrophiesQuality
 
+/**
+ * Domain transition boundary.
+ *
+ * Why:
+ * - This file is the only place where gameplay state is allowed to change.
+ * - It enforces replay-grade determinism. The same inputs must yield the same outputs.
+ * - It emits an auditable event journal so adapters can render, test, and replay without inference.
+ *
+ * How:
+ * - Every mutation is expressed as `Command -> step(...) -> StepResult`.
+ * - Randomness is consumed only through the provided [Rng]. Draw order is part of the contract.
+ * - Invariants are verified after the transition. Violations are surfaced as events, not hidden.
+ */
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,8 +34,21 @@ private const val DEBUG_REJECTIONS = false
 // Data classes
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Result of a single command application.
+ *
+ * Why:
+ * - [state] is the single source of truth for the world after the command.
+ * - [events] is a strict, causally ordered explanation of why that [state] exists.
+ *
+ * How:
+ * - [events] is emitted in a stable order and is safe to persist as a journal.
+ * - A consumer must never rebuild [state] from [events] unless it is implementing a verified replay.
+ */
 data class StepResult(
+    /** Authoritative state after the transition. */
     val state: GameState,
+    /** Audit trail for adapters, analytics, and replay. */
     val events: List<Event>
 )
 
@@ -30,31 +57,63 @@ data class StepResult(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Context for building events with sequential seq numbers.
- * Events list is encapsulated; external code should use [snapshot] to read
- * and [insertBeforeDayEnded] / [renumberSeqFrom1] for controlled mutations.
+ * Event sequencing policy.
+ *
+ * Why:
+ * - Seq numbers must be monotonic within a step so event order is non-negotiable.
+ * - Handlers must not reorder, backdate, or "fix" events outside explicit policy.
+ *
+ * How:
+ * - [emit] assigns the next seq and appends in causal order.
+ * - [insertBeforeDayEnded] exists only to keep end-of-day summaries terminal.
+ * - [renumberSeqFrom1] re-derives seq after insertion; seq is derived from final order.
  */
 class SeqContext {
     private val events = ArrayList<Event>(32)
     private var nextSeq = 1L
 
+    /**
+     * Why:
+     * - Prevents any handler from emitting an event without a stable order position.
+     *
+     * How:
+     * - Ignores any incoming seq and overwrites it with the next monotonic value.
+     */
     fun emit(event: Event): Event {
         val withSeq = assignSeq(event, nextSeq++)
         events.add(withSeq)
         return withSeq
     }
 
-    /** Returns immutable snapshot of accumulated events. */
+    /**
+     * Why:
+     * - Exposes events to callers without granting mutation rights.
+     *
+     * How:
+     * - Returns a defensive copy in emission order.
+     */
     fun snapshot(): List<Event> = events.toList()
 
-    /** Insert events before DayEnded (if present), or at end otherwise. */
+    /**
+     * Why:
+     * - Keeps [DayEnded] as the terminal domain event for a day when extra diagnostics are added.
+     *
+     * How:
+     * - Inserts before the last element only when that element is [DayEnded].
+     */
     fun insertBeforeDayEnded(toInsert: List<Event>) {
         val lastEventIsDayEnded = events.lastOrNull() is DayEnded
         val insertIndex = if (lastEventIsDayEnded) events.size - 1 else events.size
         events.addAll(insertIndex, toInsert)
     }
 
-    /** Re-assign seq numbers starting from 1 for all events. */
+    /**
+     * Why:
+     * - Seq is not identity. Seq is the audit order.
+     *
+     * How:
+     * - Rewrites every event with seq=1..N using the final list order.
+     */
     fun renumberSeqFrom1() {
         for (i in events.indices) {
             events[i] = assignSeq(events[i], (i + 1).toLong())
@@ -67,8 +126,15 @@ class SeqContext {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Compute theft chance based on hero traits and contract terms.
- * Returns a value in [0, 100) range representing percentage chance.
+ * Theft probability policy.
+ *
+ * Why:
+ * - Salvage terms must influence agent incentives in a measurable way.
+ * - The model must stay deterministic and debuggable.
+ *
+ * How:
+ * - Produces a single integer percentage in a fixed range.
+ * - All inputs are explicit. No hidden state is consulted.
  */
 private fun computeTheftChance(hero: Hero, board: BoardContract): Int {
     return when {
@@ -84,7 +150,14 @@ private fun computeTheftChance(hero: Hero, board: BoardContract): Int {
 }
 
 /**
- * Resolve theft and return (finalTrophiesCount, theftOccurred).
+ * Theft resolution.
+ *
+ * Why:
+ * - Suspicion is a governance mechanic. It gates strict proof policy and drives player trust.
+ *
+ * How:
+ * - Performs exactly one RNG roll.
+ * - Returns the trophies that enter the return packet, plus a flag for suspicion.
  */
 private fun resolveTheft(
     hero: Hero?,
@@ -108,6 +181,17 @@ private fun resolveTheft(
     }
 }
 
+/**
+ * Outcome resolution.
+ *
+ * Why:
+ * - The game needs repeatable risk so balance changes are testable.
+ * - Outcome must depend only on hero capability, contract difficulty, and RNG.
+ *
+ * How:
+ * - Uses one RNG roll and fixed probability buckets.
+ * - Preserves draw count to keep replay compatibility.
+ */
 private fun resolveOutcome(hero: Hero?, contractDifficulty: Int, rng: Rng): Outcome {
     val heroPower = calculateHeroPower(hero)
     val rawSuccessChance = (heroPower - contractDifficulty + BalanceSettings.SUCCESS_FORMULA_OFFSET) *
@@ -169,7 +253,17 @@ private fun assignSeq(event: Event, seq: Long): Event {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Pure reducer: (state, command, rng) -> (newState, events)
+ * Deterministic state transition.
+ *
+ * Why:
+ * - This is the single entry point for gameplay mutation.
+ * - It is the enforcement point for validation, auditability, and invariant visibility.
+ *
+ * How:
+ * - First validates [cmd]. On rejection: returns the unchanged [state] and one [CommandRejected] event.
+ * - On acceptance: increments revision exactly once, then routes to a command handler.
+ * - After the handler: verifies invariants and emits [InvariantViolated] events without rollback.
+ * - Final event order is strict; seq is derived from that order.
  */
 fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
     val validationResult = canApply(state, cmd)
@@ -237,6 +331,17 @@ fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
 // AdvanceDay phases
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * AdvanceDay is a domain transaction.
+ *
+ * Why:
+ * - A day tick must be atomic from the player perspective.
+ * - The pipeline must be stable so telemetry and replay stay comparable over time.
+ *
+ * How:
+ * - Runs a fixed phase order.
+ * - Emits summary events as the authoritative narrative of the day.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handleAdvanceDay(
     state: GameState,
@@ -272,6 +377,14 @@ private fun handleAdvanceDay(
     return workingState
 }
 
+/**
+ * Why:
+ * - Inbox exists to decouple content generation from player publication decisions.
+ *
+ * How:
+ * - Generates drafts using stability-driven threat scaling and seeded RNG.
+ * - Advances id counters in one direction only.
+ */
 private fun phaseInboxGeneration(
     state: GameState,
     cmd: AdvanceDay,
@@ -323,6 +436,13 @@ private fun phaseInboxGeneration(
     )
 }
 
+/**
+ * Why:
+ * - Heroes are agents. Arrivals are the simulation's supply side.
+ *
+ * How:
+ * - Appends new heroes and records their ids as "arrivalsToday" to lock ordering.
+ */
 private fun phaseHeroArrivals(
     state: GameState,
     cmd: AdvanceDay,
@@ -374,6 +494,15 @@ private fun phaseHeroArrivals(
     )
 }
 
+/**
+ * Why:
+ * - The world must not accumulate stale drafts forever.
+ * - Ignored requests must have a measurable systemic cost.
+ *
+ * How:
+ * - Applies a deterministic bucket decision per due draft.
+ * - Encodes the systemic impact via explicit events and stability adjustment.
+ */
 private fun phaseAutoResolveInbox(
     state: GameState,
     cmd: AdvanceDay,
@@ -448,6 +577,15 @@ private fun phaseAutoResolveInbox(
     return workingState
 }
 
+/**
+ * Why:
+ * - Contract pickup is the core agent decision loop.
+ * - The player does not micro-manage; the system must select and explain.
+ *
+ * How:
+ * - Iterates arriving heroes in deterministic id order.
+ * - Locks the chosen board contract before creating the active contract.
+ */
 private fun phasePickup(
     state: GameState,
     cmd: AdvanceDay,
@@ -543,6 +681,15 @@ private fun phasePickup(
     )
 }
 
+/**
+ * Why:
+ * - WIP advancement and resolution must be serial and stable to keep replay valid.
+ * - Auto-closure must apply economy, rank, and hero lifecycle rules without adapter logic.
+ *
+ * How:
+ * - Processes actives in deterministic id order.
+ * - Emits intermediate and terminal events in causal order.
+ */
 private data class WipResolveResult(
     val state: GameState,
     val successfulReturns: Int,
@@ -780,6 +927,14 @@ private fun phaseWipAndResolve(
     return WipResolveResult(workingState, successfulReturns, failedReturns)
 }
 
+/**
+ * Why:
+ * - Stability is the public health meter of the region.
+ * - It is the long-term difficulty driver.
+ *
+ * How:
+ * - Applies a single clamp-bounded delta and emits a single event when changed.
+ */
 private fun phaseStabilityUpdate(
     state: GameState,
     cmd: AdvanceDay,
@@ -808,6 +963,13 @@ private fun phaseStabilityUpdate(
     return state.copy(region = state.region.copy(stability = newStability))
 }
 
+/**
+ * Why:
+ * - DayEnded is a stable integration point for analytics and UI.
+ *
+ * How:
+ * - Captures a snapshot from the authoritative state without extra computation paths.
+ */
 private fun phaseDayEndedAndSnapshot(
     state: GameState,
     cmd: AdvanceDay,
@@ -840,6 +1002,15 @@ private fun phaseDayEndedAndSnapshot(
     return state
 }
 
+/**
+ * Why:
+ * - Taxes are the primary growth limiter.
+ * - Misses must accumulate into an unambiguous shutdown risk.
+ *
+ * How:
+ * - Evaluates due-day after the day pipeline.
+ * - Applies penalty and miss counter updates in one place.
+ */
 private fun phaseTax(
     state: GameState,
     cmd: AdvanceDay,
@@ -915,6 +1086,14 @@ private fun phaseTax(
 // Other command handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Why:
+ * - Trophy liquidation is the main short-term liquidity tool.
+ *
+ * How:
+ * - Converts trophies into copper using a fixed exchange rate.
+ * - Emits a single event that fully explains the transaction.
+ */
 @Suppress("UNUSED_PARAMETER", "ReturnCount")
 private fun handleSellTrophies(
     state: GameState,
@@ -951,6 +1130,15 @@ private fun handleSellTrophies(
     return newState
 }
 
+/**
+ * Why:
+ * - Publication is the player's commitment point.
+ * - Escrow exists to make commitment economically binding.
+ *
+ * How:
+ * - Moves a draft from inbox to board.
+ * - Reserves only the player's top-up portion; client deposit stays external to player funds.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handlePostContract(
     state: GameState,
@@ -1001,6 +1189,15 @@ private fun handlePostContract(
     return newState
 }
 
+/**
+ * Why:
+ * - Manual return closure is the player's governance moment.
+ * - Strict proof is enforced by refusal to mutate state, not by rejection spam.
+ *
+ * How:
+ * - In STRICT: silently no-ops on damaged proof or suspected theft.
+ * - Otherwise: applies salvage, closes the active, releases escrow, and advances rank.
+ */
 @Suppress("UNUSED_PARAMETER", "ReturnCount")
 private fun handleCloseReturn(
     state: GameState,
@@ -1113,6 +1310,15 @@ private fun handleCloseReturn(
     return newState
 }
 
+/**
+ * Why:
+ * - Tax payment is a risk-reduction lever.
+ * - Penalties must be paid before principal to prevent gaming.
+ *
+ * How:
+ * - Applies payment to penalty first, then to the base due.
+ * - Emits the remaining due so adapters do not infer debt.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handlePayTax(
     state: GameState,
@@ -1163,6 +1369,14 @@ private fun handlePayTax(
     return if (!isPartial) newState.copy(meta = newState.meta.copy(taxMissedCount = 0)) else newState
 }
 
+/**
+ * Why:
+ * - Proof policy is a governance switch.
+ * - It must be explicit to keep replays comparable.
+ *
+ * How:
+ * - Emits a change event and updates guild policy in one step.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handleSetProofPolicy(
     state: GameState,
@@ -1184,6 +1398,13 @@ private fun handleSetProofPolicy(
     return state.copy(guild = state.guild.copy(proofPolicy = cmd.policy))
 }
 
+/**
+ * Why:
+ * - Contract authoring is a content injection point for tools and future adapters.
+ *
+ * How:
+ * - Creates an inbox draft and advances id counters monotonically.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handleCreateContract(
     state: GameState,
@@ -1229,6 +1450,15 @@ private fun handleCreateContract(
     )
 }
 
+/**
+ * Why:
+ * - Negotiation is allowed before commitment.
+ * - Terms changes must preserve escrow correctness.
+ *
+ * How:
+ * - Applies updates either in inbox or on board.
+ * - Adjusts reserved copper only by the player's top-up delta.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handleUpdateContractTerms(
     state: GameState,
@@ -1309,6 +1539,15 @@ private fun handleUpdateContractTerms(
     }
 }
 
+/**
+ * Why:
+ * - Cancellation prevents dead contracts from blocking the board.
+ * - Refund rules must match the escrow model.
+ *
+ * How:
+ * - Inbox cancellation has no economic impact.
+ * - Board cancellation refunds only the player's top-up portion.
+ */
 @Suppress("UNUSED_PARAMETER")
 private fun handleCancelContract(
     state: GameState,
