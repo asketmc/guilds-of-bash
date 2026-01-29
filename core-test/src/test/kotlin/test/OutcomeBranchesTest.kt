@@ -8,7 +8,9 @@ import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.GameState
 import core.state.initialState
+import org.junit.jupiter.api.extension.ExtendWith
 import test.helpers.*
+import test.helpers.RngTraceTestExtension
 import kotlin.test.*
 
 /**
@@ -23,6 +25,7 @@ import kotlin.test.*
  * appear within a small, hardcoded seed set, because RNG draw order and upstream draws may shift.
  */
 @P2
+@ExtendWith(RngTraceTestExtension::class)
 class OutcomeBranchesTest {
 
     /**
@@ -87,6 +90,14 @@ class OutcomeBranchesTest {
             if (outcome == Outcome.SUCCESS) {
                 foundSuccess = true
 
+                // Forensic aid: make invariant failures discoverable from test XML.
+                val violations = events.filterIsInstance<InvariantViolated>()
+                if (violations.isNotEmpty()) {
+                    println("[FORENSIC] SUCCESS seed=$seed invariantViolations=${violations.size}")
+                    violations.forEach { v ->
+                        println("[FORENSIC] ${v.invariantId.code}: ${v.details}")
+                    }
+                }
 
                 // Verify no invariant violations on SUCCESS path
                 assertNoInvariantViolations(events, "SUCCESS outcome should not violate invariants")
