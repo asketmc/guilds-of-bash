@@ -92,7 +92,8 @@ data class ContractPosted(
     val fromInboxId: Int,
     val rank: Rank,
     val fee: Int,
-    val salvage: SalvagePolicy
+    val salvage: SalvagePolicy,
+    val clientDeposit: Int = 0
 ) : Event
 
 data class HeroesArrived(
@@ -404,3 +405,12 @@ data class ContractAutoResolved(
     val bucket: AutoResolveBucket
 ) : Event
 
+data class HeroDied(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val heroId: Int,
+    val activeContractId: Int,
+    val boardContractId: Int
+) : Event

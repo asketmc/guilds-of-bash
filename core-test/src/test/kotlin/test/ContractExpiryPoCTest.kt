@@ -45,8 +45,12 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [baseDifficulty1, baseDifficulty2] - no expiry bucket needed since not due
-        val rng = ScriptedRng(0, 0)
+        // ScriptedRng must include values for: inbox generation (2 drafts), hero name picks (2 heroes), then anything else.
+        // Not-due path doesn't consume expiry bucket.
+        val rng = ScriptedRng(
+            0, 0, // inbox baseDifficulty (2 drafts)
+            0, 0  // hero name picks (2 heroes)
+        )
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
@@ -81,8 +85,8 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [baseDifficulty1, baseDifficulty2, bucket=GOOD(0)]
-        val rng = ScriptedRng(0, 0, 0)
+        // Script: [inbox baseDifficulty x2, heroName x2, bucket=GOOD(0)]
+        val rng = ScriptedRng(0, 0, 0, 0, 0)
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
@@ -100,7 +104,7 @@ class ContractExpiryPoCTest {
 
     @Test
     fun `due - NEUTRAL keeps draft and schedules next week`() {
-        // Script: [baseDifficulty1, baseDifficulty2, bucket=NEUTRAL(1)]
+        // Script: [inbox baseDifficulty x2, heroName x2, bucket=NEUTRAL(1)]
         val state = initialState(42u).copy(
             meta = initialState(42u).meta.copy(dayIndex = 14),
             contracts = ContractState(
@@ -122,7 +126,7 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        val rng = ScriptedRng(0, 0, 1)
+        val rng = ScriptedRng(0, 0, 0, 0, 1)
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
@@ -144,7 +148,7 @@ class ContractExpiryPoCTest {
 
     @Test
     fun `due - BAD closes and applies stability delta`() {
-        // RNG seed chosen to produce BAD bucket (rng.nextInt(3) == 2)
+        // GIVEN
         val state = initialState(42u).copy(
             meta = initialState(42u).meta.copy(dayIndex = 14),
             region = RegionState(stability = 50),
@@ -167,21 +171,18 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        val rng = Rng(30L)
+        // Script: [inbox baseDifficulty x2, heroName x2, bucket=BAD(2)]
+        val rng = ScriptedRng(0, 0, 0, 0, 2)
 
+        // WHEN
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
-        // Draft should be removed
+        // THEN
         assertTrue(r.state.contracts.inbox.none { it.id.value == 1 }, "Expected inbox NOT to contain draftId=1")
-
-        // ContractAutoResolved event
         val auto = r.events.filter { it::class.simpleName == "ContractAutoResolved" }
         assertEquals(1, auto.size, "Expected exactly 1 ContractAutoResolved")
-
-        // Stability decreased by 2
         assertEquals(48, r.state.region.stability, "Expected stability to decrease by 2 on BAD")
 
-        // StabilityUpdated event
         val stab = r.events.filterIsInstance<StabilityUpdated>()
         assertEquals(1, stab.size, "Expected exactly 1 StabilityUpdated on BAD")
         val ev = stab.single()
@@ -191,7 +192,7 @@ class ContractExpiryPoCTest {
 
     @Test
     fun `cadence - NEUTRAL triggers only weekly not daily`() {
-        // Setup: draft due at day 15, then weekly
+        // GIVEN
         val state = initialState(42u).copy(
             meta = initialState(42u).meta.copy(dayIndex = 14),
             contracts = ContractState(
@@ -213,14 +214,18 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        val rng = Rng(18L)
+        // Day1 script: [inbox baseDifficulty x2, heroName x2, bucket=NEUTRAL(1)]
+        // Day2 script: [inbox baseDifficulty x2, heroName x2] (not due => no bucket)
+        val rng = ScriptedRng(0, 0, 0, 0, 1, 0, 0, 0, 0)
 
+        // WHEN
         val r1 = step(state, AdvanceDay(cmdId = 1L), rng)
         val d1 = r1.state.contracts.inbox.single { it.id.value == 1 }
         assertEquals(22, d1.nextAutoResolveDay)
 
-        // Advance again next day (day 16); should not auto-resolve
         val r2 = step(r1.state, AdvanceDay(cmdId = 2L), rng)
+
+        // THEN
         assertEquals(
             0,
             r2.events.filter { it::class.simpleName == "ContractAutoResolved" }.size,
@@ -273,8 +278,8 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [baseDifficulty1, baseDifficulty2, bucket1, bucket2, bucket3]
-        val rng = ScriptedRng(0, 0, 0, 1, 2)
+        // Script: [inbox baseDifficulty x2, heroName x2, bucket1, bucket2, bucket3]
+        val rng = ScriptedRng(0, 0, 0, 0, 0, 1, 2)
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 

@@ -21,5 +21,10 @@ enum class Outcome {
     /**
      * Contract failed; no reward.
      */
-    FAIL
+    FAIL,
+
+    /**
+     * Hero died during contract resolution; treated economically like FAIL and hero is removed from roster.
+     */
+    DEATH
 }

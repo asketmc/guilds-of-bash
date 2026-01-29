@@ -102,7 +102,7 @@ fun trophyResolveFixture(
     val heroes = specs.map { s ->
         Hero(
             id = HeroId(s.heroId.toInt()),
-            name = "Hero #${s.heroId}",
+            name = "Smith",
             rank = s.heroRank,
             klass = s.heroClass,
             traits = Traits(greed = s.greed, honesty = s.honesty, courage = s.courage),
