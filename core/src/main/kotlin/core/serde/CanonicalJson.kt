@@ -113,7 +113,8 @@ fun toDto(draft: ContractDraft): ContractDraftDto {
         feeOffered = draft.feeOffered,
         salvage = draft.salvage.name,
         baseDifficulty = draft.baseDifficulty,
-        proofHint = draft.proofHint
+        proofHint = draft.proofHint,
+        clientDeposit = draft.clientDeposit
     )
 }
 
@@ -126,7 +127,8 @@ fun toDto(board: BoardContract): BoardContractDto {
         fee = board.fee,
         salvage = board.salvage.name,
         baseDifficulty = board.baseDifficulty,
-        status = board.status.name
+        status = board.status.name,
+        clientDeposit = board.clientDeposit
     )
 }
 
@@ -253,7 +255,8 @@ fun fromDtoDraft(dto: ContractDraftDto): ContractDraft {
         feeOffered = dto.feeOffered,
         salvage = SalvagePolicy.valueOf(dto.salvage),
         baseDifficulty = dto.baseDifficulty,
-        proofHint = dto.proofHint
+        proofHint = dto.proofHint,
+        clientDeposit = dto.clientDeposit
     )
 }
 
@@ -266,7 +269,8 @@ fun fromDtoBoard(dto: BoardContractDto): BoardContract {
         fee = dto.fee,
         salvage = SalvagePolicy.valueOf(dto.salvage),
         baseDifficulty = dto.baseDifficulty,
-        status = BoardStatus.valueOf(dto.status)
+        status = BoardStatus.valueOf(dto.status),
+        clientDeposit = dto.clientDeposit
     )
 }
 

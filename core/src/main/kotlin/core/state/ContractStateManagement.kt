@@ -50,6 +50,7 @@ data class ContractState(
  * - [id] is stable and unique among drafts in the same state.
  * - [createdDay] is a day-index (expected >= 0).
  * - [feeOffered] is in copper units (expected >= 0).
+ * - [clientDeposit] is in copper units (expected 0..5, reduces player's out-of-pocket cost).
  * - [baseDifficulty] is a non-negative difficulty scalar.
  *   Current implementations may use:
  *   - 1..5 (threat-scaling generation)
@@ -68,6 +69,7 @@ data class ContractState(
  * @property salvage Salvage ownership policy ([SalvagePolicy]) proposed for posting.
  * @property baseDifficulty Difficulty scalar (non-negative; current PoC uses 1..5+ or 0..100 depending on source).
  * @property proofHint Human-readable hint for proof/validation flows.
+ * @property clientDeposit Client's contribution towards the fee (0-5 copper, reduces player's out-of-pocket cost).
  */
 data class ContractDraft(
     val id: ContractId,
@@ -78,7 +80,8 @@ data class ContractDraft(
     val feeOffered: Int,
     val salvage: SalvagePolicy,
     val baseDifficulty: Int,
-    val proofHint: String
+    val proofHint: String,
+    val clientDeposit: Int = 0
 )
 
 /**
@@ -92,6 +95,7 @@ data class ContractDraft(
  * - [id] is stable and unique among board entries.
  * - [postedDay] is a day-index (expected >= 0).
  * - [fee] is in copper units (expected >= 0).
+ * - [clientDeposit] is in copper units (expected 0..fee, reduces player's out-of-pocket cost).
  * - [baseDifficulty] is a non-negative difficulty scalar; current PoC commonly treats it as 1..5+.
  *
  * ## Determinism
@@ -101,10 +105,11 @@ data class ContractDraft(
  * @property postedDay Day-index when the contract was posted (>= 0).
  * @property title Human-readable title.
  * @property rank Target rank requirement ([Rank]).
- * @property fee Escrowed fee in copper currency units (>= 0).
+ * @property fee Escrowed fee in copper currency units (total hero payment, >= 0).
  * @property salvage Salvage ownership policy ([SalvagePolicy]) applied to this posted contract.
  * @property baseDifficulty Difficulty scalar (non-negative; current PoC uses 1..5+ scale).
  * @property status Current board lifecycle status ([BoardStatus]).
+ * @property clientDeposit Client's contribution towards the fee (reduces player's out-of-pocket cost).
  */
 data class BoardContract(
     val id: ContractId,
@@ -114,7 +119,8 @@ data class BoardContract(
     val fee: Int,
     val salvage: SalvagePolicy,
     val baseDifficulty: Int,  // Difficulty from original draft (1-5+ scale)
-    val status: BoardStatus
+    val status: BoardStatus,
+    val clientDeposit: Int = 0
 )
 
 /**

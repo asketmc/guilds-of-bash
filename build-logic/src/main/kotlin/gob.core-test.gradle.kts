@@ -20,7 +20,20 @@ if (noTestCache) {
 // === TEST TASKS
 // ====================================================================
 
+/**
+ * KISS fix:
+ * - Prevent JUnit Platform Suite engine from running in "regular" test tasks.
+ * - Suite classes (e.g., SmokeSuite) should be executed only by dedicated suite tasks,
+ *   otherwise they may fail CI with NoTestsDiscoveredException depending on filters.
+ */
+fun Test.excludeSuiteEngine() {
+    useJUnitPlatform {
+        excludeEngines("junit-platform-suite")
+    }
+}
+
 tasks.test {
+    excludeSuiteEngine()
     useJUnitPlatform {
         excludeTags("flaky", "perf")
     }
@@ -28,22 +41,27 @@ tasks.test {
 
 tasks.register<Test>("testFast") {
     group = "verification"
+    excludeSuiteEngine()
     useJUnitPlatform { excludeTags("slow", "flaky", "perf") }
 }
 
 tasks.register<Test>("testFull") {
     group = "verification"
+    excludeSuiteEngine()
     useJUnitPlatform { excludeTags("flaky", "perf") }
 }
 
 tasks.register<Test>("testQuarantine") {
     group = "verification"
+    excludeSuiteEngine()
     useJUnitPlatform { includeTags("flaky") }
     ignoreFailures = true
 }
 
 tasks.register<Test>("smokeTest") {
     group = "verification"
+    // keep suite engine excluded here too; smoke is tag-based, not suite-based
+    excludeSuiteEngine()
     useJUnitPlatform {
         includeTags("smoke")
         excludeTags("flaky", "perf")
@@ -54,6 +72,7 @@ tasks.register<Test>("smokeTest") {
 tasks.register<Test>("testPr") {
     group = "verification"
     description = "PR gate tests: smoke + p0 + p1 (excludes perf, flaky)"
+    excludeSuiteEngine()
     useJUnitPlatform {
         includeTags("smoke", "p0", "p1")
         excludeTags("perf", "flaky")
@@ -64,6 +83,7 @@ tasks.register<Test>("testPr") {
 tasks.register<Test>("testAllNoPerf") {
     group = "verification"
     description = "All tests except perf and flaky"
+    excludeSuiteEngine()
     useJUnitPlatform {
         excludeTags("perf", "flaky")
     }
@@ -72,11 +92,10 @@ tasks.register<Test>("testAllNoPerf") {
 tasks.register<Test>("perfTest") {
     group = "verification"
     description = "Runs perf/load tests only (manual)"
+    excludeSuiteEngine()
     useJUnitPlatform {
         includeTags("perf")
         excludeTags("flaky")
-        // Exclude JUnit Platform Suite classes that are used for other test filtering
-        excludeEngines("junit-platform-suite")
     }
 }
 
