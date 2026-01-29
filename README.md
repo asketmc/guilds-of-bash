@@ -3,6 +3,9 @@
 ![Gradle](https://img.shields.io/badge/Gradle-8.14-02303A?logo=gradle)
 [![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
+
+> 📄 **Testing strategy & scope:** see [`core-test/TESTING.md`](core-test/TESTING.md)
+
 # Guilds of Bash
 
 <details>
