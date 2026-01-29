@@ -10,6 +10,8 @@ package console
 import core.rng.Rng
 import core.state.GameState
 import core.primitives.ActiveStatus
+import console.render.BoxRenderer
+import console.render.RenderConfig
 
 /**
  * Renders in-world styled help document ("SCRIBE'S NOTE").
@@ -18,7 +20,7 @@ import core.primitives.ActiveStatus
 object DiegeticHelp {
     private const val TITLE = "SCRIBE'S NOTE"
 
-    fun render(): List<String> {
+    fun render(cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
         val rows = listOf(
             "Herein lies the ledger of guild commands, as recorded by the Scribe:",
             "",
@@ -52,8 +54,11 @@ object DiegeticHelp {
             "May your quill stay sharp and your ledger balanced.",
             "                                    — The Guild Scribe"
         )
-        return UiBox.render(TITLE, rows)
+        return BoxRenderer.box(TITLE, rows, cfg)
     }
+
+    fun renderLines(cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
+        render(cfg).split("\n")
 }
 
 /**
@@ -73,7 +78,7 @@ object DiegeticStatus {
      * @param rng Reserved for future deterministic variation (currently unused).
      */
     @Suppress("UNUSED_PARAMETER")
-    fun render(state: GameState, rng: Rng): List<String> {
+    fun render(state: GameState, rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
         val returnsNeedingClose = state.contracts.returns.count { it.requiresPlayerClose }
         val activeWipCount = state.contracts.active.count { it.status == ActiveStatus.WIP }
         val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
@@ -81,46 +86,56 @@ object DiegeticStatus {
         val sections = mutableListOf<List<String>>()
 
         // Header section
-        sections.add(listOf(
-            "To the Guildmaster, a summary of affairs:",
-            "Day ${state.meta.dayIndex} of operations, Revision ${state.meta.revision}"
-        ))
+        sections.add(
+            listOf(
+                "To the Guildmaster, a summary of affairs:",
+                "Day ${state.meta.dayIndex} of operations, Revision ${state.meta.revision}"
+            )
+        )
 
         // Treasury section
-        sections.add(listOf(
-            "TREASURY:",
-            "  Coin in coffers: ${state.economy.moneyCopper} copper",
-            "  Reserved for contracts: ${state.economy.reservedCopper} copper",
-            "  Available funds: $availableCopper copper",
-            "  Trophies in storage: ${state.economy.trophiesStock}"
-        ))
+        sections.add(
+            listOf(
+                "TREASURY:",
+                "  Coin in coffers: ${state.economy.moneyCopper} copper",
+                "  Reserved for contracts: ${state.economy.reservedCopper} copper",
+                "  Available funds: $availableCopper copper",
+                "  Trophies in storage: ${state.economy.trophiesStock}"
+            )
+        )
 
         // Operations section
-        sections.add(listOf(
-            "OPERATIONS:",
-            "  Contract offers awaiting review: ${state.contracts.inbox.size}",
-            "  Contracts posted to board: ${state.contracts.board.size}",
-            "  Active missions in progress: $activeWipCount",
-            "  Returning parties requiring attention: $returnsNeedingClose"
-        ))
+        sections.add(
+            listOf(
+                "OPERATIONS:",
+                "  Contract offers awaiting review: ${state.contracts.inbox.size}",
+                "  Contracts posted to board: ${state.contracts.board.size}",
+                "  Active missions in progress: $activeWipCount",
+                "  Returning parties requiring attention: $returnsNeedingClose"
+            )
+        )
 
         // Standing section
-        sections.add(listOf(
-            "GUILD STANDING:",
-            "  Regional stability: ${state.region.stability}%",
-            "  Guild reputation: ${state.guild.reputation}",
-            "  Current rank: ${state.guild.guildRank}",
-            "  Contracts completed (total): ${state.guild.completedContractsTotal}"
-        ))
+        sections.add(
+            listOf(
+                "GUILD STANDING:",
+                "  Regional stability: ${state.region.stability}%",
+                "  Guild reputation: ${state.guild.reputation}",
+                "  Current rank: ${state.guild.guildRank}",
+                "  Contracts completed (total): ${state.guild.completedContractsTotal}"
+            )
+        )
 
         // Tax section
-        sections.add(listOf(
-            "CROWN OBLIGATIONS:",
-            "  Tax due by day: ${state.meta.taxDueDay}",
-            "  Amount owed: ${state.meta.taxAmountDue} copper",
-            "  Accumulated penalties: ${state.meta.taxPenalty} copper",
-            "  Missed payments: ${state.meta.taxMissedCount}"
-        ))
+        sections.add(
+            listOf(
+                "CROWN OBLIGATIONS:",
+                "  Tax due by day: ${state.meta.taxDueDay}",
+                "  Amount owed: ${state.meta.taxAmountDue} copper",
+                "  Accumulated penalties: ${state.meta.taxPenalty} copper",
+                "  Missed payments: ${state.meta.taxMissedCount}"
+            )
+        )
 
         // Concerns section (deterministic based on state)
         val concerns = generateConcerns(state, returnsNeedingClose)
@@ -129,14 +144,19 @@ object DiegeticStatus {
         }
 
         // Footer
-        sections.add(listOf(
-            "",
-            "Respectfully submitted,",
-            "                                  — The Guild Steward"
-        ))
+        sections.add(
+            listOf(
+                "",
+                "Respectfully submitted,",
+                "                                  — The Guild Steward"
+            )
+        )
 
-        return UiBox.renderWithSections(TITLE, sections)
+        return BoxRenderer.boxWithSections(TITLE, sections, cfg)
     }
+
+    fun renderLines(state: GameState, rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
+        render(state, rng, cfg).split("\n")
 
     /**
      * Generate 2-3 deterministic concerns based on state thresholds.

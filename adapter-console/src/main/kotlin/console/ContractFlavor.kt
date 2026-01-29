@@ -17,6 +17,8 @@ import core.state.BoardContract
 import core.state.ContractDraft
 import core.state.GameState
 import core.state.Hero
+import console.render.BoxRenderer
+import console.render.RenderConfig
 
 /**
  * Contract flavor text generator.
@@ -197,10 +199,10 @@ object ContractListRenderer {
     /**
      * Render inbox contracts with flavor.
      */
-    fun renderInbox(state: GameState): List<String> {
+    fun renderInbox(state: GameState, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
         val drafts = state.contracts.inbox.sortedBy { it.id.value }
         if (drafts.isEmpty()) {
-            return UiBox.render("CONTRACT OFFERS", listOf("No new contract offers at this time."))
+            return BoxRenderer.box("CONTRACT OFFERS", listOf("No new contract offers at this time."), cfg)
         }
 
         val rows = mutableListOf<String>()
@@ -213,16 +215,22 @@ object ContractListRenderer {
             rows.add("» ${ContractFlavor.forDraft(draft)}")
             rows.add("")
         }
-        return UiBox.render("CONTRACT OFFERS", rows)
+        return BoxRenderer.box("CONTRACT OFFERS", rows, cfg)
     }
+
+    /**
+     * Render inbox contracts with flavor as lines.
+     */
+    fun renderInboxLines(state: GameState, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
+        renderInbox(state, cfg).split("\n")
 
     /**
      * Render board contracts with flavor.
      */
-    fun renderBoard(state: GameState): List<String> {
+    fun renderBoard(state: GameState, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
         val contracts = state.contracts.board.sortedBy { it.id.value }
         if (contracts.isEmpty()) {
-            return UiBox.render("GUILD NOTICE BOARD", listOf("The notice board stands empty."))
+            return BoxRenderer.box("GUILD NOTICE BOARD", listOf("The notice board stands empty."), cfg)
         }
 
         val rows = mutableListOf<String>()
@@ -235,6 +243,12 @@ object ContractListRenderer {
             rows.add("» ${ContractFlavor.forBoard(contract)}")
             rows.add("")
         }
-        return UiBox.render("GUILD NOTICE BOARD", rows)
+        return BoxRenderer.box("GUILD NOTICE BOARD", rows, cfg)
     }
+
+    /**
+     * Render board contracts with flavor as lines.
+     */
+    fun renderBoardLines(state: GameState, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
+        renderBoard(state, cfg).split("\n")
 }

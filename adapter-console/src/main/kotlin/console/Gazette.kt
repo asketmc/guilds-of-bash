@@ -7,6 +7,8 @@
 package console
 
 import core.DaySnapshot
+import console.render.BoxRenderer
+import console.render.RenderConfig
 
 /**
  * Snapshot data for gazette delta calculations.
@@ -160,8 +162,9 @@ object GazetteRenderer {
     fun render(
         day: Int,
         buffer: GazetteBuffer,
-        currentSnapshot: GazetteSnapshot
-    ): List<String>? {
+        currentSnapshot: GazetteSnapshot,
+        cfg: RenderConfig = RenderConfig()
+    ): String? {
         // Only render on weekly boundary
         if (day % 7 != 0) return null
 
@@ -196,7 +199,7 @@ object GazetteRenderer {
         rows.add("  Active Contracts: ${currentSnapshot.activeCount}")
         rows.add("  Posted Contracts: ${currentSnapshot.boardCount}")
 
-        return UiBox.render(GAZETTE_TITLE, rows)
+        return BoxRenderer.box(GAZETTE_TITLE, rows, cfg)
     }
 
     private fun formatDelta(delta: Int): String = when {
