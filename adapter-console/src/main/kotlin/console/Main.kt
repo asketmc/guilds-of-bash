@@ -55,6 +55,7 @@ fun main() {
     val rng = Rng(RNG_SEED)
     var nextCmdId = 1L
     var prevDaySnapshot: DaySnapshot? = null
+    var gazetteBuffer = GazetteBuffer()
 
     println("Console adapter ready")
     println("stateSeed=$STATE_SEED rngSeed=$RNG_SEED")
@@ -74,6 +75,8 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 printCmdVars()
                 printHelp()
+                // Also print diegetic version
+                DiegeticHelp.render().forEach { println(it) }
             }
 
             "quit", "q", "exit" -> {
@@ -86,6 +89,8 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 printCmdVars()
                 printStatus(state, rng)
+                // Also print diegetic version
+                DiegeticStatus.render(state, rng).forEach { println(it) }
             }
 
             "list" -> {
@@ -98,8 +103,16 @@ fun main() {
                 val target = parts[1].lowercase()
                 printCmdVars("target" to target)
                 when (target) {
-                    "inbox" -> printInbox(state)
-                    "board" -> printBoard(state)
+                    "inbox" -> {
+                        printInbox(state)
+                        // Also print framed version with flavor
+                        ContractListRenderer.renderInbox(state).forEach { println(it) }
+                    }
+                    "board" -> {
+                        printBoard(state)
+                        // Also print framed version with flavor
+                        ContractListRenderer.renderBoard(state).forEach { println(it) }
+                    }
                     "active" -> printActive(state)
                     "returns", "return" -> printReturns(state)
                     else -> unknownCommand(trimmed)
@@ -111,9 +124,12 @@ fun main() {
                 val cmdId = nextCmdId++
                 printCmdVars("cmdId" to cmdId)
                 val cmd = AdvanceDay(cmdId = cmdId)
-                val (newState, newSnapshot) = applyAndPrintWithAnalytics(state, cmd, rng, prevDaySnapshot)
+                val (newState, newSnapshot, newGazetteBuffer) = applyAndPrintWithAnalytics(
+                    state, cmd, rng, prevDaySnapshot, gazetteBuffer
+                )
                 state = newState
                 prevDaySnapshot = newSnapshot
+                gazetteBuffer = newGazetteBuffer
             }
 
             "post" -> {
@@ -427,9 +443,12 @@ fun main() {
                     println("AUTO_STEP: index=${it + 1}/$n")
                     printCmdVars("cmdId" to cmdId)
                     val cmd = AdvanceDay(cmdId = cmdId)
-                    val (newState, newSnapshot) = applyAndPrintWithAnalytics(state, cmd, rng, prevDaySnapshot)
+                    val (newState, newSnapshot, newGazetteBuffer) = applyAndPrintWithAnalytics(
+                        state, cmd, rng, prevDaySnapshot, gazetteBuffer
+                    )
                     state = newState
                     prevDaySnapshot = newSnapshot
+                    gazetteBuffer = newGazetteBuffer
                 }
             }
 
@@ -508,6 +527,14 @@ private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
     println("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
     for (e in events) println(formatEvent(e))
 
+    // Print single-command flavor hook (for post, close, sell, tax pay)
+    val flavourHook = renderCommandHook(state, newState, events)
+    if (flavourHook != null) {
+        println("─── Flavour ───")
+        println(flavourHook)
+        println("───────────────")
+    }
+
     val stateHash = hashState(newState)
     val eventsHash = hashEvents(events)
     println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
@@ -523,21 +550,23 @@ private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
  * - Day-level metrics require a boundary signal; [DayEnded] provides a stable boundary without peeking into core internals.
  * - Cross-day deltas (e.g., money delta) require a previous snapshot; returning the current snapshot makes this explicit.
  *
- * The function returns `(newState, currentSnapshotOrPrevious)` to preserve the last known snapshot when the command
+ * The function returns `(newState, currentSnapshotOrPrevious, updatedGazetteBuffer)` to preserve the last known snapshot when the command
  * does not end a day, which keeps the REPL state machine simple and predictable.
  *
  * @param state State before command application.
  * @param cmd Command to apply.
  * @param rng RNG instance shared across the session.
  * @param prevSnapshot Previous day snapshot (nullable for first day or first boundary observed).
- * @return Pair of (new state, snapshot to carry forward).
+ * @param gazetteBuffer Buffer tracking last 7 day snapshots for gazette generation.
+ * @return Triple of (new state, snapshot to carry forward, updated gazette buffer).
  */
 private fun applyAndPrintWithAnalytics(
     state: GameState,
     cmd: Command,
     rng: Rng,
-    prevSnapshot: DaySnapshot?
-): Pair<GameState, DaySnapshot?> {
+    prevSnapshot: DaySnapshot?,
+    gazetteBuffer: GazetteBuffer
+): Triple<GameState, DaySnapshot?, GazetteBuffer> {
     val prevState = state
     val result = step(state, cmd, rng)
     val newState = result.state
@@ -546,18 +575,45 @@ private fun applyAndPrintWithAnalytics(
     println("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
     for (e in events) println(formatEvent(e))
 
+    // Print hero quotes for contract resolutions (Feature 5)
+    events.filterIsInstance<ContractResolved>().forEach { resolved ->
+        val quote = HeroQuotes.forResolution(resolved, newState)
+        println("─── Hero Quote ───")
+        println(quote)
+        println("──────────────────")
+    }
+
     // Check if DayEnded event is present to compute day analytics
     val currentSnapshot = events.filterIsInstance<DayEnded>().firstOrNull()?.snapshot
     if (currentSnapshot != null) {
         printDayAnalytics(events, currentSnapshot, prevSnapshot)
         printDayReport(prevState = prevState, newState = newState, events = events)
 
+        // Print day narrative flavour
+        val narrativeLines = renderDayNarrative(prevState, newState, events)
+        if (narrativeLines.isNotEmpty()) {
+            println("─── Narrative ───")
+            narrativeLines.forEach { println(it) }
+            println("─────────────────")
+        }
+
+        // Update gazette buffer and potentially render gazette (Feature 1)
+        val gazetteSnapshot = GazetteSnapshot.fromDaySnapshot(currentSnapshot)
+        val updatedBuffer = gazetteBuffer.add(gazetteSnapshot)
+
+        // Render weekly gazette if applicable
+        val gazetteLines = GazetteRenderer.render(currentSnapshot.day, updatedBuffer, gazetteSnapshot)
+        if (gazetteLines != null) {
+            println()
+            gazetteLines.forEach { println(it) }
+        }
+
         val stateHash = hashState(newState)
         val eventsHash = hashEvents(events)
         println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
         println()
 
-        return newState to currentSnapshot
+        return Triple(newState, currentSnapshot, updatedBuffer)
     }
 
     val stateHash = hashState(newState)
@@ -565,7 +621,7 @@ private fun applyAndPrintWithAnalytics(
     println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
     println()
 
-    return newState to prevSnapshot
+    return Triple(newState, prevSnapshot, gazetteBuffer)
 }
 
 private fun printDayReport(prevState: GameState, newState: GameState, events: List<Event>) {
