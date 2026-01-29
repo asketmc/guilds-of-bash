@@ -5,19 +5,8 @@ import core.hash.hashState
 import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
-import test.helpers.Scenario
-import test.helpers.assertAvailableCopper
-import test.helpers.assertEventCount
-import test.helpers.assertNoInvariantViolations
-import test.helpers.assertNoRejections
-import test.helpers.assertReplayDeterminism
-import test.helpers.assertReservedCopper
-import test.helpers.assertSingleRejection
-import test.helpers.assertStateValid
-import test.helpers.assertStepOk
-import test.helpers.mainEventTypes
-import test.helpers.printScenarioResult
-import test.helpers.returns
+import test.helpers.*
+import kotlin.test.*
 import test.helpers.runScenario
 import kotlin.test.*
 
@@ -193,34 +182,28 @@ class GoldenReplaysTest {
             assertNoInvariantViolations(r2.events, "GR3a: rejection must not emit invariant violations")
         }
 
-        // 3b: Multiple posts exhaust available money; third is rejected; reserved accumulation verified
+        // 3b: Fee affordability check - post rejected when fee > available
         run {
             val rng = Rng(100L)
-            var state = initialState(42u)
-            val allEvents = mutableListOf<Event>()
+            // Set up state with limited available money
+            var state = stateWithEconomy(moneyCopper = 100, reservedCopper = 80, trophiesStock = 0).copy(
+                contracts = core.state.ContractState(
+                    inbox = listOf(contractDraft(id = 1L), contractDraft(id = 2L), contractDraft(id = 3L)),
+                    board = emptyList(),
+                    active = emptyList(),
+                    returns = emptyList()
+                )
+            )
+            // Available = 100 - 80 = 20
 
-            val r1 = step(state, AdvanceDay(cmdId = 1L), rng)
-            state = r1.state
-            allEvents += r1.events
+            val beforePost = state
+            val p1 = step(state, PostContract(inboxId = 1L, fee = 30, salvage = SalvagePolicy.GUILD, cmdId = 1L), rng)
 
-            val p1 = step(state, PostContract(inboxId = 1L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
-            state = p1.state
-            allEvents += p1.events
-
-            val p2 = step(state, PostContract(inboxId = 2L, fee = 40, salvage = SalvagePolicy.GUILD, cmdId = 3L), rng)
-            state = p2.state
-            allEvents += p2.events
-
-            val beforeThird = state
-            val p3 = step(state, PostContract(inboxId = 3L, fee = 30, salvage = SalvagePolicy.GUILD, cmdId = 4L), rng)
-            allEvents += p3.events
-
-            assertSingleRejection(p3.events, RejectReason.INVALID_STATE, "GR3b: expected INVALID_STATE for third post")
-            assertEventCount<ContractPosted>(allEvents, 2, "GR3b: expected exactly 2 successful ContractPosted total")
-            assertEquals(beforeThird, p3.state, "GR3b: rejection must not mutate state")
-            assertReservedCopper(p3.state, 80, "GR3b: reserved should be 40+40")
-            assertAvailableCopper(p3.state, 20, "GR3b: available should be 100-80")
-            assertNoInvariantViolations(p3.events, "GR3b: rejection must not emit invariant violations")
+            assertSingleRejection(p1.events, RejectReason.INVALID_STATE, "GR3b: expected INVALID_STATE when fee > available")
+            assertEquals(beforePost, p1.state, "GR3b: rejection must not mutate state")
+            assertReservedCopper(p1.state, 80, "GR3b: reserved should be unchanged")
+            assertAvailableCopper(p1.state, 20, "GR3b: available should be unchanged")
+            assertNoInvariantViolations(p1.events, "GR3b: rejection must not emit invariant violations")
         }
 
         // 3c: Sell trophies when stock is zero (no-op)

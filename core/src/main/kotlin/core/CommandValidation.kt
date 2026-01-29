@@ -146,10 +146,12 @@ private fun validateCloseReturn(state: GameState, cmd: CloseReturn): ValidationR
 
     val board = state.contracts.board.firstOrNull { it.id == ret.boardContractId }
     val fee = board?.fee ?: 0
-    if (state.economy.reservedCopper < fee || state.economy.moneyCopper < fee) {
+    // Guild needs enough money to pay hero the fee
+    // (reserved holds clientDeposit, which is separate from fee payment)
+    if (state.economy.moneyCopper < fee) {
         return ValidationResult.Rejected(
             reason = RejectReason.INVALID_STATE,
-            detail = "Insufficient funds for payout: fee=${fee}, reserved=${state.economy.reservedCopper}, money=${state.economy.moneyCopper}"
+            detail = "Insufficient funds for payout: fee=${fee}, money=${state.economy.moneyCopper}"
         )
     }
 

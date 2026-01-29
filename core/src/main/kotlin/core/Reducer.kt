@@ -807,7 +807,9 @@ private fun phaseWipAndResolve(
             if (requiresPlayerClose) {
                 updatedActives.add(active.copy(daysRemaining = 0, status = ActiveStatus.RETURN_READY))
             } else {
-                // Auto-close cleanup using already-cached boardContract
+                // Auto-close path (requiresPlayerClose == false): settle immediately.
+
+                // Salvage -> trophies stock
                 val trophiesGuildGets = if (boardContract != null) {
                     when (boardContract.salvage) {
                         SalvagePolicy.GUILD -> trophiesCount
@@ -815,17 +817,17 @@ private fun phaseWipAndResolve(
                         SalvagePolicy.SPLIT -> trophiesCount / 2
                     }
                 } else 0
-
                 val newTrophiesStock = workingState.economy.trophiesStock + trophiesGuildGets
 
                 // Player only paid/reserved the portion not covered by client deposit
                 val fee = boardContract?.fee ?: 0
                 val clientDeposit = boardContract?.clientDeposit ?: 0
-                val playerTopUp = (fee - clientDeposit).coerceAtLeast(0)
-                val newReservedCopper = workingState.economy.reservedCopper - playerTopUp
+
+                // New accounting model: reserved holds clientDeposit only
+                val newReservedCopper = workingState.economy.reservedCopper - clientDeposit
                 val newMoneyCopper =
                     if (outcome == Outcome.FAIL || outcome == Outcome.DEATH) workingState.economy.moneyCopper
-                    else workingState.economy.moneyCopper - playerTopUp
+                    else workingState.economy.moneyCopper - fee
 
                 val heroIdSet = active.heroIds.map { it.value }.toSet()
 
@@ -1148,8 +1150,6 @@ private fun handlePostContract(
 ): GameState {
     val draft = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.inboxId } ?: return state
     val fee = cmd.fee
-    // Player only pays the portion not covered by client deposit
-    val playerTopUp = (fee - draft.clientDeposit).coerceAtLeast(0)
 
     val boardContract = BoardContract(
         id = draft.id,
@@ -1168,7 +1168,14 @@ private fun handlePostContract(
             inbox = state.contracts.inbox.filter { it.id.value.toLong() != cmd.inboxId },
             board = state.contracts.board + boardContract
         ),
-        economy = state.economy.copy(reservedCopper = state.economy.reservedCopper + playerTopUp)
+        // Escrow semantics:
+        // - money += clientDeposit: guild receives the client's deposit
+        // - reserved += clientDeposit: deposit is locked until completion
+        // - available stays unchanged (both increase by deposit)
+        economy = state.economy.copy(
+            moneyCopper = state.economy.moneyCopper + draft.clientDeposit,
+            reservedCopper = state.economy.reservedCopper + draft.clientDeposit
+        )
     )
 
     ctx.emit(
@@ -1237,7 +1244,6 @@ private fun handleCloseReturn(
     // Player only paid/reserved the portion not covered by client deposit
     val fee = board?.fee ?: 0
     val clientDeposit = board?.clientDeposit ?: 0
-    val playerTopUp = (fee - clientDeposit).coerceAtLeast(0)
 
     // PARTIAL policy: apply deterministic normalization via resolver (PoC: floor( normal / 2 )).
     val (newReservedCopper, newMoneyCopper) = if (ret.outcome == Outcome.PARTIAL) {
@@ -1250,13 +1256,23 @@ private fun handleCloseReturn(
                 suspectedTheft = ret.suspectedTheft
             )
         )
-        // Keep escrow/top-up semantics stable: release reserved, then pay out resolved value.
-        val reservedAfter = state.economy.reservedCopper - playerTopUp
+        // Keep escrow semantics stable: release deposit, then apply resolved payout.
+        val reservedAfter = state.economy.reservedCopper - clientDeposit
         val moneyAfter = state.economy.moneyCopper + resolved.moneyValueCopper
         reservedAfter to moneyAfter
     } else {
-        val reservedAfter = state.economy.reservedCopper - playerTopUp
-        val moneyAfter = if (ret.outcome == Outcome.FAIL) state.economy.moneyCopper else state.economy.moneyCopper - playerTopUp
+        // SUCCESS: money -= fee (pay hero), reserved -= clientDeposit (unlock)
+        // FAIL: reserved -= clientDeposit (unlock), money unchanged
+        val reservedAfter = state.economy.reservedCopper - clientDeposit
+        val moneyAfter = when (ret.outcome) {
+            Outcome.FAIL -> state.economy.moneyCopper
+            else -> {
+                // SUCCESS: Guild pays hero the full fee from treasury
+                // moneyDelta = -fee, reservedDelta = -clientDeposit
+                // availableDelta = -fee - (-clientDeposit) = clientDeposit - fee
+                state.economy.moneyCopper - fee
+            }
+        }
         reservedAfter to moneyAfter
     }
 
@@ -1502,10 +1518,7 @@ private fun handleUpdateContractTerms(
             val oldFee = boardContract.fee
             val feeApplied = cmd.newFee ?: oldFee
             val salvageApplied = cmd.newSalvage ?: boardContract.salvage
-            // Calculate player's portion delta (clientDeposit doesn't change when fee changes)
-            val oldPlayerTopUp = (oldFee - boardContract.clientDeposit).coerceAtLeast(0)
-            val newPlayerTopUp = (feeApplied - boardContract.clientDeposit).coerceAtLeast(0)
-            val reservedDelta = newPlayerTopUp - oldPlayerTopUp
+            // In new accounting model, reserved holds only clientDeposit, which doesn't change when fee changes
 
             val updatedBoard = boardContract.copy(
                 fee = feeApplied,
@@ -1530,8 +1543,8 @@ private fun handleUpdateContractTerms(
             state.copy(
                 contracts = state.contracts.copy(
                     board = state.contracts.board.map { if (it.id.value.toLong() == cmd.contractId) updatedBoard else it }
-                ),
-                economy = state.economy.copy(reservedCopper = state.economy.reservedCopper + reservedDelta)
+                )
+                // Note: reserved unchanged because it holds clientDeposit, not fee
             )
         }
 
@@ -1576,8 +1589,8 @@ private fun handleCancelContract(
         }
 
         boardContract != null -> {
-            // Only refund the player's portion, not the client deposit
-            val playerTopUp = (boardContract.fee - boardContract.clientDeposit).coerceAtLeast(0)
+            // Cancel returns the client's deposit (guild had received and locked it)
+            val clientDeposit = boardContract.clientDeposit
 
             ctx.emit(
                 ContractCancelled(
@@ -1587,13 +1600,16 @@ private fun handleCancelContract(
                     seq = 0L,
                     contractId = boardContract.id.value,
                     location = "board",
-                    refundedCopper = playerTopUp
+                    refundedCopper = clientDeposit
                 )
             )
 
             state.copy(
                 contracts = state.contracts.copy(board = state.contracts.board.filter { it.id.value.toLong() != cmd.contractId }),
-                economy = state.economy.copy(reservedCopper = (state.economy.reservedCopper - playerTopUp).coerceAtLeast(0))
+                economy = state.economy.copy(
+                    moneyCopper = state.economy.moneyCopper - clientDeposit,
+                    reservedCopper = (state.economy.reservedCopper - clientDeposit).coerceAtLeast(0)
+                )
             )
         }
 

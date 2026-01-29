@@ -131,8 +131,8 @@ class UpdateContractTermsTest {
         assertEquals(50, event.oldFee)
         assertEquals(75, event.newFee)
 
-        // Reserved copper should increase by 25
-        assertEquals(oldReserved + 25, state3.economy.reservedCopper)
+        // Reserved copper stays the same (only clientDeposit is escrowed, not fee)
+        assertEquals(oldReserved, state3.economy.reservedCopper)
 
         // Contract fee should be updated
         val updatedContract = state3.board.contracts[contractOnBoard.id]
@@ -141,7 +141,7 @@ class UpdateContractTermsTest {
     }
 
     @Test
-    fun `UpdateContractTerms decreases board contract fee and releases escrow`() {
+    fun `UpdateContractTerms decreases board contract fee without affecting escrow`() {
         var state = initialState(123u)
         state = state.copy(economy = state.economy.copy(moneyCopper = 1000))
         val rng = Rng(456L)
@@ -172,8 +172,8 @@ class UpdateContractTermsTest {
         assertEquals(100, event.oldFee)
         assertEquals(60, event.newFee)
 
-        // Reserved copper should decrease by 40
-        assertEquals(oldReserved - 40, state3.economy.reservedCopper)
+        // Reserved copper stays the same (only clientDeposit is escrowed, not fee)
+        assertEquals(oldReserved, state3.economy.reservedCopper)
     }
 
     @Test

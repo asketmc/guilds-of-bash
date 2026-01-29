@@ -87,6 +87,7 @@ class OutcomeBranchesTest {
             if (outcome == Outcome.SUCCESS) {
                 foundSuccess = true
 
+
                 // Verify no invariant violations on SUCCESS path
                 assertNoInvariantViolations(events, "SUCCESS outcome should not violate invariants")
 

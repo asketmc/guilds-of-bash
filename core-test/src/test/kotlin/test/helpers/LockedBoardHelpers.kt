@@ -21,7 +21,8 @@ fun boardContract(
     fee: Int = 0,
     salvage: SalvagePolicy = SalvagePolicy.GUILD,
     baseDifficulty: Int = 1,
-    status: BoardStatus = BoardStatus.LOCKED
+    status: BoardStatus = BoardStatus.LOCKED,
+    clientDeposit: Int = 0
 ): BoardContract = BoardContract(
     id = ContractId(id.toInt()),
     postedDay = postedDay,
@@ -30,7 +31,8 @@ fun boardContract(
     fee = fee,
     salvage = salvage,
     baseDifficulty = baseDifficulty,
-    status = status
+    status = status,
+    clientDeposit = clientDeposit
 )
 
 fun contractDraft(
