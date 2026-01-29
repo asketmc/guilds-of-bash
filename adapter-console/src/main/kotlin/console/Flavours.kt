@@ -161,7 +161,7 @@ private fun storyTagResolution(tag: StoryTag, outcome: Outcome, v: Int): String 
             else "Green blood stains the forest floor - the goblin threat is ended."
         Outcome.PARTIAL -> if (v == 0) "Some goblins escaped into the deep caves, but their leaders are slain."
             else "The goblins retreated, but they'll be back."
-        Outcome.FAIL -> if (v == 0) "The goblins proved more cunning than expected."
+        Outcome.FAIL, Outcome.DEATH -> if (v == 0) "The goblins proved more cunning than expected."
             else "Ambushed in the goblin tunnels - a costly lesson."
     }
     StoryTag.MISSING_CARAVAN -> when (outcome) {
@@ -169,7 +169,7 @@ private fun storyTagResolution(tag: StoryTag, outcome: Outcome, v: Int): String 
             else "Justice served - the bandits hang from the roadside gibbets."
         Outcome.PARTIAL -> if (v == 0) "Half the cargo was already sold in the black markets."
             else "The merchant lives, though his purse is considerably lighter."
-        Outcome.FAIL -> if (v == 0) "The caravan's fate remains a mystery."
+        Outcome.FAIL, Outcome.DEATH -> if (v == 0) "The caravan's fate remains a mystery."
             else "The bandits vanished like morning mist."
     }
 }
@@ -296,7 +296,7 @@ private fun renderEventLine(event: Event, ctx: RenderContext): String? {
                 when (event.outcome) {
                     Outcome.SUCCESS -> if (v == 0) "The contract is fulfilled." else "Another job done proper."
                     Outcome.PARTIAL -> if (v == 0) "A messy finish." else "Partial success."
-                    Outcome.FAIL -> if (v == 0) "Failure." else "The heroes return empty-handed."
+                    Outcome.FAIL, Outcome.DEATH -> if (v == 0) "Failure." else "The heroes return empty-handed."
                 }
             }
         }

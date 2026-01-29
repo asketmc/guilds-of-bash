@@ -213,11 +213,115 @@ class OutcomeBranchesTest {
         assertEquals(outcome1, outcome2, "Outcome should not depend on salvage policy (GUILD vs HERO)")
         assertEquals(outcome1, outcome3, "Outcome should not depend on salvage policy (GUILD vs SPLIT)")
     }
-}
 
-/*
-ASSUMPTIONS
-- core.rng.Rng=java.util.SplittableRandom-backed and may change behavior across platforms
-- step/AdvanceDay consume RNG draws upstream of outcome roll, so seed→outcome mapping is intentionally treated as non-contractual
-- test stabilization goal=avoid mandatory FAIL reachability assertions while preserving deterministic and consequence contracts
-*/
+    @Test
+    fun `outcome DEATH is reachable and removes hero from roster`() {
+        // GIVEN
+        // Known seed that produces DEATH for this scenario (keeps test deterministic and fast)
+        val seed = 71L
+        var state = baseState(seed = 42u)
+        val rng = Rng(seed)
+        var cmdId = 1L
+        val allEvents = mutableListOf<Event>()
+
+        // WHEN
+        val r1 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r1.events, "day1")
+        state = r1.state
+        allEvents.addAll(r1.events)
+
+        val inboxId = state.contracts.inbox.firstOrNull()?.id?.value?.toLong()
+        assertNotNull(inboxId, "Should have inbox contracts")
+
+        val r2 = step(
+            state,
+            PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        )
+        assertStepOk(r2.events, "post")
+        state = r2.state
+        allEvents.addAll(r2.events)
+
+        val r3 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r3.events, "take")
+        state = r3.state
+        allEvents.addAll(r3.events)
+
+        val activeBeforeResolve = state.contracts.active.firstOrNull()
+        assertNotNull(activeBeforeResolve, "Should have active contract")
+        assertTrue(activeBeforeResolve.heroIds.isNotEmpty(), "Active contract should have heroes")
+        val heroOnMission = activeBeforeResolve.heroIds.first()
+
+        val r4 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r4.events, "resolve")
+        state = r4.state
+        allEvents.addAll(r4.events)
+
+        // THEN
+        val resolved = allEvents.filterIsInstance<ContractResolved>().lastOrNull()
+        assertNotNull(resolved, "Should have ContractResolved")
+        assertEquals(Outcome.DEATH, resolved.outcome, "Seed 71 should produce DEATH outcome")
+
+        val heroDied = allEvents.filterIsInstance<HeroDied>()
+        assertTrue(heroDied.any { it.heroId == heroOnMission.value }, "HeroDied must reference the dead hero")
+
+        assertFalse(state.heroes.roster.any { it.id == heroOnMission }, "Hero must be removed from roster on DEATH")
+        assertEquals(0, resolved.trophiesCount, "DEATH outcome must have 0 trophies")
+        assertTrue(allEvents.filterIsInstance<TrophyTheftSuspected>().isEmpty(), "DEATH should not trigger theft")
+
+        val closed = allEvents.filterIsInstance<ReturnClosed>()
+        assertTrue(closed.any { it.activeContractId == resolved.activeContractId }, "DEATH should auto-close")
+
+        assertNoInvariantViolations(allEvents, "DEATH outcome should not violate invariants")
+    }
+
+    @Test
+    fun `outcome DEATH economy follows FAIL rules`() {
+        // GIVEN
+        val seed = 71L
+        var state = baseState(seed = 42u)
+        val rng = Rng(seed)
+        var cmdId = 1L
+
+        // WHEN
+        val r1 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r1.events, "day1")
+        state = r1.state
+
+        val inboxId = state.contracts.inbox.firstOrNull()?.id?.value?.toLong()
+        assertNotNull(inboxId, "Should have inbox contracts")
+
+        val r2 = step(
+            state,
+            PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            rng
+        )
+        assertStepOk(r2.events, "post")
+        state = r2.state
+
+        val r3 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r3.events, "take")
+        state = r3.state
+        val moneyAfterTake = state.economy.moneyCopper
+
+        val r4 = step(state, AdvanceDay(cmdId = cmdId++), rng)
+        assertStepOk(r4.events, "resolve")
+        state = r4.state
+
+        // THEN
+        val allEvents = r1.events + r2.events + r3.events + r4.events
+        val resolved = allEvents.filterIsInstance<ContractResolved>().lastOrNull()
+        assertNotNull(resolved, "Should have ContractResolved")
+        assertEquals(Outcome.DEATH, resolved.outcome, "Seed 71 should produce DEATH outcome")
+
+        assertEquals(moneyAfterTake, state.economy.moneyCopper, "DEATH should not charge fee (same as FAIL)")
+        assertNoInvariantViolations(allEvents, "DEATH economy handling should not violate invariants")
+    }
+
+    /*
+    ASSUMPTIONS
+    - core.rng.Rng=java.util.SplittableRandom-backed and may change behavior across platforms
+    - step/AdvanceDay consume RNG draws upstream of outcome roll, so seed→outcome mapping is intentionally treated as non-contractual
+    - test stabilization goal=avoid mandatory FAIL reachability assertions while preserving deterministic and consequence contracts
+    */
+}

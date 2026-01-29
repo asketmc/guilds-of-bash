@@ -104,6 +104,7 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is ContractTermsUpdated -> serializeContractTermsUpdated(event, sb)
         is ContractCancelled -> serializeContractCancelled(event, sb)
         is ContractAutoResolved -> serializeContractAutoResolved(event, sb)
+        is HeroDied -> serializeHeroDied(event, sb)
     }
 }
 
@@ -873,3 +874,22 @@ private fun serializeContractAutoResolved(event: ContractAutoResolved, sb: Strin
     sb.append('}')
 }
 
+/**
+ * Serializes [HeroDied].
+ *
+ * Emitted additional fields (in order):
+ * - `heroId` (Int)
+ * - `activeContractId` (Int)
+ * - `boardContractId` (Int)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeHeroDied(event: HeroDied, sb: StringBuilder) {
+    sb.appendCommonFields("HeroDied", event)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("activeContractId", event.activeContractId)
+    sb.appendIntField("boardContractId", event.boardContractId)
+    sb.append('}')
+}

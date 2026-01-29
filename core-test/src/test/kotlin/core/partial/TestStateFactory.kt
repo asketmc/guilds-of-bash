@@ -71,7 +71,7 @@ object TestStateFactory {
 
         val hero = Hero(
             id = heroId,
-            name = "Hero #1",
+            name = "Smith",
             rank = core.primitives.Rank.F,
             klass = core.primitives.HeroClass.WARRIOR,
             traits = Traits(greed = 50, honesty = 50, courage = 50),

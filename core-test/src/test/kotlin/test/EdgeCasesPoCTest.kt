@@ -92,30 +92,80 @@ class EdgeCasesPoCTest {
 
     @Test
     fun `EC_POC_PROCESS_TWICE attempt to close already-closed return`() {
-        val s = session(stateSeed = 42u, rngSeed = 300L)
+        // GIVEN: a state with a single return requiring player close
+        val base = session(stateSeed = 42u, rngSeed = 300L)
 
-        // post → take → resolve → close → close again (expects NOT_FOUND on second close)
-        s.advanceDay()
-        s.postContractFromInbox(inboxIndex = 0, fee = 100, salvage = SalvagePolicy.HERO)
-        s.advanceDay()
-        s.advanceDay()
+        val heroId = core.primitives.HeroId(1)
+        val boardId = core.primitives.ContractId(1)
+        val activeId = core.primitives.ActiveContractId(1)
 
-        val rp = requireReturnRequiringClose(
-            state = s.state,
-            message = "EC_PROCESS_TWICE: expected requiresPlayerClose=true for this seed/flow"
+        base.state = base.state.copy(
+            heroes = base.state.heroes.copy(
+                roster = listOf(
+                    core.state.Hero(
+                        id = heroId,
+                        name = "Smith",
+                        rank = core.primitives.Rank.F,
+                        klass = core.primitives.HeroClass.WARRIOR,
+                        traits = core.state.Traits(greed = 50, honesty = 50, courage = 50),
+                        status = core.primitives.HeroStatus.AVAILABLE,
+                        historyCompleted = 0
+                    )
+                ),
+                arrivalsToday = emptyList()
+            ),
+            contracts = base.state.contracts.copy(
+                board = listOf(
+                    core.state.BoardContract(
+                        id = boardId,
+                        postedDay = 0,
+                        title = "Board",
+                        rank = core.primitives.Rank.F,
+                        fee = 0,
+                        salvage = core.primitives.SalvagePolicy.GUILD,
+                        baseDifficulty = 1,
+                        status = core.primitives.BoardStatus.COMPLETED
+                    )
+                ),
+                active = listOf(
+                    core.state.ActiveContract(
+                        id = activeId,
+                        boardContractId = boardId,
+                        takenDay = 0,
+                        daysRemaining = 0,
+                        heroIds = listOf(heroId),
+                        status = core.primitives.ActiveStatus.RETURN_READY
+                    )
+                ),
+                returns = listOf(
+                    core.state.ReturnPacket(
+                        activeContractId = activeId,
+                        boardContractId = boardId,
+                        heroIds = listOf(heroId),
+                        resolvedDay = base.state.meta.dayIndex,
+                        outcome = core.primitives.Outcome.PARTIAL,
+                        trophiesCount = 1,
+                        trophiesQuality = core.primitives.Quality.OK,
+                        reasonTags = emptyList(),
+                        requiresPlayerClose = true,
+                        suspectedTheft = false
+                    )
+                )
+            )
         )
-        val activeId = rp.activeContractId.value.toLong()
 
-        val r1 = s.closeReturn(activeContractId = activeId)
+        // WHEN: close once
+        val r1 = base.closeReturn(activeContractId = activeId.value.toLong())
         assertEventCount<ReturnClosed>(r1.events, expected = 1, message = "First close should succeed")
 
-        val r2 = s.closeReturn(activeContractId = activeId)
+        // THEN: close again rejected
+        val r2 = base.closeReturn(activeContractId = activeId.value.toLong())
         assertSingleRejection(
             r2.events,
             RejectReason.NOT_FOUND,
             "EC_PROCESS_TWICE: Second close attempt should be rejected (return already closed)"
         )
-        assertEquals(s.state, r2.state, "State should be unchanged after rejected command")
+        assertEquals(base.state, r2.state, "State should be unchanged after rejected command")
         assertNoInvariantViolations(r2.events, "EC_PROCESS_TWICE: No invariant violations expected")
     }
 

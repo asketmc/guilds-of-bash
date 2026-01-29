@@ -59,7 +59,7 @@ fun contractDraft(
 
 fun hero(
     id: Long,
-    name: String = "Hero #$id",
+    name: String = "Smith",
     rank: Rank = Rank.F,
     klass: HeroClass = HeroClass.WARRIOR,
     traits: Traits = Traits(greed = 50, honesty = 50, courage = 50),

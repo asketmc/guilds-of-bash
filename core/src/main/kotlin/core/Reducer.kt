@@ -127,6 +127,8 @@ private fun resolveOutcome(hero: Hero?, contractDifficulty: Int, rng: Rng): Outc
     return when {
         roll < pSuccess -> Outcome.SUCCESS
         roll < pSuccess + pPartial -> Outcome.PARTIAL
+        // New DEATH tail: fixed high-roll death chance without extra RNG draws
+        roll >= (BalanceSettings.PERCENT_ROLL_MAX - 5) -> Outcome.DEATH
         else -> Outcome.FAIL
     }
 }
@@ -158,6 +160,7 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is ContractTermsUpdated -> event.copy(seq = seq)
         is ContractCancelled -> event.copy(seq = seq)
         is ContractAutoResolved -> event.copy(seq = seq)
+        is HeroDied -> event.copy(seq = seq)
     }
 }
 
@@ -335,10 +338,11 @@ private fun phaseHeroArrivals(
     for (i in 0 until nHeroes) {
         val heroId = nextHeroId++
         heroIdsRaw[i] = heroId
+        val heroName = core.flavour.HeroNames.POOL[rng.nextInt(core.flavour.HeroNames.POOL.size)]
         newHeroes.add(
             Hero(
                 id = HeroId(heroId),
-                name = "Hero #$heroId",
+                name = heroName,
                 rank = Rank.F,
                 klass = HeroClass.WARRIOR,
                 traits = Traits(greed = 50, honesty = 50, courage = 50),
@@ -673,14 +677,34 @@ private fun phaseWipAndResolve(
                 val playerTopUp = (fee - clientDeposit).coerceAtLeast(0)
                 val newReservedCopper = workingState.economy.reservedCopper - playerTopUp
                 val newMoneyCopper =
-                    if (outcome == Outcome.FAIL) workingState.economy.moneyCopper
+                    if (outcome == Outcome.FAIL || outcome == Outcome.DEATH) workingState.economy.moneyCopper
                     else workingState.economy.moneyCopper - playerTopUp
 
                 val heroIdSet = active.heroIds.map { it.value }.toSet()
-                val updatedRoster = workingState.heroes.roster.map { h ->
-                    if (heroIdSet.contains(h.id.value)) {
-                        h.copy(status = HeroStatus.AVAILABLE, historyCompleted = h.historyCompleted + 1)
-                    } else h
+
+                // Handle hero removal on DEATH: remove from roster and emit HeroDied events
+                val (updatedRoster, updatedArrivals, heroDiedEvents) = if (outcome == Outcome.DEATH) {
+                    val remaining = workingState.heroes.roster.filter { h -> !heroIdSet.contains(h.id.value) }
+                    val remainingArrivals = workingState.heroes.arrivalsToday.filter { id -> !heroIdSet.contains(id.value) }
+                    val died = heroIdSet.map { hid ->
+                        HeroDied(
+                            day = workingState.meta.dayIndex,
+                            revision = workingState.meta.revision,
+                            cmdId = cmd.cmdId,
+                            seq = 0L,
+                            heroId = hid,
+                            activeContractId = active.id.value,
+                            boardContractId = (boardContract?.id?.value ?: active.boardContractId.value)
+                        )
+                    }
+                    Triple(remaining, remainingArrivals, died)
+                } else {
+                    val updated = workingState.heroes.roster.map { h ->
+                        if (heroIdSet.contains(h.id.value)) {
+                            h.copy(status = HeroStatus.AVAILABLE, historyCompleted = h.historyCompleted + 1)
+                        } else h
+                    }
+                    Triple(updated, workingState.heroes.arrivalsToday, emptyList<Event>())
                 }
 
                 val updatedBoard = if (boardContract != null && boardContract.status == BoardStatus.LOCKED) {
@@ -719,7 +743,7 @@ private fun phaseWipAndResolve(
 
                 workingState = workingState.copy(
                     contracts = workingState.contracts.copy(board = updatedBoard),
-                    heroes = workingState.heroes.copy(roster = updatedRoster),
+                    heroes = workingState.heroes.copy(roster = updatedRoster, arrivalsToday = updatedArrivals),
                     economy = workingState.economy.copy(
                         trophiesStock = newTrophiesStock,
                         reservedCopper = newReservedCopper,
@@ -727,6 +751,9 @@ private fun phaseWipAndResolve(
                     ),
                     guild = newGuildState
                 )
+
+                // Emit HeroDied events if any
+                for (e in heroDiedEvents) ctx.emit(e)
 
                 ctx.emit(
                     ReturnClosed(
