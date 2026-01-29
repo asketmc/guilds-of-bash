@@ -31,7 +31,7 @@ class GoldenOutputTest {
     fun `gazette buffer accumulates snapshots`() {
         var buffer = GazetteBuffer()
         repeat(5) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
         assertEquals(5, buffer.size())
         assertFalse(buffer.hasFullWeek())
@@ -41,7 +41,7 @@ class GoldenOutputTest {
     fun `gazette buffer reaches full week at 7 days`() {
         var buffer = GazetteBuffer()
         repeat(7) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
         assertTrue(buffer.hasFullWeek(), "Buffer should have full week after 7 days")
         assertEquals(7, buffer.size())
@@ -51,7 +51,7 @@ class GoldenOutputTest {
     fun `gazette buffer maintains max 7 entries`() {
         var buffer = GazetteBuffer()
         repeat(10) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
         assertEquals(7, buffer.size())
         assertEquals(4, buffer.oldest()?.day) // Days 4-10 kept
@@ -62,9 +62,9 @@ class GoldenOutputTest {
     fun `gazette not rendered before 7 days`() {
         var buffer = GazetteBuffer()
         repeat(6) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
-        val current = createGazetteSnapshot(day = 6)
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 6))
         val result = GazetteRenderer.render(day = 6, buffer, current)
         assertNull(result, "Gazette should not render before 7 days")
     }
@@ -73,9 +73,9 @@ class GoldenOutputTest {
     fun `gazette renders on day 7 with full buffer`() {
         var buffer = GazetteBuffer()
         repeat(7) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
-        val current = createGazetteSnapshot(day = 7)
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7))
         val result = GazetteRenderer.render(day = 7, buffer, current)
         assertNotNull(result, "Gazette should render on day 7")
         assertTrue(result.any { it.contains("GUILD GAZETTE") })
@@ -85,9 +85,9 @@ class GoldenOutputTest {
     fun `gazette renders on day 14 (second week)`() {
         var buffer = GazetteBuffer()
         repeat(7) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 8)) // Days 8-14
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 8))) // Days 8-14
         }
-        val current = createGazetteSnapshot(day = 14)
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 14))
         val result = GazetteRenderer.render(day = 14, buffer, current)
         assertNotNull(result)
         assertTrue(result.any { it.contains("Week 2") })
@@ -97,9 +97,9 @@ class GoldenOutputTest {
     fun `gazette not rendered on non-weekly boundary`() {
         var buffer = GazetteBuffer()
         repeat(7) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1)))
         }
-        val current = createGazetteSnapshot(day = 8)
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 8))
         buffer = buffer.add(current)
         val result = GazetteRenderer.render(day = 8, buffer, current)
         assertNull(result, "Gazette should not render on day 8")
@@ -109,9 +109,9 @@ class GoldenOutputTest {
     fun `gazette headlines deterministic for same input`() {
         var buffer = GazetteBuffer()
         repeat(7) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1, stability = 50 - i * 2))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1, stability = 50 - i * 2)))
         }
-        val current = createGazetteSnapshot(day = 7, stability = 38)
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7, stability = 38))
 
         val headlines1 = GazetteHeadlines.generate(buffer, current)
         val headlines2 = GazetteHeadlines.generate(buffer, current)
@@ -122,11 +122,11 @@ class GoldenOutputTest {
     @Test
     fun `gazette unrest headline on stability drop`() {
         var buffer = GazetteBuffer()
-        buffer = buffer.add(createGazetteSnapshot(day = 1, stability = 60))
+        buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = 1, stability = 60)))
         repeat(6) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 2, stability = 60 - i * 2))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 2, stability = 60 - i * 2)))
         }
-        val current = createGazetteSnapshot(day = 7, stability = 50) // Delta = -10
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7, stability = 50)) // Delta = -10
 
         val headlines = GazetteHeadlines.generate(buffer, current)
         assertTrue(headlines.any { it.contains("CHAOS") || it.contains("UNREST") || it.contains("TENSIONS") })
@@ -135,11 +135,11 @@ class GoldenOutputTest {
     @Test
     fun `gazette prosperity headline on gold increase`() {
         var buffer = GazetteBuffer()
-        buffer = buffer.add(createGazetteSnapshot(day = 1, gold = 100))
+        buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = 1, gold = 100)))
         repeat(6) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 2, gold = 100 + i * 20))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 2, gold = 100 + i * 20)))
         }
-        val current = createGazetteSnapshot(day = 7, gold = 250) // Delta = +150
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7, gold = 250)) // Delta = +150
 
         val headlines = GazetteHeadlines.generate(buffer, current)
         assertTrue(headlines.any { it.contains("TRADE") || it.contains("PROSPERITY") || it.contains("GOLDEN") })
@@ -149,10 +149,10 @@ class GoldenOutputTest {
     fun `gazette bureaucracy headline on returns`() {
         var buffer = GazetteBuffer()
         repeat(6) { i ->
-            buffer = buffer.add(createGazetteSnapshot(day = i + 1, returnsCount = 0))
+            buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = i + 1, returnsCount = 0)))
         }
-        buffer = buffer.add(createGazetteSnapshot(day = 7, returnsCount = 2))
-        val current = createGazetteSnapshot(day = 7, returnsCount = 2)
+        buffer = buffer.add(createGazetteSnapshot(GazetteSnapshotInput(day = 7, returnsCount = 2)))
+        val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7, returnsCount = 2))
 
         val headlines = GazetteHeadlines.generate(buffer, current)
         assertTrue(headlines.any { it.contains("PAPERWORK") })
@@ -483,22 +483,24 @@ class GoldenOutputTest {
     // Helper Functions
     // ========================================================================
 
-    private fun createGazetteSnapshot(
-        day: Int = 1,
-        gold: Int = 100,
-        trophies: Int = 0,
-        stability: Int = 50,
-        boardCount: Int = 0,
-        activeCount: Int = 0,
-        returnsCount: Int = 0
-    ) = GazetteSnapshot(
-        day = day,
-        gold = gold,
-        trophies = trophies,
-        stability = stability,
-        boardCount = boardCount,
-        activeCount = activeCount,
-        returnsCount = returnsCount
+    private data class GazetteSnapshotInput(
+        val day: Int = 1,
+        val gold: Int = 100,
+        val trophies: Int = 0,
+        val stability: Int = 50,
+        val boardCount: Int = 0,
+        val activeCount: Int = 0,
+        val returnsCount: Int = 0
+    )
+
+    private fun createGazetteSnapshot(input: GazetteSnapshotInput = GazetteSnapshotInput()) = GazetteSnapshot(
+        day = input.day,
+        gold = input.gold,
+        trophies = input.trophies,
+        stability = input.stability,
+        boardCount = input.boardCount,
+        activeCount = input.activeCount,
+        returnsCount = input.returnsCount
     )
 
     private fun createTestState(): GameState = GameState(
