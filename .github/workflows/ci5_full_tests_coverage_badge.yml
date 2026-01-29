@@ -1,8 +1,17 @@
 # FILE: .github/workflows/ci5_full_tests_coverage_badge.yml
-name: CI module - FULL + Kover + badge
+name: CI module - FULL + Kover + badge + Pages
 
-'on':
+on:
   workflow_call:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: kover-pages
+  cancel-in-progress: true
 
 jobs:
   full-tests-coverage:
@@ -25,8 +34,7 @@ jobs:
 
       - name: Run FULL (all non-perf tests) + adapter tests + generate Kover reports (captured)
         shell: bash
-        run:
-          |
+        run: |
           set -euo pipefail
 
           log="gradle_full_kover.log"
@@ -59,8 +67,7 @@ jobs:
 
       - name: Normalize Kover merged report locations
         shell: bash
-        run:
-          |
+        run: |
           set -euo pipefail
 
           mkdir -p build/reports/kover/xml
@@ -159,8 +166,7 @@ jobs:
 
       - name: Generate coverage badge (SVG)
         shell: bash
-        run:
-          |
+        run: |
           python3 - << 'PY'
           import os
           import xml.etree.ElementTree as ET
@@ -225,9 +231,11 @@ jobs:
           PY
 
       - name: Commit badge
+        if: ${{ github.ref == 'refs/heads/master' }}
         shell: bash
-        run:
-          |
+        run: |
+          set -euo pipefail
+
           if git status --porcelain | grep -q "badges/coverage.svg"; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -235,3 +243,54 @@ jobs:
             git commit --quiet -m "chore: update coverage badge [skip ci]"
             git push --quiet
           fi
+
+      - name: Prepare GitHub Pages site (Kover HTML + downloadable zip)
+        if: ${{ github.ref == 'refs/heads/master' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf site
+          mkdir -p site/kover
+
+          if [[ ! -f build/reports/kover/html/index.html ]]; then
+            echo "ERROR: Kover HTML index.html not found" >&2
+            exit 1
+          fi
+
+          rsync -a build/reports/kover/html/ site/kover/
+
+          (
+            cd build/reports/kover/html
+            zip -r "../../../../site/kover-html.zip" . >/dev/null
+          )
+
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Guilds-of-Bash reports</title>
+          <h1>Reports</h1>
+          <ul>
+            <li><a href="./kover/">Kover HTML coverage report (latest)</a></li>
+            <li><a href="./kover-html.zip">Download Kover HTML as zip (latest)</a></li>
+          </ul>
+          HTML
+
+      - name: Upload Pages artifact
+        if: ${{ github.ref == 'refs/heads/master' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy-pages:
+    if: ${{ github.ref == 'refs/heads/master' }}
+    needs: full-tests-coverage
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
