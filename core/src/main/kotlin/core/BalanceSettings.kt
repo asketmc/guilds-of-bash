@@ -84,6 +84,18 @@ object BalanceSettings {
     /** Stability penalty applied when a BAD auto-resolve occurs (per Miss). */
     const val STABILITY_PENALTY_BAD_AUTO_RESOLVE: Int = 2
 
+    /** Minimum stability value (floor). */
+    const val STABILITY_MIN: Int = 0
+
+    /** Maximum stability value (ceiling). */
+    const val STABILITY_MAX: Int = 100
+
+    /** Base multiplier for inbox/heroes per rank level. */
+    const val RANK_MULTIPLIER_BASE: Int = 2
+
+    /** Default contract difficulty when board contract is missing. */
+    const val DEFAULT_CONTRACT_DIFFICULTY: Int = 1
+
     // ─────────────────────────────────────────────────────────────────────────
     // Derived Constraints (compile-time assertions via init block)
     // ─────────────────────────────────────────────────────────────────────────

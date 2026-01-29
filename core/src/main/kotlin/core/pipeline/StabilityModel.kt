@@ -35,7 +35,9 @@ object StabilityModel {
         oldStability: Int
     ): StabilityUpdate {
         val delta = successfulReturns - failedReturns
-        val newStability = (oldStability + delta).coerceIn(0, 100)
+        val newStability = (oldStability + delta).coerceIn(
+            BalanceSettings.STABILITY_MIN, BalanceSettings.STABILITY_MAX
+        )
         val changed = newStability != oldStability
 
         return StabilityUpdate(
@@ -58,7 +60,9 @@ object StabilityModel {
         oldStability: Int
     ): StabilityUpdate {
         val penalty = badResolveCount * BalanceSettings.STABILITY_PENALTY_BAD_AUTO_RESOLVE
-        val newStability = (oldStability - penalty).coerceIn(0, 100)
+        val newStability = (oldStability - penalty).coerceIn(
+            BalanceSettings.STABILITY_MIN, BalanceSettings.STABILITY_MAX
+        )
         val changed = newStability != oldStability
 
         return StabilityUpdate(

@@ -1,242 +1,53 @@
-// FILE: core/src/main/kotlin/core/Reducer.kt
-package core
+// FILE: core/src/main/kotlin/core/handlers/AdvanceDayHandler.kt
+package core.handlers
 
-import core.handlers.*
-import core.invariants.verifyInvariants
+import core.*
+import core.pipeline.*
 import core.primitives.*
 import core.rng.Rng
 import core.state.*
 
 /**
- * Domain transition boundary.
+ * AdvanceDay command handler and all day phases.
  *
- * Why:
- * - This file is the only place where gameplay state is allowed to change.
- * - It enforces replay-grade determinism. The same inputs must yield the same outputs.
- * - It emits an auditable event journal so adapters can render, test, and replay without inference.
+ * ## Semantic Ownership
+ * Handles the complete day advancement pipeline including:
+ * - Inbox generation
+ * - Hero arrivals
+ * - Auto-resolve stale drafts
+ * - Contract pickup
+ * - WIP progression and resolution
+ * - Stability updates
+ * - Tax evaluation
+ * - Day-end snapshot
  *
- * How:
- * - Every mutation is expressed as `Command -> step(...) -> StepResult`.
- * - Randomness is consumed only through the provided [Rng]. Draw order is part of the contract.
- * - Invariants are verified after the transition. Violations are surfaced as events, not hidden.
+ * ## Visibility
+ * Internal to core module - only Reducer.kt should call these.
+ *
+ * ## RNG Draw Order Contract (CRITICAL FOR REPLAY DETERMINISM)
+ * The following RNG draws occur in this exact order during AdvanceDay:
+ * 1. phaseInboxGeneration: N draws for draft difficulty (N = nInbox)
+ * 2. phaseHeroArrivals: M draws for hero traits (M = nHeroes * traits_per_hero)
+ * 3. phaseAutoResolveInbox: K draws for bucket decisions (K = due drafts count)
+ * 4. phasePickup: 0 draws (deterministic)
+ * 5. phaseWipAndResolve: Per completed contract:
+ *    - 1-3 draws for outcome resolution
+ *    - 1 draw for theft decision
+ *
+ * DO NOT reorder phases or add RNG draws without updating this contract.
  */
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-// (no file-level constants)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Data classes
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Result of a single command application.
- *
- * Why:
- * - [state] is the single source of truth for the world after the command.
- * - [events] is a strict, causally ordered explanation of why that [state] exists.
- *
- * How:
- * - [events] is emitted in a stable order and is safe to persist as a journal.
- * - A consumer must never rebuild [state] from [events] unless it is implementing a verified replay.
+ * Result of WIP and resolution phase.
  */
-data class StepResult(
-    /** Authoritative state after the transition. */
+data class WipResolveResult(
     val state: GameState,
-    /** Audit trail for adapters, analytics, and replay. */
-    val events: List<Event>
+    val successfulReturns: Int,
+    val failedReturns: Int
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SeqContext (encapsulated event accumulator)
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Event sequencing policy.
- *
- * Why:
- * - Seq numbers must be monotonic within a step so event order is non-negotiable.
- * - Handlers must not reorder, backdate, or "fix" events outside explicit policy.
- *
- * How:
- * - [emit] assigns the next seq and appends in causal order.
- * - [insertBeforeDayEnded] exists only to keep end-of-day summaries terminal.
- * - [renumberSeqFrom1] re-derives seq after insertion; seq is derived from final order.
- */
-class SeqContext {
-    private val events = ArrayList<Event>(32)
-    private var nextSeq = 1L
-
-    /**
-     * Why:
-     * - Prevents any handler from emitting an event without a stable order position.
-     *
-     * How:
-     * - Ignores any incoming seq and overwrites it with the next monotonic value.
-     */
-    fun emit(event: Event): Event {
-        val withSeq = assignSeq(event, nextSeq++)
-        events.add(withSeq)
-        return withSeq
-    }
-
-    /**
-     * Why:
-     * - Exposes events to callers without granting mutation rights.
-     *
-     * How:
-     * - Returns a defensive copy in emission order.
-     */
-    fun snapshot(): List<Event> = events.toList()
-
-    /**
-     * Why:
-     * - Keeps [DayEnded] as the terminal domain event for a day when extra diagnostics are added.
-     *
-     * How:
-     * - Inserts before the last element only when that element is [DayEnded].
-     */
-    fun insertBeforeDayEnded(toInsert: List<Event>) {
-        val lastEventIsDayEnded = events.lastOrNull() is DayEnded
-        val insertIndex = if (lastEventIsDayEnded) events.size - 1 else events.size
-        events.addAll(insertIndex, toInsert)
-    }
-
-    /**
-     * Why:
-     * - Seq is not identity. Seq is the audit order.
-     *
-     * How:
-     * - Rewrites every event with seq=1..N using the final list order.
-     */
-    fun renumberSeqFrom1() {
-        for (i in events.indices) {
-            events[i] = assignSeq(events[i], (i + 1).toLong())
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper functions
-// ─────────────────────────────────────────────────────────────────────────────
-
-private fun assignSeq(event: Event, seq: Long): Event {
-    return when (event) {
-        is DayStarted -> event.copy(seq = seq)
-        is InboxGenerated -> event.copy(seq = seq)
-        is HeroesArrived -> event.copy(seq = seq)
-        is ContractPosted -> event.copy(seq = seq)
-        is ContractTaken -> event.copy(seq = seq)
-        is WipAdvanced -> event.copy(seq = seq)
-        is ContractResolved -> event.copy(seq = seq)
-        is ReturnClosed -> event.copy(seq = seq)
-        is TrophySold -> event.copy(seq = seq)
-        is StabilityUpdated -> event.copy(seq = seq)
-        is DayEnded -> event.copy(seq = seq)
-        is CommandRejected -> event.copy(seq = seq)
-        is InvariantViolated -> event.copy(seq = seq)
-        is HeroDeclined -> event.copy(seq = seq)
-        is TrophyTheftSuspected -> event.copy(seq = seq)
-        is TaxDue -> event.copy(seq = seq)
-        is TaxPaid -> event.copy(seq = seq)
-        is TaxMissed -> event.copy(seq = seq)
-        is GuildShutdown -> event.copy(seq = seq)
-        is GuildRankUp -> event.copy(seq = seq)
-        is ProofPolicyChanged -> event.copy(seq = seq)
-        is ContractDraftCreated -> event.copy(seq = seq)
-        is ContractTermsUpdated -> event.copy(seq = seq)
-        is ContractCancelled -> event.copy(seq = seq)
-        is ContractAutoResolved -> event.copy(seq = seq)
-        is HeroDied -> event.copy(seq = seq)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main reducer
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Deterministic state transition.
- *
- * Why:
- * - This is the single entry point for gameplay mutation.
- * - It is the enforcement point for validation, auditability, and invariant visibility.
- *
- * How:
- * - First validates [cmd]. On rejection: returns the unchanged [state] and one [CommandRejected] event.
- * - On acceptance: increments revision exactly once, then routes to a command handler.
- * - After the handler: verifies invariants and emits [InvariantViolated] events without rollback.
- * - Final event order is strict; seq is derived from that order.
- */
-fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
-    val validationResult = canApply(state, cmd)
-    if (validationResult is ValidationResult.Rejected) {
-        var detailText = validationResult.detail
-        if (validationResult.reason == RejectReason.INVALID_STATE) {
-            if (!detailText.contains("money", ignoreCase = true) && !detailText.contains("escrow", ignoreCase = true)) {
-                detailText = "$detailText (money/escrow)"
-            }
-        }
-
-
-        // Use unified assignSeq for CommandRejected
-        val event = assignSeq(
-            CommandRejected(
-                day = state.meta.dayIndex,
-                revision = state.meta.revision,
-                cmdId = cmd.cmdId,
-                seq = 0L,
-                cmdType = cmd::class.simpleName ?: "Unknown",
-                reason = validationResult.reason,
-                detail = detailText
-            ),
-            1L
-        )
-        return StepResult(state, listOf(event))
-    }
-
-    val stateWithRevision = state.copy(meta = state.meta.copy(revision = state.meta.revision + 1))
-    val seqCtx = SeqContext()
-
-    val newState = when (cmd) {
-        is AdvanceDay -> handleAdvanceDay(stateWithRevision, cmd, rng, seqCtx)
-        is PostContract -> handlePostContract(stateWithRevision, cmd, rng, seqCtx)
-        is CloseReturn -> handleCloseReturn(stateWithRevision, cmd, rng, seqCtx)
-        is SellTrophies -> handleSellTrophies(stateWithRevision, cmd, rng, seqCtx)
-        is PayTax -> handlePayTax(stateWithRevision, cmd, rng, seqCtx)
-        is SetProofPolicy -> handleSetProofPolicy(stateWithRevision, cmd, rng, seqCtx)
-        is CreateContract -> handleCreateContract(stateWithRevision, cmd, rng, seqCtx)
-        is UpdateContractTerms -> handleUpdateContractTerms(stateWithRevision, cmd, rng, seqCtx)
-        is CancelContract -> handleCancelContract(stateWithRevision, cmd, rng, seqCtx)
-    }
-
-    val violations = verifyInvariants(newState)
-    if (violations.isNotEmpty()) {
-        val violationEvents = violations.map { v ->
-            InvariantViolated(
-                day = newState.meta.dayIndex,
-                revision = newState.meta.revision,
-                cmdId = cmd.cmdId,
-                seq = 0L,
-                invariantId = v.invariantId,
-                details = v.details
-            )
-        }
-        seqCtx.insertBeforeDayEnded(violationEvents)
-        seqCtx.renumberSeqFrom1()
-    }
-
-    return StepResult(newState, seqCtx.snapshot())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AdvanceDay phases
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * AdvanceDay is a domain transaction.
+ * Main AdvanceDay handler - orchestrates all day phases.
  *
  * Why:
  * - A day tick must be atomic from the player perspective.
@@ -247,7 +58,7 @@ fun step(state: GameState, cmd: Command, rng: Rng): StepResult {
  * - Emits summary events as the authoritative narrative of the day.
  */
 @Suppress("UNUSED_PARAMETER")
-private fun handleAdvanceDay(
+internal fun handleAdvanceDay(
     state: GameState,
     cmd: AdvanceDay,
     rng: Rng,
@@ -261,7 +72,7 @@ private fun handleAdvanceDay(
 
     ctx.emit(DayStarted(day = newDay, revision = workingState.meta.revision, cmdId = cmd.cmdId, seq = 0L))
 
-    val (inboxMult, heroesMult) = core.pipeline.GuildProgression.getRankMultipliers(workingState.guild.guildRank)
+    val (inboxMult, heroesMult) = GuildProgression.getRankMultipliers(workingState.guild.guildRank)
     val nInbox = inboxMult * BalanceSettings.RANK_MULTIPLIER_BASE
     val nHeroes = heroesMult * BalanceSettings.RANK_MULTIPLIER_BASE
 
@@ -280,13 +91,21 @@ private fun handleAdvanceDay(
     return workingState
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Day Phases
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
+ * Phase 1: Inbox Generation
+ *
  * Why:
  * - Inbox exists to decouple content generation from player publication decisions.
  *
  * How:
  * - Generates drafts using stability-driven threat scaling and seeded RNG.
  * - Advances id counters in one direction only.
+ *
+ * RNG: N draws for draft difficulty (N = nInbox)
  */
 private fun phaseInboxGeneration(
     state: GameState,
@@ -296,7 +115,7 @@ private fun phaseInboxGeneration(
     newDay: Int,
     nInbox: Int
 ): GameState {
-    val result = core.pipeline.InboxLifecycle.generateDrafts(
+    val result = InboxLifecycle.generateDrafts(
         count = nInbox,
         currentDay = newDay,
         stability = state.region.stability,
@@ -322,11 +141,15 @@ private fun phaseInboxGeneration(
 }
 
 /**
+ * Phase 2: Hero Arrivals
+ *
  * Why:
  * - Heroes are agents. Arrivals are the simulation's supply side.
  *
  * How:
  * - Appends new heroes and records their ids as "arrivalsToday" to lock ordering.
+ *
+ * RNG: M draws for hero traits (M = nHeroes * traits_per_hero)
  */
 private fun phaseHeroArrivals(
     state: GameState,
@@ -336,7 +159,7 @@ private fun phaseHeroArrivals(
     newDay: Int,
     nHeroes: Int
 ): GameState {
-    val result = core.pipeline.HeroSupplyModel.generateArrivals(
+    val result = HeroSupplyModel.generateArrivals(
         count = nHeroes,
         startingHeroId = state.meta.ids.nextHeroId,
         rng = rng
@@ -363,6 +186,8 @@ private fun phaseHeroArrivals(
 }
 
 /**
+ * Phase 3: Auto-Resolve Inbox
+ *
  * Why:
  * - The world must not accumulate stale drafts forever.
  * - Ignored requests must have a measurable systemic cost.
@@ -370,6 +195,8 @@ private fun phaseHeroArrivals(
  * How:
  * - Delegates bucket decision to AutoResolveModel.
  * - Emits events and applies stability adjustment.
+ *
+ * RNG: K draws for bucket decisions (K = due drafts count)
  */
 private fun phaseAutoResolveInbox(
     state: GameState,
@@ -378,7 +205,7 @@ private fun phaseAutoResolveInbox(
     ctx: SeqContext,
     newDay: Int
 ): GameState {
-    val result = core.pipeline.AutoResolveModel.computeAutoResolve(
+    val result = AutoResolveModel.computeAutoResolve(
         inbox = state.contracts.inbox,
         currentDay = newDay,
         rng = rng
@@ -427,6 +254,8 @@ private fun phaseAutoResolveInbox(
 }
 
 /**
+ * Phase 4: Contract Pickup
+ *
  * Why:
  * - Contract pickup is the core agent decision loop.
  * - The player does not micro-manage; the system must select and explain.
@@ -434,6 +263,8 @@ private fun phaseAutoResolveInbox(
  * How:
  * - Iterates arriving heroes in deterministic id order.
  * - Locks the chosen board contract before creating the active contract.
+ *
+ * RNG: 0 draws (deterministic selection)
  */
 private fun phasePickup(
     state: GameState,
@@ -442,7 +273,7 @@ private fun phasePickup(
     ctx: SeqContext,
     newDay: Int
 ): GameState {
-    val result = core.pipeline.ContractPickupModel.computePickups(
+    val result = ContractPickupModel.computePickups(
         arrivingHeroIds = state.heroes.arrivalsToday,
         roster = state.heroes.roster,
         board = state.contracts.board,
@@ -453,7 +284,7 @@ private fun phasePickup(
     // Emit events for each decision
     for (decision in result.decisions) {
         when (decision.decision) {
-            core.pipeline.PickupDecisionType.DECLINED -> {
+            PickupDecisionType.DECLINED -> {
                 ctx.emit(
                     HeroDeclined(
                         day = newDay,
@@ -466,7 +297,7 @@ private fun phasePickup(
                     )
                 )
             }
-            core.pipeline.PickupDecisionType.ACCEPTED -> {
+            PickupDecisionType.ACCEPTED -> {
                 ctx.emit(
                     ContractTaken(
                         day = newDay,
@@ -480,7 +311,7 @@ private fun phasePickup(
                     )
                 )
             }
-            core.pipeline.PickupDecisionType.NO_CONTRACT -> { /* No event */ }
+            PickupDecisionType.NO_CONTRACT -> { /* No event */ }
         }
     }
 
@@ -495,6 +326,8 @@ private fun phasePickup(
 }
 
 /**
+ * Phase 5: WIP Advancement and Resolution
+ *
  * Why:
  * - WIP advancement and resolution must be serial and stable to keep replay valid.
  * - Auto-closure must apply economy, rank, and hero lifecycle rules without adapter logic.
@@ -502,13 +335,9 @@ private fun phasePickup(
  * How:
  * - Processes actives in deterministic id order.
  * - Emits intermediate and terminal events in causal order.
+ *
+ * RNG: Per completed contract: 1-3 draws for outcome, 1 draw for theft
  */
-private data class WipResolveResult(
-    val state: GameState,
-    val successfulReturns: Int,
-    val failedReturns: Int
-)
-
 private fun phaseWipAndResolve(
     state: GameState,
     cmd: AdvanceDay,
@@ -521,9 +350,8 @@ private fun phaseWipAndResolve(
     var failedReturns = 0
 
     // Step 1: Advance WIP days using WipProgression module
-    // Only WIP actives participate in day countdown and completion.
     val (wipActives, nonWipActives) = workingState.contracts.active.partition { it.status == ActiveStatus.WIP }
-    val wipResult = core.pipeline.WipProgression.advance(wipActives)
+    val wipResult = WipProgression.advance(wipActives)
 
     // Emit WipAdvanced events
     for (advance in wipResult.advances) {
@@ -559,7 +387,7 @@ private fun phaseWipAndResolve(
         val contractDifficulty = boardContract?.baseDifficulty ?: BalanceSettings.DEFAULT_CONTRACT_DIFFICULTY
 
         // Decision: Combined outcome + theft resolution
-        val resolution = core.pipeline.ResolutionModel.computeResolution(
+        val resolution = ResolutionModel.computeResolution(
             hero = hero,
             boardContract = boardContract,
             contractDifficulty = contractDifficulty,
@@ -583,7 +411,7 @@ private fun phaseWipAndResolve(
         }
 
         // Track success/fail for stability
-        val stabilityContrib = core.pipeline.ResolutionModel.computeStabilityContribution(
+        val stabilityContrib = ResolutionModel.computeStabilityContribution(
             resolution.outcome,
             resolution.requiresPlayerClose
         )
@@ -605,8 +433,7 @@ private fun phaseWipAndResolve(
             )
         )
 
-        // Create return packet for ALL resolves (both manual-close and auto-close).
-        // This is the canonical journal of resolution; requiresPlayerClose distinguishes semantics.
+        // Create return packet
         newReturns.add(
             ReturnPacket(
                 activeContractId = active.id,
@@ -624,24 +451,20 @@ private fun phaseWipAndResolve(
 
         // Branch: player-close vs auto-close
         if (resolution.requiresPlayerClose) {
-            // Mark as RETURN_READY for manual closure
             val idx = updatedActives.indexOfFirst { it.id.value == activeId }
             if (idx >= 0) {
                 updatedActives[idx] = updatedActives[idx].copy(daysRemaining = 0, status = ActiveStatus.RETURN_READY)
             }
         } else {
             // Auto-close path: apply all settlements immediately
-
-            // Settlement: Economy
-            val economyDelta = core.pipeline.EconomySettlement.computeAutoCloseDelta(
+            val economyDelta = EconomySettlement.computeAutoCloseDelta(
                 resolution.outcome,
                 boardContract,
                 resolution.trophiesCount,
                 workingState.economy
             )
 
-            // Settlement: Hero lifecycle (requiresPlayerClose=false -> hero becomes AVAILABLE)
-            val heroResult = core.pipeline.HeroLifecycle.computePostResolution(
+            val heroResult = HeroLifecycle.computePostResolution(
                 active.heroIds,
                 resolution.outcome,
                 workingState.heroes.roster,
@@ -666,14 +489,13 @@ private fun phaseWipAndResolve(
 
             // Settlement: Board status
             val updatedBoard = if (boardContract != null && boardContract.status == BoardStatus.LOCKED) {
-                // Auto-close closes the only active for this board, so the board can complete.
                 workingState.contracts.board.map { b ->
                     if (b.id == boardContract.id) b.copy(status = BoardStatus.COMPLETED) else b
                 }
             } else workingState.contracts.board
 
             // Settlement: Guild progression
-            val guildResult = core.pipeline.GuildProgression.computeAfterCompletion(
+            val guildResult = GuildProgression.computeAfterCompletion(
                 workingState.guild.completedContractsTotal,
                 workingState.guild.guildRank
             )
@@ -692,11 +514,11 @@ private fun phaseWipAndResolve(
                 )
             }
 
-            // Keep arrivalsToday consistent: arrivalsToday must be subset of roster.
+            // Keep arrivalsToday consistent
             val rosterIdSet = heroResult.updatedRoster.map { it.id }.toHashSet()
             val safeArrivalsToday = heroResult.updatedArrivalsToday.filter { it in rosterIdSet }
 
-            // Apply all settlements to working state
+            // Apply all settlements
             workingState = workingState.copy(
                 contracts = workingState.contracts.copy(board = updatedBoard),
                 heroes = workingState.heroes.copy(
@@ -711,7 +533,6 @@ private fun phaseWipAndResolve(
                 )
             )
 
-            // Auto-close means the active is fully closed (no manual CloseReturn expected).
             val idx = updatedActives.indexOfFirst { it.id.value == activeId }
             if (idx >= 0) {
                 updatedActives[idx] = updatedActives[idx].copy(daysRemaining = 0, status = ActiveStatus.CLOSED)
@@ -727,7 +548,6 @@ private fun phaseWipAndResolve(
                 )
             )
 
-            // Keep board lookup in sync after mutation.
             boardById = workingState.contracts.board.associateBy { it.id }
         }
     }
@@ -743,12 +563,16 @@ private fun phaseWipAndResolve(
 }
 
 /**
+ * Phase 6: Stability Update
+ *
  * Why:
  * - Stability is the public health meter of the region.
  * - It is the long-term difficulty driver.
  *
  * How:
  * - Applies a single clamp-bounded delta and emits a single event when changed.
+ *
+ * RNG: 0 draws (deterministic)
  */
 private fun phaseStabilityUpdate(
     state: GameState,
@@ -758,7 +582,7 @@ private fun phaseStabilityUpdate(
     successfulReturns: Int,
     failedReturns: Int
 ): GameState {
-    val update = core.pipeline.StabilityModel.computeFromResults(
+    val update = StabilityModel.computeFromResults(
         successfulReturns = successfulReturns,
         failedReturns = failedReturns,
         oldStability = state.region.stability
@@ -781,34 +605,8 @@ private fun phaseStabilityUpdate(
 }
 
 /**
- * Why:
- * - DayEnded is a stable integration point for analytics and UI.
+ * Phase 7: Tax Evaluation
  *
- * How:
- * - Captures a snapshot from the authoritative state without extra computation paths.
- */
-private fun phaseDayEndedAndSnapshot(
-    state: GameState,
-    cmd: AdvanceDay,
-    ctx: SeqContext,
-    newDay: Int
-): GameState {
-    val snapshot = core.pipeline.SnapshotModel.createDaySnapshot(state, newDay)
-
-    ctx.emit(
-        DayEnded(
-            day = newDay,
-            revision = state.meta.revision,
-            cmdId = cmd.cmdId,
-            seq = 0L,
-            snapshot = snapshot
-        )
-    )
-
-    return state
-}
-
-/**
  * Why:
  * - Taxes are the primary growth limiter.
  * - Misses must accumulate into an unambiguous shutdown risk.
@@ -816,6 +614,8 @@ private fun phaseDayEndedAndSnapshot(
  * How:
  * - Evaluates due-day after the day pipeline.
  * - Applies penalty and miss counter updates in one place.
+ *
+ * RNG: 0 draws (deterministic)
  */
 private fun phaseTax(
     state: GameState,
@@ -823,7 +623,7 @@ private fun phaseTax(
     ctx: SeqContext,
     newDay: Int
 ): GameState {
-    val eval = core.pipeline.TaxPolicy.evaluateEndOfDay(
+    val eval = TaxPolicy.evaluateEndOfDay(
         currentDay = newDay,
         taxDueDay = state.meta.taxDueDay,
         taxAmountDue = state.meta.taxAmountDue,
@@ -842,7 +642,7 @@ private fun phaseTax(
     )
 
     when (eval.type) {
-        core.pipeline.TaxEvaluationType.MISSED -> {
+        TaxEvaluationType.MISSED -> {
             ctx.emit(
                 TaxMissed(
                     day = newDay,
@@ -867,7 +667,7 @@ private fun phaseTax(
                 )
             }
         }
-        core.pipeline.TaxEvaluationType.DUE_SCHEDULED -> {
+        TaxEvaluationType.DUE_SCHEDULED -> {
             ctx.emit(
                 TaxDue(
                     day = newDay,
@@ -884,14 +684,34 @@ private fun phaseTax(
     return newState
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Command handlers (extracted to handlers/ package)
-// ─────────────────────────────────────────────────────────────────────────────
-// Contract commands: handlers/ContractHandlers.kt
-//   - handlePostContract, handleCreateContract, handleUpdateContractTerms
-//   - handleCancelContract, handleCloseReturn
-// Economy commands: handlers/EconomyHandlers.kt
-//   - handleSellTrophies, handlePayTax
-// Governance commands: handlers/GovernanceHandlers.kt
-//   - handleSetProofPolicy
+/**
+ * Phase 8: Day Ended Snapshot
+ *
+ * Why:
+ * - DayEnded is a stable integration point for analytics and UI.
+ *
+ * How:
+ * - Captures a snapshot from the authoritative state without extra computation paths.
+ *
+ * RNG: 0 draws (deterministic)
+ */
+private fun phaseDayEndedAndSnapshot(
+    state: GameState,
+    cmd: AdvanceDay,
+    ctx: SeqContext,
+    newDay: Int
+): GameState {
+    val snapshot = SnapshotModel.createDaySnapshot(state, newDay)
 
+    ctx.emit(
+        DayEnded(
+            day = newDay,
+            revision = state.meta.revision,
+            cmdId = cmd.cmdId,
+            seq = 0L,
+            snapshot = snapshot
+        )
+    )
+
+    return state
+}
