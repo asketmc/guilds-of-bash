@@ -6,15 +6,7 @@ import core.*
 import core.primitives.SalvagePolicy
 import core.rng.Rng
 import core.state.initialState
-import test.helpers.Scenario
-import test.helpers.assertAvailableCopper
-import test.helpers.assertNoInvariantViolations
-import test.helpers.assertNoRejections
-import test.helpers.assertReplayDeterminism
-import test.helpers.assertReservedCopper
-import test.helpers.assertSingleRejection
-import test.helpers.assertStepOk
-import test.helpers.runScenario
+import test.helpers.*
 import kotlin.test.*
 
 /**
@@ -252,31 +244,31 @@ class AbuseTechnicalPoCTest {
 
     @Test
     fun `AB_POC_ESCROW_MANIPULATION cannot post contract exceeding available money`() {
-        // GIVEN: State with 100 money, 50 already reserved
-        var state = initialState(42u)
+        // GIVEN: State with 100 money, set up so available < fee for second contract
         val rng = Rng(100L)
         var cmdId = 1L
 
-        // Day 1: generate inbox
-        state = step(state, AdvanceDay(cmdId = cmdId++), rng).state
-
-        // Post first contract with fee=50 (reserve 50)
-        val inbox1 = state.contracts.inbox.first().id.value.toLong()
-        state = step(
-            state,
-            PostContract(inboxId = inbox1, fee = 50, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
-            rng
-        ).state
+        // Create state with limited money and existing reservation
+        var state = stateWithEconomy(moneyCopper = 100, reservedCopper = 50, trophiesStock = 0).copy(
+            contracts = core.state.ContractState(
+                inbox = listOf(
+                    contractDraft(id = 1L),
+                    contractDraft(id = 2L)
+                ),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
 
         // Verify: 50 reserved, 50 available
         assertReservedCopper(state, 50, "50 should be reserved")
         assertAvailableCopper(state, 50, "50 should be available")
 
-        // WHEN: Attempt to post second contract with fee=60 (exceeds available 50)
-        val inbox2 = state.contracts.inbox.first().id.value.toLong()
+        // WHEN: Attempt to post contract with fee=60 (exceeds available 50)
         val result = step(
             state,
-            PostContract(inboxId = inbox2, fee = 60, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
+            PostContract(inboxId = 1L, fee = 60, salvage = SalvagePolicy.GUILD, cmdId = cmdId++),
             rng
         )
 

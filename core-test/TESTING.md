@@ -164,17 +164,65 @@ All tests must be **deterministic** and **reproducible**:
 
 ---
 
+## Testing Levels & Scope
+
+This project uses a **risk-driven testing strategy**.
+A test level exists only if it covers risks not addressed by lower levels.
+
+### Implemented
+
+**Unit & in-process integration tests (primary)**
+
+- Deterministic tests against the core reducer (`step`)
+- Cover business rules, invariants, validation, and determinism
+- Multi-step scenarios are executed in-process via the same public API
+
+If behavior is broken here, it is considered broken globally.
+
+---
+
+### Out of Scope (Current)
+
+**`.jar` black-box / E2E tests**
+
+Jar-level tests (e.g. `java -jar app.jar`) are intentionally not implemented.
+
+**Rationale:**
+
+- Pure, deterministic core + thin adapter
+- No CLI contract, runtime config, OS-specific logic, or packaging risks
+- No additional risk introduced at the artifact level
+
+Invariant:
+
+> Works in unit/integration tests ⇒ works in the jar  
+> Broken in unit/integration tests ⇒ broken in the jar
+
+Under these constraints, jar-level tests would only duplicate coverage without increasing confidence.
+
+---
+
+### When This Changes
+
+Jar-level tests will be added if new risks appear, such as:
+- stable CLI / entry-point contracts
+- runtime args or environment configuration
+- OS-specific behavior
+- packaging or shading complexity
+- external users or compatibility guarantees
+
+
 ## Invariants
 
 Invariants are post-state checks verified after every command.
 
-| Category | Examples |
-|----------|----------|
-| IDs | `nextContractId > max(inbox+board).id` |
-| Contracts | Board LOCKED → active exists |
-| Heroes | ON_MISSION → exactly 1 active |
-| Economy | `moneyCopper ≥ 0`, `trophiesStock ≥ 0` |
-| Region | `stability ∈ [0, 100]` |
+| Category  | Examples                               |
+|-----------|----------------------------------------|
+| IDs       | `nextContractId > max(inbox+board).id` |
+| Contracts | Board LOCKED → active exists           |
+| Heroes    | ON_MISSION → exactly 1 active          |
+| Economy   | `moneyCopper ≥ 0`, `trophiesStock ≥ 0` |
+| Region    | `stability ∈ [0, 100]`                 |
 
 **Verification:** `verifyInvariants(state)` returns list of violations (empty = valid).
 
@@ -182,17 +230,17 @@ Invariants are post-state checks verified after every command.
 
 ## Feature Groups (PoC Scope)
 
-| ID | Feature | Key Tests |
-|----|---------|-----------|
-| FG_01 | Day Progression | `PoCScenarioTest` |
-| FG_02 | Contract Posting | `CreateContractTest`, `FeeEscrowTest` |
-| FG_03 | Contract Taking | `PoCScenarioTest` |
-| FG_04 | Contract Resolution | `TrophyPipelineTest` |
-| FG_05 | Return Processing | `FeeEscrowTest` |
-| FG_06 | Trophy Sales | `SellTrophiesTest` |
-| FG_07 | Command Validation | `CommandValidationTest` |
-| FG_08 | Invariant Verification | `InvariantVerificationTest` |
-| FG_09 | Fee Escrow | `FeeEscrowTest` |
+| ID    | Feature                | Key Tests                             |
+|-------|------------------------|---------------------------------------|
+| FG_01 | Day Progression        | `PoCScenarioTest`                     |
+| FG_02 | Contract Posting       | `CreateContractTest`, `FeeEscrowTest` |
+| FG_03 | Contract Taking        | `PoCScenarioTest`                     |
+| FG_04 | Contract Resolution    | `TrophyPipelineTest`                  |
+| FG_05 | Return Processing      | `FeeEscrowTest`                       |
+| FG_06 | Trophy Sales           | `SellTrophiesTest`                    |
+| FG_07 | Command Validation     | `CommandValidationTest`               |
+| FG_08 | Invariant Verification | `InvariantVerificationTest`           |
+| FG_09 | Fee Escrow             | `FeeEscrowTest`                       |
 
 ---
 
@@ -247,4 +295,4 @@ Invariants are post-state checks verified after every command.
 
 ---
 
-*Last updated: 2026-01-28*
+*Last updated: 2026-01-29*

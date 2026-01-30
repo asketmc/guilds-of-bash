@@ -12,29 +12,42 @@ import kotlin.test.*
 /**
  * P2: Fee escrow tests.
  * Important feature-level tests for fee handling.
+ *
+ * Accounting model:
+ * - PostContract: money += clientDeposit, reserved += clientDeposit (deposit is escrowed)
+ * - CloseReturn SUCCESS: money -= fee, reserved -= clientDeposit (pay hero, release escrow)
+ * - CloseReturn FAIL: reserved -= clientDeposit (release escrow, no payout)
  */
 @P2
 class FeeEscrowTest {
 
     @Test
-    fun `posting contract with fee reserves money`() {
-        var state = initialState(42u)
+    fun `posting contract with fee reserves client deposit`() {
         val rng = Rng(1L)
+        val deposit = 5
 
-        // Advance day to get inbox
-        state = step(state, AdvanceDay(cmdId = 1L), rng).state
-        val inboxId = state.contracts.inbox.first().id.value.toLong()
+        // State with an inbox draft that has a client deposit
+        val state = stateWithEconomy(moneyCopper = 100, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
 
-        val result = step(state, PostContract(inboxId = inboxId, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
-        state = result.state
+        val result = step(state, PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng)
+        val newState = result.state
 
-        assertEquals(100, state.economy.moneyCopper, "Money not deducted immediately")
-        assertReservedCopper(state, 10, "Fee should be reserved")
+        // Guild receives client deposit and locks it
+        assertEquals(100 + deposit, newState.economy.moneyCopper, "Money should include client deposit")
+        assertReservedCopper(newState, deposit, "Client deposit should be reserved")
 
-        // Also ensure ContractPosted event was emitted with correct fee
+        // ContractPosted event was emitted with correct fee and deposit
         val posted = result.events.filterIsInstance<ContractPosted>()
         assertEquals(1, posted.size)
         assertEquals(10, posted[0].fee)
+        assertEquals(deposit, posted[0].clientDeposit)
     }
 
     @Test
@@ -62,13 +75,16 @@ class FeeEscrowTest {
     }
 
     @Test
-    fun `close pays out from escrow`() {
-        // GIVEN posted board with fee=30, taken to active, resolved -> return exists (success)
+    fun `close pays hero fee from guild treasury`() {
+        // GIVEN: contract posted with deposit=10, fee=30
+        // State after PostContract: money = 100 + 10 = 110, reserved = 10
         val rng = Rng(100L)
-        var state = stateWithEconomy(moneyCopper = 100, reservedCopper = 30, trophiesStock = 0).copy(
+        val deposit = 10
+        val fee = 30
+        var state = stateWithEconomy(moneyCopper = 100 + deposit, reservedCopper = deposit, trophiesStock = 0).copy(
             contracts = ContractState(
                 inbox = emptyList(),
-                board = listOf(boardContract(id = 1L, fee = 30, status = BoardStatus.LOCKED)),
+                board = listOf(boardContract(id = 1L, fee = fee, status = BoardStatus.LOCKED, clientDeposit = deposit)),
                 active = listOf(active(id = 1L, heroIds = listOf(1L), status = ActiveStatus.RETURN_READY)),
                 returns = listOf(
                     returnPacket(activeId = 1L, heroIds = listOf(1L), outcome = Outcome.SUCCESS, trophiesCount = 0)
@@ -85,8 +101,8 @@ class FeeEscrowTest {
         val result = step(state, cmd, rng)
         state = result.state
 
-        // THEN money decreases by 30 and reserved decreases by 30, ReturnClosed emitted
-        assertEquals(70, state.economy.moneyCopper)
+        // THEN: money -= fee (110 - 30 = 80), reserved -= deposit (10 - 10 = 0)
+        assertEquals(80, state.economy.moneyCopper)
         assertReservedCopper(state, 0)
 
         val closed = result.events.filterIsInstance<ReturnClosed>()
@@ -95,12 +111,14 @@ class FeeEscrowTest {
 
     @Test
     fun `take does not pay out`() {
-        // GIVEN posted board fee=30
+        // GIVEN posted board with deposit=10, fee=30
         val rng = Rng(100L)
-        var state = stateWithEconomy(moneyCopper = 100, reservedCopper = 30, trophiesStock = 0).copy(
+        val deposit = 10
+        val fee = 30
+        var state = stateWithEconomy(moneyCopper = 100 + deposit, reservedCopper = deposit, trophiesStock = 0).copy(
             contracts = ContractState(
                 inbox = emptyList(),
-                board = listOf(boardContract(id = 1L, fee = 30, status = BoardStatus.OPEN)),
+                board = listOf(boardContract(id = 1L, fee = fee, status = BoardStatus.OPEN, clientDeposit = deposit)),
                 active = emptyList(),
                 returns = emptyList()
             )
@@ -114,22 +132,26 @@ class FeeEscrowTest {
         // THEN money/reserved unchanged during take
         val taken = result.events.filterIsInstance<ContractTaken>()
         if (taken.isNotEmpty()) {
-            assertEquals(100, state.economy.moneyCopper)
-            assertReservedCopper(state, 30)
+            assertEquals(110, state.economy.moneyCopper)
+            assertReservedCopper(state, deposit)
         } else {
             // If no one took it (non-deterministic), assert invariant holds anyway
-            assertEquals(100, state.economy.moneyCopper)
-            assertReservedCopper(state, 30)
+            assertEquals(110, state.economy.moneyCopper)
+            assertReservedCopper(state, deposit)
         }
     }
 
     @Test
-    fun `close returns reserved money on failure`() {
+    fun `close releases escrow on failure without payout`() {
+        // GIVEN: contract posted with deposit=10, fee=10
+        // State after PostContract: money = 100 + 10 = 110, reserved = 10
         val rng = Rng(2L)
-        var state = stateWithEconomy(moneyCopper = 100, reservedCopper = 10, trophiesStock = 0).copy(
+        val deposit = 10
+        val fee = 10
+        var state = stateWithEconomy(moneyCopper = 100 + deposit, reservedCopper = deposit, trophiesStock = 0).copy(
             contracts = ContractState(
                 inbox = emptyList(),
-                board = listOf(boardContract(id = 1L, fee = 10, status = BoardStatus.LOCKED)),
+                board = listOf(boardContract(id = 1L, fee = fee, status = BoardStatus.LOCKED, clientDeposit = deposit)),
                 active = listOf(active(id = 1L, heroIds = listOf(1L), status = ActiveStatus.RETURN_READY)),
                 returns = listOf(
                     returnPacket(activeId = 1L, heroIds = listOf(1L), outcome = Outcome.FAIL, trophiesCount = 0)
@@ -140,8 +162,10 @@ class FeeEscrowTest {
         val result = step(state, CloseReturn(activeContractId = 1L, cmdId = 1L), rng)
         state = result.state
 
-        assertEquals(100, state.economy.moneyCopper, "Money should be restored after failure")
-        assertReservedCopper(state, 0, "Reserved should be decreased")
+        // FAIL: no payout, escrow released
+        // money unchanged at 110, reserved = 0
+        assertEquals(110, state.economy.moneyCopper, "Money should be unchanged after failure")
+        assertReservedCopper(state, 0, "Reserved should be released")
 
         val closed = result.events.filterIsInstance<ReturnClosed>()
         assertEquals(1, closed.size)

@@ -40,19 +40,24 @@ class CancelContractTest {
 
     @Test
     fun `CancelContract removes OPEN contract from board with escrow refund`() {
-        var state = initialState(123u).copy(
-            economy = initialState(123u).economy.copy(moneyCopper = 1000, reservedCopper = 0)
-        )
         val rng = Rng(456L)
+        val deposit = 50
 
-        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+        // State with a draft that has a client deposit
+        var state = stateWithEconomy(moneyCopper = 1000, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = core.state.ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
 
-        // Post a contract to board
-        val draftId = state.inbox.first().id.value
+        // Post a contract to board (fee=75, deposit=50)
         val post = step(
             state,
             PostContract(
-                inboxId = draftId.toLong(),
+                inboxId = 1L,
                 fee = 75,
                 salvage = SalvagePolicy.GUILD,
                 cmdId = 1L
@@ -62,9 +67,11 @@ class CancelContractTest {
         assertStepOk(post.events, "PostContract")
         val state2 = post.state
 
-        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
-        val oldReserved = state2.economy.reservedCopper
-        val oldMoney = state2.economy.moneyCopper
+        // After post: money = 1000 + 50 = 1050, reserved = 50
+        assertEquals(1000 + deposit, state2.economy.moneyCopper)
+        assertEquals(deposit, state2.economy.reservedCopper)
+
+        val contractOnBoard = state2.board.first()
 
         // Cancel the board contract
         val r = step(
@@ -78,16 +85,14 @@ class CancelContractTest {
         val cancelled = r.events.filterIsInstance<ContractCancelled>().single()
         assertEquals(contractOnBoard.id.value, cancelled.contractId)
         assertEquals("board", cancelled.location.toString().lowercase())
-        assertEquals(75, cancelled.refundedCopper)
+        assertEquals(deposit, cancelled.refundedCopper, "Should refund client deposit")
 
         // Contract should be removed from board
         assertBoardAbsent(state3, contractOnBoard.id.value)
 
-        // Reserved copper should decrease by fee amount (escrow released)
-        assertEquals(oldReserved - 75, state3.economy.reservedCopper)
-
-        // Total money should stay the same on cancel (we're releasing escrow, not paying)
-        assertEquals(oldMoney, state3.economy.moneyCopper)
+        // After cancel: money = 1050 - 50 = 1000, reserved = 0
+        assertEquals(1000, state3.economy.moneyCopper)
+        assertEquals(0, state3.economy.reservedCopper)
     }
 
     @Test
@@ -196,20 +201,25 @@ class CancelContractTest {
 
     @Test
     fun `CancelContract escrow refund preserves economy invariants`() {
-        var state = initialState(123u).copy(
-            economy = initialState(123u).economy.copy(moneyCopper = 500, reservedCopper = 0)
-        )
         val rng = Rng(456L)
+        val deposit = 100
 
-        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+        // State with a draft that has a client deposit
+        var state = stateWithEconomy(moneyCopper = 500, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = core.state.ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
 
-        // Post a contract with fee=100
-        val draftId = state.inbox.first().id.value
+        // Post a contract with fee=150, deposit=100
         val post = step(
             state,
             PostContract(
-                inboxId = draftId.toLong(),
-                fee = 100,
+                inboxId = 1L,
+                fee = 150,
                 salvage = SalvagePolicy.GUILD,
                 cmdId = 1L
             ),
@@ -218,11 +228,11 @@ class CancelContractTest {
         assertStepOk(post.events, "PostContract")
         val state2 = post.state
 
-        // Should have 500 total, 100 reserved, 400 available
-        assertEquals(500, state2.economy.moneyCopper)
+        // After post: money = 500 + 100 = 600, reserved = 100, available = 500
+        assertEquals(600, state2.economy.moneyCopper)
         assertEquals(100, state2.economy.reservedCopper)
 
-        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
+        val contractOnBoard = state2.board.first()
 
         // Cancel the contract
         val rCancel = step(
@@ -233,7 +243,7 @@ class CancelContractTest {
         assertStepOk(rCancel.events, "Cancel board contract")
         val state3 = rCancel.state
 
-        // After cancel: still 500 total, 0 reserved, 500 available
+        // After cancel: money = 600 - 100 = 500, reserved = 0, available = 500
         assertEquals(500, state3.economy.moneyCopper)
         assertEquals(0, state3.economy.reservedCopper)
 
@@ -261,20 +271,25 @@ class CancelContractTest {
     }
 
     @Test
-    fun `CancelContract after UpdateContractTerms refunds updated fee`() {
-        var state = initialState(123u).copy(
-            economy = initialState(123u).economy.copy(moneyCopper = 1000, reservedCopper = 0)
-        )
+    fun `CancelContract after UpdateContractTerms refunds client deposit not fee`() {
         val rng = Rng(456L)
+        val deposit = 50
 
-        val boardBeforeIds = state.board.map { it.id.value }.toSet()
+        // State with a draft that has a client deposit
+        var state = stateWithEconomy(moneyCopper = 1000, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = core.state.ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
 
-        // Post a contract
-        val draftId = state.inbox.first().id.value
+        // Post a contract with fee=50, deposit=50
         val post = step(
             state,
             PostContract(
-                inboxId = draftId.toLong(),
+                inboxId = 1L,
                 fee = 50,
                 salvage = SalvagePolicy.GUILD,
                 cmdId = 1L
@@ -284,10 +299,10 @@ class CancelContractTest {
         assertStepOk(post.events, "PostContract")
         val state2 = post.state
 
-        val contractOnBoard = state2.board.first { it.id.value !in boardBeforeIds }
+        val contractOnBoard = state2.board.first()
         val contractId = contractOnBoard.id.value.toLong()
 
-        // Update fee to 120
+        // Update fee to 120 (but clientDeposit stays at 50)
         val upd = step(
             state2,
             UpdateContractTerms(
@@ -300,17 +315,19 @@ class CancelContractTest {
         )
         assertStepOk(upd.events, "Update terms")
         val state3 = upd.state
-        val oldReserved = state3.economy.reservedCopper
 
-        // Cancel - should refund 120, not 50
+        // Reserved is still just the client deposit
+        assertEquals(deposit, state3.economy.reservedCopper)
+
+        // Cancel - should refund clientDeposit (50), not the updated fee (120)
         val rCancel = step(state3, CancelContract(contractId = contractId, cmdId = 3L), rng)
         assertStepOk(rCancel.events, "Cancel after update")
         val state4 = rCancel.state
 
         val cancelled = rCancel.events.filterIsInstance<ContractCancelled>().single()
-        assertEquals(120, cancelled.refundedCopper)
+        assertEquals(deposit, cancelled.refundedCopper, "Should refund client deposit, not fee")
 
-        // Reserved should decrease by 120
-        assertEquals(oldReserved - 120, state4.economy.reservedCopper)
+        // Reserved should be 0 after cancel
+        assertEquals(0, state4.economy.reservedCopper)
     }
 }

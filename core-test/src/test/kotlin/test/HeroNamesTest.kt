@@ -17,7 +17,12 @@ import kotlin.test.assertTrue
 @P1
 class HeroNamesTest {
 
-    private val pool = setOf("Smith", "Jos", "Anna", "White", "Jack")
+    // Updated to match core.flavour.HeroNames.POOL (code is source of truth)
+    private val pool = setOf(
+        "Smith", "Jos", "Anna", "White", "Jack",
+        "Alaric", "Edric", "Godfrey", "Baldric", "Oswin", "Cedric", "Hugh", "Roland", "Tristan", "Wilfred",
+        "Aveline", "Isolde", "Rowena", "Matilda", "Elowen", "Adela", "Beatrice", "Helena", "Margery", "Sybil"
+    )
 
     @Test
     fun `heroes arrived names are from the fixed pool`() {

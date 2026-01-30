@@ -51,7 +51,16 @@ open class Rng(seed: Long) {
      */
     open fun nextInt(bound: Int): Int {
         draws++
-        return random.nextInt(bound)
+        val v = random.nextInt(bound)
+        RngTrace.emit(
+            RngTrace.Entry(
+                drawIndex = draws - 1,
+                method = "nextInt",
+                bound = bound.toLong(),
+                value = v.toLong()
+            )
+        )
+        return v
     }
 
     /**
@@ -79,7 +88,16 @@ open class Rng(seed: Long) {
      */
     open fun nextLong(bound: Long): Long {
         draws++
-        return random.nextLong(bound)
+        val v = random.nextLong(bound)
+        RngTrace.emit(
+            RngTrace.Entry(
+                drawIndex = draws - 1,
+                method = "nextLong",
+                bound = bound,
+                value = v
+            )
+        )
+        return v
     }
 
     /**
@@ -106,7 +124,16 @@ open class Rng(seed: Long) {
      */
     open fun nextBoolean(): Boolean {
         draws++
-        return random.nextBoolean()
+        val v = random.nextBoolean()
+        RngTrace.emit(
+            RngTrace.Entry(
+                drawIndex = draws - 1,
+                method = "nextBoolean",
+                bound = null,
+                value = if (v) 1 else 0
+            )
+        )
+        return v
     }
 
     /**
@@ -133,6 +160,40 @@ open class Rng(seed: Long) {
      */
     open fun nextDouble(): Double {
         draws++
-        return random.nextDouble()
+        val v = random.nextDouble()
+        // Keep stable textual value by capturing raw bits.
+        RngTrace.emit(
+            RngTrace.Entry(
+                drawIndex = draws - 1,
+                method = "nextDouble",
+                bound = null,
+                value = java.lang.Double.doubleToRawLongBits(v)
+            )
+        )
+        return v
+    }
+}
+
+/**
+ * Optional, zero-impact RNG trace hook.
+ *
+ * Contract:
+ * - If [sink] is null, RNG behavior and performance are unchanged (aside from a single null check).
+ * - The sink is invoked exactly once per successful next* call and receives the produced value.
+ * - The sink must be side-effect safe and MUST NOT call back into this RNG.
+ */
+object RngTrace {
+    @Volatile
+    var sink: ((entry: Entry) -> Unit)? = null
+
+    data class Entry(
+        val drawIndex: Long,
+        val method: String,
+        val bound: Long?,
+        val value: Long
+    )
+
+    fun emit(entry: Entry) {
+        sink?.invoke(entry)
     }
 }

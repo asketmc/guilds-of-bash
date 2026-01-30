@@ -3,6 +3,8 @@ package console
 import core.*
 import core.primitives.*
 import core.state.*
+import console.render.BoxRenderer
+import console.render.RenderConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -78,7 +80,7 @@ class GoldenOutputTest {
         val current = createGazetteSnapshot(GazetteSnapshotInput(day = 7))
         val result = GazetteRenderer.render(day = 7, buffer, current)
         assertNotNull(result, "Gazette should render on day 7")
-        assertTrue(result.any { it.contains("GUILD GAZETTE") })
+        assertTrue(result.contains("GUILD GAZETTE"))
     }
 
     @Test
@@ -90,7 +92,7 @@ class GoldenOutputTest {
         val current = createGazetteSnapshot(GazetteSnapshotInput(day = 14))
         val result = GazetteRenderer.render(day = 14, buffer, current)
         assertNotNull(result)
-        assertTrue(result.any { it.contains("Week 2") })
+        assertTrue(result.contains("Week 2"))
     }
 
     @Test
@@ -159,12 +161,14 @@ class GoldenOutputTest {
     }
 
     // ========================================================================
-    // Feature 2: UiBox Rendering Tests
+    // Feature 2: BoxRenderer Rendering Tests
     // ========================================================================
 
     @Test
-    fun `UiBox renders consistent borders`() {
-        val lines = UiBox.render("TEST", listOf("Content"))
+    fun `BoxRenderer renders consistent borders`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
+        val out = BoxRenderer.box("TEST", listOf("Content"), cfg)
+        val lines = out.split("\n").filter { it.isNotEmpty() }
 
         assertTrue(lines.first().startsWith("┌"))
         assertTrue(lines.first().endsWith("┐"))
@@ -173,8 +177,10 @@ class GoldenOutputTest {
     }
 
     @Test
-    fun `UiBox renders title centered`() {
-        val lines = UiBox.render("TITLE", listOf("Content"))
+    fun `BoxRenderer renders title centered`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
+        val out = BoxRenderer.box("TITLE", listOf("Content"), cfg)
+        val lines = out.split("\n").filter { it.isNotEmpty() }
 
         val titleLine = lines[1]
         assertTrue(titleLine.contains("TITLE"))
@@ -183,44 +189,51 @@ class GoldenOutputTest {
     }
 
     @Test
-    fun `UiBox width is fixed at 80 chars`() {
-        val lines = UiBox.render("TEST", listOf("Short", "Medium length content", "A very long line " + "x".repeat(100)))
+    fun `BoxRenderer respects configured fixed width`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
+        val out = BoxRenderer.box("TEST", listOf("Short", "Medium length content", "A very long line " + "x".repeat(100)), cfg)
+        val lines = out.split("\n").filter { it.isNotEmpty() }
 
         for (line in lines) {
-            assertEquals(80, line.length, "Line should be exactly 80 chars: '$line'")
+            assertEquals(80, line.length, "Line should be exactly 80 chars")
         }
     }
 
     @Test
-    fun `UiBox wraps long content`() {
-        val longContent = "A".repeat(100)
-        val lines = UiBox.render("TEST", listOf(longContent))
+    fun `BoxRenderer wraps long content`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
+        val longContent = "A".repeat(120)
+        val out = BoxRenderer.box("TEST", listOf(longContent), cfg)
+        val lines = out.split("\n").filter { it.isNotEmpty() }
 
-        // Should have multiple content lines for wrapped text
+        // content lines start with border and aren't title or divider
         val contentLines = lines.filter { it.startsWith("│") && !it.contains("TEST") && !it.contains("─") }
         assertTrue(contentLines.size >= 2, "Long content should be wrapped")
     }
 
     @Test
-    fun `UiBox renderWithSections includes dividers`() {
+    fun `BoxRenderer boxWithSections includes dividers`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
         val sections = listOf(
             listOf("Section 1 line 1", "Section 1 line 2"),
             listOf("Section 2 line 1")
         )
-        val lines = UiBox.renderWithSections("TITLE", sections)
+        val out = BoxRenderer.boxWithSections("TITLE", sections, cfg)
+        val lines = out.split("\n").filter { it.isNotEmpty() }
 
         val dividers = lines.count { it.startsWith("├") && it.endsWith("┤") }
         assertEquals(2, dividers, "Should have title divider plus section divider")
     }
 
     @Test
-    fun `UiBox rendering is deterministic`() {
+    fun `BoxRenderer rendering is deterministic`() {
+        val cfg = RenderConfig(renderWidth = 80, useUnicodeBorders = true)
         val rows = listOf("Line 1", "Line 2", "Line 3")
 
-        val render1 = UiBox.render("TITLE", rows)
-        val render2 = UiBox.render("TITLE", rows)
+        val render1 = BoxRenderer.box("TITLE", rows, cfg)
+        val render2 = BoxRenderer.box("TITLE", rows, cfg)
 
-        assertEquals(render1, render2, "UiBox rendering should be deterministic")
+        assertEquals(render1, render2, "BoxRenderer rendering should be deterministic")
     }
 
     // ========================================================================
@@ -229,8 +242,7 @@ class GoldenOutputTest {
 
     @Test
     fun `diegetic help contains all commands`() {
-        val lines = DiegeticHelp.render()
-        val text = lines.joinToString("\n")
+        val text = DiegeticHelp.render()
 
         // Verify all commands are present
         assertTrue(text.contains("help"), "Should contain help command")
@@ -246,8 +258,7 @@ class GoldenOutputTest {
 
     @Test
     fun `diegetic help has scribe framing`() {
-        val lines = DiegeticHelp.render()
-        val text = lines.joinToString("\n")
+        val text = DiegeticHelp.render()
 
         assertTrue(text.contains("SCRIBE'S NOTE"), "Should have scribe title")
         assertTrue(text.contains("Scribe"), "Should mention Scribe")
@@ -266,8 +277,7 @@ class GoldenOutputTest {
         val state = createTestState()
         val rng = core.rng.Rng(100L)
 
-        val lines = DiegeticStatus.render(state, rng)
-        val text = lines.joinToString("\n")
+        val text = DiegeticStatus.render(state, rng)
 
         assertTrue(text.contains("STEWARD REPORT"), "Should have steward title")
         assertTrue(text.contains("Day ${state.meta.dayIndex}"), "Should contain day")
@@ -283,8 +293,7 @@ class GoldenOutputTest {
         )
         val rng = core.rng.Rng(100L)
 
-        val lines = DiegeticStatus.render(state, rng)
-        val text = lines.joinToString("\n")
+        val text = DiegeticStatus.render(state, rng)
 
         assertTrue(text.contains("CONCERNS"), "Should show concerns section")
         assertTrue(text.contains("chaos") || text.contains("brink"), "Should show critical stability concern")
@@ -297,13 +306,12 @@ class GoldenOutputTest {
                 inbox = emptyList(),
                 board = emptyList(),
                 active = emptyList(),
-                returns = listOf(createTestReturn(requiresClose = true))
+                returns = listOf(createTestReturn())
             )
         )
         val rng = core.rng.Rng(100L)
 
-        val lines = DiegeticStatus.render(state, rng)
-        val text = lines.joinToString("\n")
+        val text = DiegeticStatus.render(state, rng)
 
         assertTrue(text.contains("signature") || text.contains("returning"))
     }
@@ -396,8 +404,7 @@ class GoldenOutputTest {
             )
         )
 
-        val lines = ContractListRenderer.renderInbox(state)
-        val text = lines.joinToString("\n")
+        val text = ContractListRenderer.renderInbox(state)
 
         assertTrue(text.contains("CONTRACT OFFERS"), "Should have title")
         assertTrue(text.contains("»"), "Should have flavor marker")
@@ -407,8 +414,7 @@ class GoldenOutputTest {
     fun `empty inbox shows appropriate message`() {
         val state = createTestState()
 
-        val lines = ContractListRenderer.renderInbox(state)
-        val text = lines.joinToString("\n")
+        val text = ContractListRenderer.renderInbox(state)
 
         assertTrue(text.contains("No new contract offers"))
     }
@@ -580,7 +586,7 @@ class GoldenOutputTest {
         clientDeposit = 0
     )
 
-    private fun createTestReturn(requiresClose: Boolean = true) = ReturnPacket(
+    private fun createTestReturn() = ReturnPacket(
         activeContractId = ActiveContractId(1),
         boardContractId = ContractId(1),
         heroIds = listOf(HeroId(1)),
@@ -589,7 +595,7 @@ class GoldenOutputTest {
         trophiesCount = 5,
         trophiesQuality = Quality.OK,
         reasonTags = emptyList(),
-        requiresPlayerClose = requiresClose,
+        requiresPlayerClose = true,
         suspectedTheft = false
     )
 
