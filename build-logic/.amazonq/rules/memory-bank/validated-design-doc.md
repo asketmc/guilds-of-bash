@@ -394,7 +394,8 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 - **PostContract**:
   - **MATCH**: Draft must exist in inbox
   - **MATCH**: fee >= 0
-  - **MATCH**: availableCopper >= fee (escrow reservation on posting)
+  - **MATCH**: requiredFromGuild = max(0, fee - clientDeposit)
+  - **MATCH**: availableCopper >= requiredFromGuild (client deposit can cover part/all of fee)
 
 - **CreateContract**:
   - **MATCH**: title not blank
@@ -584,11 +585,41 @@ All events listed in doc are present in code with matching field structures. Key
 
 **Code Anchor**: `core/Reducer.kt`: handlePostContract, auto-close, handleCloseReturn
 
-- **On post**: reservedCopper += fee
-- **On auto-close (SUCCESS/FAIL/DEATH)**: reservedCopper -= fee always, money deducted only if outcome != FAIL
-- **On manual close (PARTIAL)**: reservedCopper -= fee, moneyCopper -= fee
+- **On post**: reservedCopper += clientDeposit (client's contribution, not fee)
+- **On auto-close (SUCCESS/FAIL/DEATH)**: reservedCopper -= clientDeposit always, money deducted only if outcome != FAIL
+- **On manual close (PARTIAL)**: reservedCopper -= clientDeposit, moneyCopper -= fee
 
-### 11.5 Taxes (Actual)
+### 11.5 Contract Pricing (Rank-Based Client Deposits)
+**Status**: MATCH
+
+**Code Anchor**: `core/flavour/ContractPricing.kt`, `core/BalanceSettings.kt`
+
+**Payout Bands (gp/quest by rank)**:
+| Rank | Payout Range |
+|------|--------------|
+| F | 0..1 |
+| E | 1..6 |
+| D | 6..25 |
+| C | 25..150 |
+| B | 150..700 |
+| A | 700..2500 (10% tail: 2500..8000) |
+| S | 2000..10000 |
+
+**Client Deposit Rule (MVP)**:
+- **MATCH**: 50% chance client pays a deposit
+- **MATCH**: When paying, deposit = payout × 50% (basis points: 5000/10000)
+- **MATCH**: clientDeposit stored on ContractDraft and BoardContract
+
+**PostContract Validation (clientDeposit-aware)**:
+- **MATCH**: requiredFromGuild = max(0, fee - clientDeposit)
+- **MATCH**: availableCopper >= requiredFromGuild (not full fee)
+- **MATCH**: Allows posting with money=0 if clientDeposit covers entire fee
+
+**Inbox Generation**:
+- **MATCH**: InboxLifecycle.generateDrafts calls ContractPricing.sampleClientDepositGp
+- **MATCH**: Draft may have non-zero clientDeposit scaling with rank
+
+### 11.6 Taxes (Actual)
 **Status**: MATCH
 
 **Code Anchor**: `core/state/MetaStateData.kt`, `core/Reducer.kt`, `core/BalanceSettings.kt`

@@ -4,6 +4,7 @@ package core.pipeline
 import core.BalanceSettings
 import core.calculateThreatLevel
 import core.calculateBaseDifficulty
+import core.flavour.ContractPricing
 import core.primitives.ContractId
 import core.primitives.Rank
 import core.primitives.SalvagePolicy
@@ -56,6 +57,9 @@ object InboxLifecycle {
             val threatLevel = calculateThreatLevel(stability)
             val baseDifficulty = calculateBaseDifficulty(threatLevel, rng)
 
+            // Sample client deposit using rank-based pricing
+            val clientDeposit = ContractPricing.sampleClientDepositGp(Rank.F, rng)
+
             drafts.add(
                 ContractDraft(
                     id = ContractId(draftId),
@@ -66,7 +70,8 @@ object InboxLifecycle {
                     feeOffered = 0,
                     salvage = SalvagePolicy.GUILD,
                     baseDifficulty = baseDifficulty,
-                    proofHint = "proof"
+                    proofHint = "proof",
+                    clientDeposit = clientDeposit
                 )
             )
         }

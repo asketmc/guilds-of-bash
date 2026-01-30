@@ -86,8 +86,8 @@ fun canApply(state: GameState, cmd: Command): ValidationResult {
  */
 @Suppress("ReturnCount")
 private fun validatePostContract(state: GameState, cmd: PostContract): ValidationResult {
-    val inboxExists = state.contracts.inbox.any { it.id.value.toLong() == cmd.inboxId }
-    if (!inboxExists) {
+    val draft = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.inboxId }
+    if (draft == null) {
         return ValidationResult.Rejected(
             reason = RejectReason.NOT_FOUND,
             detail = "inboxId=${cmd.inboxId} not found"
@@ -99,11 +99,14 @@ private fun validatePostContract(state: GameState, cmd: PostContract): Validatio
             detail = "fee=${cmd.fee} must be >= 0"
         )
     }
+    // Player only needs to cover: max(0, fee - clientDeposit)
+    // clientDeposit is the client's contribution which can cover part or all of the fee
+    val requiredFromGuild = (cmd.fee - draft.clientDeposit).coerceAtLeast(0)
     val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
-    if (availableCopper < cmd.fee) {
+    if (availableCopper < requiredFromGuild) {
         return ValidationResult.Rejected(
             reason = RejectReason.INVALID_STATE,
-            detail = "Insufficient available funds: need ${cmd.fee}, available ${availableCopper}"
+            detail = "Insufficient available funds: need $requiredFromGuild (fee=${cmd.fee} - clientDeposit=${draft.clientDeposit}), available $availableCopper"
         )
     }
     return ValidationResult.Valid
