@@ -1,54 +1,52 @@
 # Guilds of Bash - Technology Stack
 
 ## Programming Languages & Versions
-- **Kotlin**: 2.2.21 (primary language)
-- **JDK**: 17 (target runtime)
-- **Gradle**: 8.14 (build system)
+
+### Primary Language
+- **Kotlin**: 2.2.21 (JVM target)
+- **JVM Target**: Java 17
+- **Java Toolchain**: OpenJDK 17
+
+### Language Features Used
+- **Sealed Classes**: Command and Event hierarchies
+- **Data Classes**: State containers and value objects
+- **Object Declarations**: Singletons for utilities and constants
+- **Extension Functions**: Enhanced API ergonomics
+- **Kotlinx Serialization**: JSON serialization with stability guarantees
 
 ## Build System & Dependencies
 
-### Gradle Configuration
-- **Multi-module project** with composite build structure
-- **Build Logic**: Centralized in `build-logic/` composite build
-- **Convention Plugins**: Standardized module configurations
-- **Reproducible Builds**: Deterministic archive generation
+### Build Tools
+- **Gradle**: 8.14 with Kotlin DSL
+- **Gradle Wrapper**: Ensures consistent build environment
+- **Multi-Module**: Clean separation of concerns
 
-### Key Gradle Plugins
+### Core Dependencies
 ```kotlin
-// Core Kotlin
-kotlin("jvm") version "2.2.21"
-kotlin("plugin.serialization") version "2.2.21"
+// Serialization
+implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-// Documentation
-id("org.jetbrains.dokka") version "2.2.0-Beta"
-
-// Testing & Quality
-id("org.jetbrains.kotlinx.kover") version "0.9.3"  // Coverage
-id("info.solidsoft.pitest") version "1.19.0-rc.3" // Mutation testing
-id("io.gitlab.arturbosch.detekt") version "1.23.8" // Static analysis
-
-// Packaging
-id("com.gradleup.shadow") version "9.2.2"  // Fat JAR creation
+// Testing (core-test module)
+testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+testImplementation("org.assertj:assertj-core:3.26.3")
 ```
 
-### Dependencies
-- **Kotlin Serialization**: JSON serialization for state persistence
-- **Kotlin Standard Library**: Core language features
-- **JUnit**: Testing framework (implied by test structure)
+### Build Plugins
+- **Kotlin JVM**: `kotlin("jvm")` version 2.2.21
+- **Kotlin Serialization**: `kotlin("plugin.serialization")` version 2.2.21
+- **Kover**: Coverage reporting version 0.9.3
+- **Detekt**: Static analysis version 1.23.8
+- **Shadow**: Fat JAR creation version 9.2.2
+- **PiTest**: Mutation testing version 1.19.0-rc.3
+- **Dokka**: Documentation generation version 2.2.0-Beta
 
 ## Development Commands
 
-### Running the Application
+### Basic Operations
 ```bash
-# Console application
+# Run console application
 ./gradlew :adapter-console:run
 
-# Build all modules
-./gradlew build
-```
-
-### Testing & Quality Assurance
-```bash
 # Run all tests
 ./gradlew test
 
@@ -56,92 +54,111 @@ id("com.gradleup.shadow") version "9.2.2"  // Fat JAR creation
 ./gradlew koverHtmlReport
 # Output: build/reports/kover/html/index.html
 
-# Run mutation testing
+# Run static analysis
+./gradlew detekt
+
+# Build fat JAR
+./gradlew :adapter-console:shadowJar
+```
+
+### Quality Assurance
+```bash
+# Run mutation tests
 ./gradlew pitest
 
-# Static analysis
-./gradlew detekt
+# Generate documentation
+./gradlew dokkaHtmlMultiModule
 
 # Full quality check
 ./gradlew check
+
+# Clean build
+./gradlew clean build
 ```
 
-### Documentation
+### CI/CD Commands
 ```bash
-# Generate API documentation
-./gradlew dokkaHtmlMultiModule
-# Output: build/reports/dokka/html/
+# Install CI tools (Windows)
+scripts/install-ci-tools.ps1
+
+# Run core tests only
+scripts/run-core-test.ps1
+
+# Generate build info
+scripts/write-build-info.sh
 ```
 
-## CI/CD Pipeline
+## Testing Framework
 
-### GitHub Actions Workflows
-- **ci.yml**: Main CI orchestration
-- **ci1_docs.yml**: Documentation generation
-- **ci2_unit_tests.yml**: Unit test execution
-- **ci3_pitest.yml**: Mutation testing
-- **ci4_fast_flaky.yml**: Fast feedback tests
-- **ci5_full_tests_coverage_badge.yml**: Full test suite + coverage
-- **ci6_detekt.yml**: Static analysis
-- **ci7_build_artifact.yml**: Build artifact generation
-- **ci8_nightly_full_quarantine.yml**: Nightly comprehensive testing
-- **ci9_release.yml**: Release automation
+### Test Libraries
+- **JUnit 5**: Primary testing framework
+- **AssertJ**: Fluent assertions library
+- **Kover**: Coverage measurement and reporting
+- **PiTest**: Mutation testing for test quality
 
-### Quality Gates
-- **Test Coverage**: Kover integration with badge generation
-- **Mutation Testing**: PiTest for test quality validation
-- **Static Analysis**: Detekt for code quality
-- **Reproducible Builds**: Deterministic artifact generation
+### Test Categories
+- **Unit Tests**: Fast, isolated component tests
+- **Integration Tests**: Command flow and state transition tests
+- **Determinism Tests**: Reproducibility verification
+- **Serialization Tests**: Roundtrip stability verification
+- **Invariant Tests**: State validation rule verification
+- **Golden Tests**: Regression prevention with saved replays
+
+## Quality Tools Configuration
+
+### Static Analysis (Detekt)
+- **Configuration**: `config/detekt/detekt.yml`
+- **Baseline**: `config/detekt/detekt-baseline.xml`
+- **Target**: JVM 17
+- **Mode**: Adoption mode (warnings, not failures)
+
+### Coverage (Kover)
+- **Merged Reporting**: Aggregates core and core-test modules
+- **HTML Output**: `build/reports/kover/html/index.html`
+- **CI Integration**: Automatic coverage badge generation
+
+### Mutation Testing (PiTest)
+- **Baseline**: `ci/pitest-baseline.json`
+- **Target**: Core module only
+- **Integration**: Gradle plugin with custom configuration
+
+## Serialization & Persistence
+
+### JSON Serialization
+- **Library**: Kotlinx Serialization JSON
+- **Strategy**: Canonical format for deterministic hashing
+- **Stability**: Documented serialization contracts in `SERIALIZATION_STABILITY.md`
+
+### State Persistence
+- **Format**: JSON with explicit field ordering
+- **Hashing**: SHA-256 for state and event verification
+- **Reproducibility**: Deterministic serialization for replay systems
 
 ## Development Environment
 
-### Required Tools
-- **JDK 17**: Java Development Kit
-- **Gradle 8.14**: Build automation (via wrapper)
-- **Git**: Version control
-- **IDE**: IntelliJ IDEA recommended (Kotlin support)
+### IDE Support
+- **IntelliJ IDEA**: Primary development environment
+- **Kotlin Plugin**: Latest stable version
+- **Gradle Integration**: Built-in Gradle support
 
-### Optional Tools
-- **Docker**: For containerized builds (if needed)
-- **PowerShell**: For Windows-specific scripts
+### Version Control
+- **Git**: Primary VCS with GitHub hosting
+- **Branching**: Feature branches with PR workflow
+- **CI Integration**: GitHub Actions for automated testing
 
-## Module-Specific Technology
+### Platform Support
+- **Primary**: Windows (development environment)
+- **CI**: Linux (GitHub Actions runners)
+- **JVM**: Cross-platform compatibility via Java 17
 
-### Core Module
-- **Pure Kotlin**: No external dependencies
-- **Kotlinx Serialization**: State persistence
-- **Immutable Data Structures**: State management
-- **Sealed Classes**: Type-safe domain modeling
+## Deployment & Distribution
 
-### Adapter Console
-- **Kotlin Standard Library**: Console I/O
-- **Text Processing**: String manipulation and formatting
-- **ANSI Escape Codes**: Console formatting (implied by UiBox)
+### Artifact Generation
+- **Fat JAR**: Self-contained executable with all dependencies
+- **Checksums**: SHA-256 verification for release artifacts
+- **Reproducible Builds**: Consistent timestamps and file ordering
 
-### Core Test
-- **JUnit Platform**: Test execution
-- **Kotlin Test**: Assertions and test utilities
-- **Custom Test Helpers**: Domain-specific testing utilities
-- **Golden File Testing**: Regression testing approach
-
-## Configuration Files
-
-### Build Configuration
-- `build.gradle.kts`: Root build configuration
-- `settings.gradle.kts`: Project structure definition
-- `gradle.properties`: Build properties
-- `build-logic/`: Convention plugin definitions
-
-### Quality Tools
-- `config/detekt/detekt.yml`: Static analysis rules
-- `config/detekt/detekt-baseline.xml`: Analysis baseline
-- `ci/pitest-baseline.json`: Mutation testing baseline
-
-### CI Configuration
-- `.github/workflows/`: GitHub Actions definitions
-- `scripts/`: Build and development utilities
-
-## Platform Support
-- **Primary**: JVM (Java 17+)
-- **Operating Systems**: Cross-platform (Windows, macOS, Linux)
-- **Architecture**: Any JVM-supported architecture
+### Release Process
+- **Automated**: GitHub Actions workflow for tagged releases
+- **Artifacts**: Console JAR with checksum verification
+- **Documentation**: Auto-generated API docs and coverage reports

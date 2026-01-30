@@ -3,123 +3,155 @@
 ## Code Quality Standards
 
 ### Documentation Patterns
-- **Comprehensive KDoc**: All public functions include detailed documentation with Contract, Preconditions, Postconditions, Invariants, Determinism, and Complexity sections
-- **Why Comments**: Extensive use of "Why" comments explaining design decisions and architectural choices
-- **Inline Documentation**: Complex logic includes explanatory comments for maintainability
-- **File Headers**: Each file includes purpose and context documentation
+- **Comprehensive KDoc**: Every public function includes detailed contract documentation with sections for:
+  - `## Contract`: What the function guarantees
+  - `## Preconditions`: Required input constraints
+  - `## Postconditions`: Guaranteed output state
+  - `## Determinism`: Reproducibility guarantees
+  - `## Complexity`: Time/space complexity analysis
+- **Why Comments**: Explain architectural decisions and design rationale, not just what code does
+- **Stability Annotations**: Mark APIs with audience and stability guarantees (e.g., "Stable API: yes; Audience: core reducer only")
 
 ### Naming Conventions
-- **Descriptive Names**: Functions and variables use clear, descriptive names (e.g., `applyAndPrintWithAnalytics`, `printCmdInput`)
-- **Domain Language**: Consistent use of domain terminology (Contract, Hero, Guild, etc.)
-- **Enum Naming**: Enums use UPPER_CASE for values (e.g., `BoardStatus.OPEN`, `Outcome.SUCCESS`)
-- **Boolean Prefixes**: Boolean properties use clear prefixes (`requiresPlayerClose`, `isPartialPayment`)
+- **Descriptive Function Names**: Use full descriptive names like `handleAdvanceDay`, `verifyInvariants`, `serializeEvents`
+- **Domain-Specific Terminology**: Consistent use of game domain terms (inbox, board, active, returns, heroes, trophies)
+- **Enum Naming**: Use SCREAMING_SNAKE_CASE for enum values (e.g., `ON_MISSION`, `RETURN_READY`, `LOCKED`)
+- **File Organization**: Group related functionality in packages (handlers, primitives, state, serde, invariants)
 
-### Code Organization
-- **Logical Grouping**: Code organized into logical sections with separator comments (`// ─────────────────────────────────────────────────────────────────────────────`)
-- **Single Responsibility**: Functions focused on single, well-defined responsibilities
-- **Pure Functions**: Core logic implemented as pure functions for determinism
-- **Immutable Data**: Extensive use of immutable data structures and `copy()` operations
+### Code Structure Standards
+- **Sealed Classes**: Use for command and event hierarchies to ensure exhaustive when expressions
+- **Data Classes**: Prefer for state containers and value objects with automatic equals/hashCode
+- **Internal Visibility**: Mark core implementation details as `internal` to prevent external coupling
+- **Immutable State**: Use `copy()` methods for state updates, never mutate existing objects
 
 ## Architectural Patterns
 
 ### Command-Event Architecture
-- **Sealed Interfaces**: Events and Commands defined as sealed interfaces for type safety
-- **Event Sourcing**: All state changes communicated through events
-- **Command Validation**: Explicit validation before command execution
-- **Deterministic Processing**: Commands processed deterministically with explicit RNG
+```kotlin
+// Standard command handler pattern
+internal fun handleCommand(
+    state: GameState,
+    cmd: Command,
+    rng: Rng,
+    ctx: SeqContext
+): GameState {
+    // 1. Validate preconditions
+    // 2. Apply state changes
+    // 3. Emit events via ctx.emit()
+    // 4. Return new state
+}
+```
 
-### Error Handling
-- **Validation Results**: Use of sealed classes for validation results (`ValidationResult.Rejected`)
-- **Early Returns**: Guard clauses and early returns for invalid states
-- **Graceful Degradation**: Fallback behaviors for edge cases
-- **Debug Flags**: Conditional debug output controlled by constants
+### Deterministic Processing
+- **Explicit RNG**: Always pass `Rng` instance, never use `Random()` or system randomness
+- **Fixed Ordering**: Sort collections by stable keys (IDs) before processing to ensure deterministic iteration
+- **RNG Draw Contracts**: Document exact order and count of RNG draws for replay compatibility
+- **No Side Effects**: Core logic must be pure - no IO, wall-clock time, or global state access
+
+### Event Sourcing Patterns
+```kotlin
+// Event emission pattern
+ctx.emit(
+    EventType(
+        day = currentDay,
+        revision = state.meta.revision,
+        cmdId = cmd.cmdId,
+        seq = 0L, // Auto-assigned by context
+        // ... event-specific fields
+    )
+)
+```
 
 ### State Management
-- **Immutable State**: All state objects are immutable data classes
-- **Copy-Based Updates**: State mutations through `copy()` operations
-- **Encapsulation**: State access controlled through well-defined interfaces
-- **Snapshot Pattern**: State snapshots for analytics and persistence
+- **Immutable Updates**: Always use `state.copy()` with nested updates
+- **Validation After Changes**: Call `verifyInvariants()` after state mutations
+- **ID Management**: Increment ID counters monotonically, never reuse IDs
+- **Referential Integrity**: Maintain consistent references between state entities
 
-## Serialization Standards
+## Implementation Patterns
 
-### JSON Serialization
-- **Canonical Format**: Deterministic JSON output with stable field ordering
-- **Type Discriminators**: Events include type discriminators as first field
-- **Field Ordering**: Consistent field ordering across all serializers
-- **Escape Handling**: Proper JSON string escaping for special characters
+### Error Handling
+- **Command Validation**: Use `canApply()` pattern for pre-validation with specific rejection reasons
+- **Invariant Violations**: Emit `InvariantViolated` events rather than throwing exceptions
+- **Graceful Degradation**: Handle missing references gracefully with detailed error messages
 
-### Data Transfer Objects
-- **DTO Pattern**: Separate DTOs for serialization to isolate domain models
-- **Version Control**: Save version tracking for backward compatibility
-- **Enum Serialization**: Enums serialized as strings using `.name` property
-- **Value Class Handling**: Value classes serialized as raw primitive values
+### Serialization Standards
+```kotlin
+// Canonical JSON serialization pattern
+private fun serializeEvent(event: Event, sb: StringBuilder) {
+    sb.appendCommonFields("EventType", event)
+    sb.appendIntField("fieldName", event.fieldValue)
+    sb.appendStringField("textField", event.textValue)
+    sb.append('}')
+}
+```
 
-## Testing Patterns
+### Testing Patterns
+- **Factory Methods**: Use reflection-based factories for comprehensive test data generation
+- **Variant Testing**: Test multiple scenarios (nulls, empty arrays, edge cases) systematically
+- **Determinism Verification**: Verify same inputs produce identical outputs and hashes
+- **Exhaustive Coverage**: Ensure all sealed class branches are tested
 
-### Test Organization
-- **Helper Functions**: Extensive use of test helper functions for common operations
-- **Golden File Testing**: Regression testing using golden file comparisons
-- **Deterministic Testing**: Fixed seeds for reproducible test results
-- **Assertion Helpers**: Custom assertion functions for domain-specific validations
+## API Design Principles
 
-### Test Data Management
-- **Factory Pattern**: Test state factories for consistent test data creation
-- **Scripted RNG**: Controlled randomness through scripted RNG for predictable tests
-- **Event Assertions**: Specialized assertions for event validation
-- **Invariant Testing**: Automated invariant checking in tests
+### Internal APIs
+```kotlin
+// Standard module organization
+package core.handlers // Command processing logic
+package core.primitives // Basic enums and value types  
+package core.state // Game state data structures
+package core.serde // Serialization utilities
+package core.invariants // State validation rules
+```
+
+### Public Interfaces
+- **Minimal Surface Area**: Expose only essential functions through public APIs
+- **Stable Contracts**: Document breaking change policies and version compatibility
+- **Type Safety**: Use value classes for IDs to prevent mixing different ID types
+- **Builder Patterns**: Provide convenient construction methods for complex objects
 
 ## Performance Considerations
 
-### Optimization Patterns
-- **Pre-built Lookups**: Use of HashMap and associateBy for O(1) lookups
-- **Batch Operations**: Processing multiple items in single operations
-- **Lazy Evaluation**: Deferred computation where appropriate
-- **Memory Efficiency**: Reuse of collections and StringBuilder for string building
+### Efficient Collections
+- **Pre-sized Collections**: Use `buildList {}` and `mutableListOf()` with known capacity
+- **Lookup Optimization**: Build `associateBy {}` maps for O(1) lookups in hot paths
+- **Lazy Sequences**: Use `asSequence()` for multi-step transformations on large collections
+- **Sorting Strategy**: Sort by numeric projections (`num()` function) for stable ordering
 
-### Collection Usage
-- **Immutable Collections**: Preference for immutable collections in public APIs
-- **Mutable Builders**: Use of mutable collections for internal building operations
-- **Array Usage**: IntArray for primitive collections to avoid boxing
-- **Sorted Collections**: Consistent sorting for deterministic output
+### Memory Management
+- **Immutable Sharing**: Leverage Kotlin's structural sharing for unchanged nested objects
+- **Temporary Collections**: Minimize intermediate collection creation in loops
+- **String Building**: Use `StringBuilder` for complex string construction (serialization)
 
-## Console Adapter Patterns
+## Quality Assurance
 
-### User Interface Design
-- **Command Parsing**: Robust command parsing with error handling
-- **Contextual Output**: Rich context information for debugging
-- **Hash Verification**: State and event hashing for regression detection
-- **Graceful Error Handling**: User-friendly error messages without crashes
+### Static Analysis Integration
+- **Detekt Configuration**: Use project-specific rules in `config/detekt/detekt.yml`
+- **Baseline Management**: Track known issues in `detekt-baseline.xml`
+- **Adoption Mode**: Start with warnings, gradually increase strictness
 
-### Output Formatting
-- **Structured Logging**: Consistent log format with greppable patterns
-- **Progress Indicators**: Clear progress messages for long operations
-- **Tabular Data**: Formatted output for lists and status information
-- **Flavor Text**: Optional narrative elements for enhanced user experience
+### Test Quality Standards
+- **Mutation Testing**: Use PiTest to verify test effectiveness
+- **Coverage Targets**: Maintain high coverage with meaningful assertions
+- **Golden Master Tests**: Use saved replays for regression detection
+- **Property-Based Testing**: Test invariants across wide input ranges
 
-## Build and Configuration
-
-### Gradle Conventions
-- **Convention Plugins**: Centralized build logic in convention plugins
-- **Multi-module Structure**: Clear separation between core, adapters, and tests
-- **Quality Gates**: Integrated static analysis, testing, and coverage tools
-- **Reproducible Builds**: Deterministic build artifacts with stable timestamps
-
-### Code Quality Tools
-- **Detekt Integration**: Static analysis with baseline management
-- **Kover Coverage**: Comprehensive test coverage reporting
-- **Mutation Testing**: PiTest integration for test quality validation
-- **Documentation Generation**: Automated API documentation with Dokka
+### CI/CD Integration
+- **Multi-Stage Pipeline**: Separate fast unit tests from slower integration tests
+- **Reproducible Builds**: Ensure consistent artifacts across environments
+- **Quality Gates**: Block merges on test failures or quality regressions
+- **Automated Reporting**: Generate coverage and quality reports automatically
 
 ## Development Workflow
 
-### Version Control
-- **Atomic Commits**: Small, focused commits with clear messages
-- **Branch Strategy**: Feature branches with clean merge history
-- **CI Integration**: Automated testing and quality checks on all changes
-- **Release Automation**: Automated release process with version management
+### Code Organization
+- **Single Responsibility**: Each class/function has one clear purpose
+- **Dependency Direction**: Core never depends on adapters, only vice versa
+- **Module Boundaries**: Respect package visibility and avoid circular dependencies
+- **Feature Completeness**: Implement features end-to-end before moving to next feature
 
-### Code Review Standards
-- **Comprehensive Reviews**: Focus on architecture, performance, and maintainability
-- **Documentation Review**: Ensure all public APIs are properly documented
-- **Test Coverage**: Verify adequate test coverage for new functionality
-- **Performance Impact**: Consider performance implications of changes
+### Debugging Support
+- **Deterministic Hashing**: Use state/event hashes for regression detection
+- **Structured Logging**: Print key-value pairs for greppable debug output
+- **Replay Capability**: Save command sequences for bug reproduction
+- **Observable State**: Make all state changes visible through events
