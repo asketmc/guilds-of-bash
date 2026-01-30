@@ -1,4 +1,3 @@
-# FILE: .github/workflows/ci.yml
 name: CI
 
 on:
@@ -12,8 +11,13 @@ on:
     - cron: "0 2 * * *"
   workflow_dispatch:
 
+# reusable-workflows
 permissions:
   contents: read
+  pages: write
+  id-token: write
+  actions: write
+  issues: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -33,6 +37,8 @@ jobs:
     uses: ./.github/workflows/ci5_full_tests_coverage_badge.yml
     permissions:
       contents: write
+      pages: write
+      id-token: write
 
   pitest-smoke-master:
     name: PITEST (SMOKE) [master push]
@@ -97,8 +103,7 @@ jobs:
       actions: write
 
   nightly-full-and-quarantine:
-    name: |
-      Nightly: PITEST ALL + perf + quarantine [schedule]
+    name: Nightly: PITEST ALL + perf + quarantine [schedule]
     if: ${{ github.event_name == 'schedule' }}
     uses: ./.github/workflows/ci8_nightly_full_quarantine.yml
     permissions:
