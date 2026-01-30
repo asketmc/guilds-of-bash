@@ -1,12 +1,12 @@
-![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blueviolet)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.2.21-blueviolet)
 ![JDK](https://img.shields.io/badge/JDK-17-blue)
 ![Gradle](https://img.shields.io/badge/Gradle-8.14-02303A?logo=gradle)
 [![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-> 📄 **Testing strategy & scope:** see [`core-test/TESTING.md`](core-test/TESTING.md)
-> 📊 **Coverage report (latest):** [https://asketmc.github.io/guilds-of-bash/kover/](https://asketmc.github.io/guilds-of-bash/kover/)
-> ⬇️ **Download coverage HTML (latest):** [https://asketmc.github.io/guilds-of-bash/kover-html.zip](https://asketmc.github.io/guilds-of-bash/kover-html.zip)
+ **Testing strategy & scope:** see [`core-test/TESTING.md`](core-test/TESTING.md)  
+ **Coverage report (latest):** [https://asketmc.github.io/guilds-of-bash/kover/](https://asketmc.github.io/guilds-of-bash/kover/)  
+ **Download coverage HTML (latest):** [https://asketmc.github.io/guilds-of-bash/kover-html.zip](https://asketmc.github.io/guilds-of-bash/kover-html.zip)  
 
 # Guilds of Bash
 
