@@ -26,5 +26,11 @@ enum class Outcome {
     /**
      * Hero died during contract resolution; treated economically like FAIL and hero is removed from roster.
      */
-    DEATH
+    DEATH,
+
+    /**
+     * Hero missing during contract resolution; narrative alias of DEATH for PoC/MVP scope.
+     * Treated identically to DEATH in backend logic (roster removal, economy effects, invariants).
+     */
+    MISSING
 }

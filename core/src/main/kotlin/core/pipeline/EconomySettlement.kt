@@ -57,7 +57,7 @@ object EconomySettlement {
 
         // Money calculation depends on outcome
         val moneyDelta = when (outcome) {
-            Outcome.FAIL, Outcome.DEATH -> 0 // No fee paid on failure or death
+            Outcome.FAIL, Outcome.DEATH, Outcome.MISSING -> 0 // No fee paid on failure or death/missing
             else -> -fee // Guild pays hero the full fee
         }
 
@@ -74,7 +74,7 @@ object EconomySettlement {
      * @param outcome The resolved outcome.
      * @param board The board contract being closed (nullable for safety).
      * @param trophiesCount Final trophies count (after theft).
-     * @param trophiesQuality Quality of returned trophies.
+     * @param trophiesQuality Quality of the trophies.
      * @param suspectedTheft Whether theft was suspected.
      * @param currentEconomy Current economy state.
      * @return [EconomyDelta] containing all monetary/trophy changes.
@@ -108,7 +108,7 @@ object EconomySettlement {
             resolved.moneyValueCopper
         } else {
             when (outcome) {
-                Outcome.FAIL, Outcome.DEATH -> 0
+                Outcome.FAIL, Outcome.DEATH, Outcome.MISSING -> 0
                 else -> -fee
             }
         }

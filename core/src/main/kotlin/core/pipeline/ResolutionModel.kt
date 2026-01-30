@@ -15,8 +15,8 @@ import core.state.Hero
  *
  * Combines outcome, theft, and trophies into a single decision.
  *
- * ## Stability Gradient
- * STABLE: Pure decision logic that delegates to specialized models.
+ * ## Stability
+ * - STABLE: Pure decision logic that delegates to specialized models.
  *
  * ## Determinism
  * - RNG draw order: outcome (1-3 draws), then theft (1 draw).
@@ -54,7 +54,7 @@ object ResolutionModel {
             outcomeDecision.baseTrophiesCount,
             rng
         )
-        val theftDecision = if (effectiveOutcome == Outcome.DEATH) {
+        val theftDecision = if (effectiveOutcome == Outcome.DEATH || effectiveOutcome == Outcome.MISSING) {
             baseTheftDecision.copy(
                 theftOccurred = false,
                 expectedTrophiesCount = 0,
@@ -88,7 +88,7 @@ object ResolutionModel {
         }
         return when (outcome) {
             Outcome.SUCCESS -> StabilityContribution(successCount = 1, failCount = 0)
-            Outcome.FAIL, Outcome.DEATH -> StabilityContribution(successCount = 0, failCount = 1)
+            Outcome.FAIL, Outcome.DEATH, Outcome.MISSING -> StabilityContribution(successCount = 0, failCount = 1)
             Outcome.PARTIAL -> StabilityContribution(successCount = 0, failCount = 0)
         }
     }

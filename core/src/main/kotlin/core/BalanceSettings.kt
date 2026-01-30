@@ -50,6 +50,12 @@ object BalanceSettings {
      */
     const val PERCENT_ROLL_MAX: Int = 100
 
+    /**
+     * Chance (percent) that a DEATH resolution is reported as MISSING instead, for narrative variety.
+     * PoC/MVP: small fixed chance; kept deterministic via RNG seed. Value in [0,100).
+     */
+    const val MISSING_CHANCE_PERCENT: Int = 10
+
     // ─────────────────────────────────────────────────────────────────────────
     // Gameplay Timing & Economic Parameters
     // ─────────────────────────────────────────────────────────────────────────

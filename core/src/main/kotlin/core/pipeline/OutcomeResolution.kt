@@ -75,7 +75,11 @@ object OutcomeResolution {
             else -> {
                 // DEATH tail: fixed high-roll death chance without extra RNG draws
                 if (roll >= (BalanceSettings.PERCENT_ROLL_MAX - 5)) {
-                    Outcome.DEATH
+                    // PoC/MVP: sometimes emit MISSING as a narrative alias for DEATH while keeping backend effects identical.
+                    val deathOutcome = Outcome.DEATH
+                    // Use same RNG stream to preserve draw order determinism — use another nextInt on the same RNG.
+                    val subRoll = rng.nextInt(BalanceSettings.PERCENT_ROLL_MAX)
+                    if (subRoll < BalanceSettings.MISSING_CHANCE_PERCENT) Outcome.MISSING else deathOutcome
                 } else {
                     Outcome.FAIL
                 }

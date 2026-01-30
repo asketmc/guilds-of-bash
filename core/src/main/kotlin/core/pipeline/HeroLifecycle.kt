@@ -12,8 +12,8 @@ import core.state.Hero
  * ## Semantic Ownership
  * Answers exactly one question: **Why hero became AVAILABLE / DEAD?**
  *
- * ## Stability Gradient
- * STABLE: Pure decision logic with explicit rules.
+ * ## Stability
+ * - STABLE: Pure decision logic with explicit rules.
  *
  * ## Determinism
  * - No RNG usage. All inputs are explicit.
@@ -46,7 +46,7 @@ object HeroLifecycle {
         val heroIdSet = heroIds.map { it.value }.toSet()
 
         return when (outcome) {
-            Outcome.DEATH -> {
+            Outcome.DEATH, Outcome.MISSING -> {
                 val remainingRoster = roster.filter { !heroIdSet.contains(it.id.value) }
                 val remainingArrivals = arrivalsToday.filter { !heroIdSet.contains(it.value) }
                 val diedHeroIds = heroIdSet.toList()

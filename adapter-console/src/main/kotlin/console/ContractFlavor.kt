@@ -171,7 +171,7 @@ object HeroQuotes {
         Outcome.SUCCESS -> "Clean job. Pay received."
         Outcome.PARTIAL -> "Could have gone better, but we got it done."
         Outcome.FAIL -> "We do not speak of this."
-        Outcome.DEATH -> "We do not speak of this."
+        Outcome.DEATH, Outcome.MISSING -> "We do not speak of this."
     }
 
     /**
@@ -187,7 +187,7 @@ object HeroQuotes {
             trophiesCount > 0 -> "Not our finest hour, but we brought something back."
             else -> "Could have gone better, but we got it done."
         }
-        Outcome.FAIL, Outcome.DEATH -> "We do not speak of this."
+        Outcome.FAIL, Outcome.DEATH, Outcome.MISSING -> "We do not speak of this."
     }
 }
 

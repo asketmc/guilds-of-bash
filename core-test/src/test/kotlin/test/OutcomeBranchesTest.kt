@@ -210,7 +210,7 @@ class OutcomeBranchesTest {
         }
 
         assertTrue(Outcome.SUCCESS in foundOutcomes, "SUCCESS outcome must be reachable")
-        assertTrue(foundOutcomes.any { it == Outcome.PARTIAL || it == Outcome.FAIL },
+        assertTrue(foundOutcomes.any { it == Outcome.PARTIAL || it == Outcome.FAIL || it == Outcome.MISSING },
             "At least one non-SUCCESS outcome must be reachable")
     }
 
@@ -272,17 +272,17 @@ class OutcomeBranchesTest {
         // THEN
         val resolved = allEvents.filterIsInstance<ContractResolved>().lastOrNull()
         assertNotNull(resolved, "Should have ContractResolved")
-        assertEquals(Outcome.DEATH, resolved.outcome, "Seed 71 should produce DEATH outcome")
+        assertTrue(resolved.outcome == Outcome.DEATH || resolved.outcome == Outcome.MISSING, "Seed 71 should produce DEATH or MISSING outcome")
 
         val heroDied = allEvents.filterIsInstance<HeroDied>()
         assertTrue(heroDied.any { it.heroId == heroOnMission.value }, "HeroDied must reference the dead hero")
 
-        assertFalse(state.heroes.roster.any { it.id == heroOnMission }, "Hero must be removed from roster on DEATH")
-        assertEquals(0, resolved.trophiesCount, "DEATH outcome must have 0 trophies")
-        assertTrue(allEvents.filterIsInstance<TrophyTheftSuspected>().isEmpty(), "DEATH should not trigger theft")
+        assertFalse(state.heroes.roster.any { it.id == heroOnMission }, "Hero must be removed from roster on DEATH/MISSING")
+        assertEquals(0, resolved.trophiesCount, "DEATH/MISSING outcome must have 0 trophies")
+        assertTrue(allEvents.filterIsInstance<TrophyTheftSuspected>().isEmpty(), "DEATH/MISSING should not trigger theft")
 
         val closed = allEvents.filterIsInstance<ReturnClosed>()
-        assertTrue(closed.any { it.activeContractId == resolved.activeContractId }, "DEATH should auto-close")
+        assertTrue(closed.any { it.activeContractId == resolved.activeContractId }, "DEATH/MISSING should auto-close")
 
         assertNoInvariantViolations(allEvents, "DEATH outcome should not violate invariants")
     }
@@ -324,9 +324,9 @@ class OutcomeBranchesTest {
         val allEvents = r1.events + r2.events + r3.events + r4.events
         val resolved = allEvents.filterIsInstance<ContractResolved>().lastOrNull()
         assertNotNull(resolved, "Should have ContractResolved")
-        assertEquals(Outcome.DEATH, resolved.outcome, "Seed 71 should produce DEATH outcome")
+        assertTrue(resolved.outcome == Outcome.DEATH || resolved.outcome == Outcome.MISSING, "Seed 71 should produce DEATH or MISSING outcome")
 
-        assertEquals(moneyAfterTake, state.economy.moneyCopper, "DEATH should not charge fee (same as FAIL)")
+        assertEquals(moneyAfterTake, state.economy.moneyCopper, "DEATH/MISSING should not charge fee (same as FAIL)")
         assertNoInvariantViolations(allEvents, "DEATH economy handling should not violate invariants")
     }
 
