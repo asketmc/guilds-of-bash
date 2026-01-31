@@ -1,5 +1,17 @@
 package core
 
+/**
+ * Guild rank progression threshold and scaling parameters.
+ *
+ * ## Role
+ * - Defines the contract completion requirements and resource multipliers for each guild rank.
+ * - Used by progression logic to determine rank-ups and daily generation scaling.
+ *
+ * @property rankOrdinal Guild rank ordinal (1=F, 2=E, ..., 7=S).
+ * @property contractsRequired Cumulative completed contracts needed to reach this rank.
+ * @property inboxMultiplier Multiplier for daily inbox draft generation at this rank.
+ * @property heroesMultiplier Multiplier for daily hero arrivals at this rank.
+ */
 data class RankThreshold(
     val rankOrdinal: Int,
     val contractsRequired: Int,
@@ -7,6 +19,17 @@ data class RankThreshold(
     val heroesMultiplier: Int
 )
 
+/**
+ * Progression table defining thresholds for all guild ranks.
+ *
+ * ## Contract
+ * - Ordered by `rankOrdinal` ascending (F=1 through S=7).
+ * - Each entry specifies the cumulative contracts needed and resource multipliers.
+ *
+ * ## Invariants
+ * - `contractsRequired` values are strictly increasing.
+ * - `rankOrdinal` values are unique and sequential (1..7).
+ */
 val RANK_THRESHOLDS = listOf(
     RankThreshold(rankOrdinal = 1, contractsRequired = 0, inboxMultiplier = 1, heroesMultiplier = 1), // F
     RankThreshold(rankOrdinal = 2, contractsRequired = 10, inboxMultiplier = 2, heroesMultiplier = 2), // E
@@ -18,7 +41,29 @@ val RANK_THRESHOLDS = listOf(
 )
 
 /**
- * Given completedContracts total and current guildRank (int 1..7), returns Pair(newRankInt, contractsForNextRank)
+ * Computes guild rank progression based on completed contract count.
+ *
+ * ## Contract
+ * - Finds highest threshold where `completedContracts >= contractsRequired`.
+ * - Returns new rank ordinal and contracts needed for the next rank.
+ *
+ * ## Preconditions
+ * - `completedContracts >= 0`
+ *
+ * ## Postconditions
+ * - First element is the new rank ordinal (1..7).
+ * - Second element is the contract threshold for the next rank (or `Int.MAX_VALUE` if maxed).
+ *
+ * ## Determinism
+ * - Pure function; same inputs always produce same outputs.
+ *
+ * ## Complexity
+ * - Time: O(n) where n = number of rank thresholds.
+ * - Memory: O(1)
+ *
+ * @param completedContracts Total lifetime completed contracts.
+ * @param _currentRankOrdinal Current rank (unused; progression is history-based).
+ * @return Pair of (newRankOrdinal, contractsForNextRank).
  */
 fun calculateNextRank(completedContracts: Int, _currentRankOrdinal: Int): Pair<Int, Int> {
     // Find highest threshold <= completedContracts
