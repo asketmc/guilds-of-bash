@@ -1,7 +1,5 @@
 package core
 
-import core.primitives.Rank
-
 data class RankThreshold(
     val rankOrdinal: Int,
     val contractsRequired: Int,
@@ -22,7 +20,7 @@ val RANK_THRESHOLDS = listOf(
 /**
  * Given completedContracts total and current guildRank (int 1..7), returns Pair(newRankInt, contractsForNextRank)
  */
-fun calculateNextRank(completedContracts: Int, @Suppress("UNUSED_PARAMETER") currentRankOrdinal: Int): Pair<Int, Int> {
+fun calculateNextRank(completedContracts: Int, _currentRankOrdinal: Int): Pair<Int, Int> {
     // Find highest threshold <= completedContracts
     val newRankThreshold = RANK_THRESHOLDS.lastOrNull { completedContracts >= it.contractsRequired } ?: RANK_THRESHOLDS.first()
     val newRank = newRankThreshold.rankOrdinal

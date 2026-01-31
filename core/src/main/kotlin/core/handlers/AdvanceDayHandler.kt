@@ -57,7 +57,6 @@ data class WipResolveResult(
  * - Runs a fixed phase order.
  * - Emits summary events as the authoritative narrative of the day.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleAdvanceDay(
     state: GameState,
     cmd: AdvanceDay,
@@ -269,7 +268,7 @@ private fun phaseAutoResolveInbox(
 private fun phasePickup(
     state: GameState,
     cmd: AdvanceDay,
-    @Suppress("UNUSED_PARAMETER") rng: Rng,
+    _rng: Rng,
     ctx: SeqContext,
     newDay: Int
 ): GameState {

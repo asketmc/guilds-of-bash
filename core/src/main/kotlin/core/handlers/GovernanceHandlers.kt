@@ -3,7 +3,6 @@ package core.handlers
 
 import core.*
 import core.pipeline.GovernancePolicy
-import core.primitives.*
 import core.rng.Rng
 import core.state.*
 
@@ -27,11 +26,10 @@ import core.state.*
  * How:
  * - Emits a change event and updates guild policy in one step.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleSetProofPolicy(
     state: GameState,
     cmd: SetProofPolicy,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val change = GovernancePolicy.computePolicyChange(

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import test.helpers.*
 import test.helpers.RngTraceTestExtension
 import kotlin.test.*
+import test.helpers.TestLog
 
 /**
  * P2: Outcome Branches Test.
@@ -93,9 +94,9 @@ class OutcomeBranchesTest {
                 // Forensic aid: make invariant failures discoverable from test XML.
                 val violations = events.filterIsInstance<InvariantViolated>()
                 if (violations.isNotEmpty()) {
-                    println("[FORENSIC] SUCCESS seed=$seed invariantViolations=${violations.size}")
+                    TestLog.log("[FORENSIC] SUCCESS seed=$seed invariantViolations=${violations.size}")
                     violations.forEach { v ->
-                        println("[FORENSIC] ${v.invariantId.code}: ${v.details}")
+                        TestLog.log("[FORENSIC] ${v.invariantId.code}: ${v.details}")
                     }
                 }
 

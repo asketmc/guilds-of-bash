@@ -6,6 +6,7 @@ import core.*
 import test.helpers.assertSealedSubclassExists
 import test.helpers.sealedSubclassNamesOf
 import test.helpers.sealedSubclassesMissingField
+import test.helpers.TestLog
 import kotlin.test.*
 
 /**
@@ -71,7 +72,7 @@ class PoCManifestCoverageTest {
         )
 
         // Document covered commands
-        println("✓ All ${pocCommands.size} PoC commands present: ${pocCommands.sorted()}")
+        TestLog.log("✓ All ${pocCommands.size} PoC commands present: ${pocCommands.sorted()}")
     }
 
     @Test
@@ -87,7 +88,7 @@ class PoCManifestCoverageTest {
         )
 
         // Document covered events
-        println("✓ All ${pocEvents.size} PoC events present: ${pocEvents.sorted()}")
+        TestLog.log("✓ All ${pocEvents.size} PoC events present: ${pocEvents.sorted()}")
     }
 
     @Test
@@ -100,10 +101,10 @@ class PoCManifestCoverageTest {
 
         // Allow for future expansion but document it
         if (extraCommands.isNotEmpty()) {
-            println("⚠ Extra commands beyond PoC manifest: $extraCommands")
-            println("  Consider updating POC_MANIFEST.md if these are production-ready")
+            TestLog.log("⚠ Extra commands beyond PoC manifest: $extraCommands")
+            TestLog.log("  Consider updating POC_MANIFEST.md if these are production-ready")
         } else {
-            println("✓ No extra commands beyond PoC scope")
+            TestLog.log("✓ No extra commands beyond PoC scope")
         }
     }
 
@@ -116,10 +117,10 @@ class PoCManifestCoverageTest {
         val extraEvents = eventClasses - pocEvents
 
         if (extraEvents.isNotEmpty()) {
-            println("⚠ Extra events beyond PoC manifest: $extraEvents")
-            println("  Consider updating POC_MANIFEST.md if these are production-ready")
+            TestLog.log("⚠ Extra events beyond PoC manifest: $extraEvents")
+            TestLog.log("  Consider updating POC_MANIFEST.md if these are production-ready")
         } else {
-            println("✓ No extra events beyond PoC scope")
+            TestLog.log("✓ No extra events beyond PoC scope")
         }
     }
 
@@ -142,7 +143,7 @@ class PoCManifestCoverageTest {
         // FG_07: All commands → CommandRejected (validation)
         assertSealedSubclassExists(Event::class, "CommandRejected")
 
-        println("✓ Critical command-event mappings verified")
+        TestLog.log("✓ Critical command-event mappings verified")
     }
 
     @Test
@@ -153,7 +154,7 @@ class PoCManifestCoverageTest {
         assertTrue(missing.isEmpty(),
             "All Command implementations must have cmdId: Long field for step() reducer; missing=$missing")
 
-        println("✓ All commands have cmdId field (testable via step())")
+        TestLog.log("✓ All commands have cmdId field (testable via step())")
     }
 
     @Test
@@ -169,6 +170,6 @@ class PoCManifestCoverageTest {
         assertTrue(missingInfo.isEmpty(),
             "All Event implementations must have day, revision, cmdId, seq fields; missing=$missingInfo")
 
-        println("✓ All events have required fields (observable via event stream)")
+        TestLog.log("✓ All events have required fields (observable via event stream)")
     }
 }

@@ -9,6 +9,7 @@ import core.rng.Rng
 import core.state.initialState
 import test.helpers.Scenario
 import test.helpers.assertNoInvariantViolations
+import test.helpers.TestLog
 import kotlin.test.*
 
 /**
@@ -64,7 +65,7 @@ class InvariantsAfterEachStepTest {
                 "Step ${index + 1} (${cmd::class.simpleName}): Found InvariantViolated events: $violationEvents")
         }
 
-        println("✓ GR1: No invariant violations after any of ${scenario.commands.size} steps")
+        TestLog.log("✓ GR1: No invariant violations after any of ${scenario.commands.size} steps")
     }
 
     @Test
@@ -105,7 +106,7 @@ class InvariantsAfterEachStepTest {
                     "${scenario.scenarioId} step ${index + 1}: Rejections must leave state valid, found violations: $violations")
             }
 
-            println("✓ ${scenario.scenarioId}: Invariants maintained after rejection")
+            TestLog.log("✓ ${scenario.scenarioId}: Invariants maintained after rejection")
         }
     }
 
@@ -138,7 +139,7 @@ class InvariantsAfterEachStepTest {
                 "GR3 step ${index + 1}: Expected no invariant violations, found: $violations")
         }
 
-        println("✓ GR3: Invariants maintained through escrow boundary cases")
+        TestLog.log("✓ GR3: Invariants maintained through escrow boundary cases")
     }
 
     @Test
@@ -168,7 +169,7 @@ class InvariantsAfterEachStepTest {
                 "step() should emit InvariantViolated events equal to verifyInvariants() result")
         }
 
-        println("✓ verifyInvariants() is called after every command (verified via event emission)")
+        TestLog.log("✓ verifyInvariants() is called after every command (verified via event emission)")
     }
 
     @Test
@@ -190,7 +191,7 @@ class InvariantsAfterEachStepTest {
                 "Step $iteration: Expected no invariant violations in long scenario, found: $violations")
         }
 
-        println("✓ Long scenario ($stepCount steps): No invariant violations")
+        TestLog.log("✓ Long scenario ($stepCount steps): No invariant violations")
     }
 
     @Test
@@ -233,10 +234,10 @@ class InvariantsAfterEachStepTest {
                 }
             }
 
-            println("✓ Cycle $cycle: All invariants maintained")
+            TestLog.log("✓ Cycle $cycle: All invariants maintained")
         }
 
-        println("✓ Multiple post-take-resolve cycles: All invariants maintained")
+        TestLog.log("✓ Multiple post-take-resolve cycles: All invariants maintained")
     }
 
     @Test
@@ -260,7 +261,7 @@ class InvariantsAfterEachStepTest {
         }
 
         if (state.economy.trophiesStock == 0) {
-            println("⚠ Skipping test: no trophies with this seed")
+            TestLog.log("⚠ Skipping test: no trophies with this seed")
             return
         }
 
@@ -274,7 +275,7 @@ class InvariantsAfterEachStepTest {
             assertNoInvariantViolations(result.events, "SellTrophies(amount=$amount) must maintain invariants")
         }
 
-        println("✓ Invariants maintained after selling trophies with various amounts")
+        TestLog.log("✓ Invariants maintained after selling trophies with various amounts")
     }
 
     @Test
@@ -287,6 +288,6 @@ class InvariantsAfterEachStepTest {
         assertTrue(violations.isEmpty(),
             "Initial state must satisfy all invariants, found violations: $violations")
 
-        println("✓ Initial state satisfies all invariants")
+        TestLog.log("✓ Initial state satisfies all invariants")
     }
 }

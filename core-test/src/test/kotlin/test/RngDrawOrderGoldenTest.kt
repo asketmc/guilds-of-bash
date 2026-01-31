@@ -8,6 +8,7 @@ import core.rng.Rng
 import core.state.initialState
 import test.helpers.Scenario
 import test.helpers.runScenario
+import test.helpers.TestLog
 import kotlin.test.*
 
 /**
@@ -35,7 +36,7 @@ class RngDrawOrderGoldenTest {
 
         val draws = rng.draws
         assertTrue(draws > 0, "AdvanceDay should use RNG for inbox/hero generation")
-        println("RNG draws for single AdvanceDay: $draws")
+        TestLog.log("RNG draws for single AdvanceDay: $draws")
     }
 
     @Test
@@ -52,7 +53,7 @@ class RngDrawOrderGoldenTest {
 
         val result1 = runScenario(scenario)
         val expectedDraws = result1.rngDraws
-        println("RNG draws for AdvanceDay + PostContract: $expectedDraws")
+        TestLog.log("RNG draws for AdvanceDay + PostContract: $expectedDraws")
 
         val result2 = runScenario(scenario)
         assertEquals(expectedDraws, result2.rngDraws, "RNG draw count must be identical for same scenario re-run")
@@ -74,7 +75,7 @@ class RngDrawOrderGoldenTest {
 
         val baseline = runScenario(scenario).rngDraws
         assertTrue(baseline > 0, "Full lifecycle should use RNG")
-        println("RNG golden draw count (full lifecycle, seed=100): $baseline")
+        TestLog.log("RNG golden draw count (full lifecycle, seed=100): $baseline")
 
         repeat(5) { iteration ->
             val rerun = runScenario(scenario).rngDraws
@@ -112,11 +113,11 @@ class RngDrawOrderGoldenTest {
         val r2b = runScenario(scenario2).rngDraws
         assertEquals(r2a, r2b, "Seed=$seed2 must have stable draw count across re-runs")
 
-        println("Draws are deterministic per-seed for the same command sequence:")
-        println("  seed=$seed1 → draws=$r1a")
-        println("  seed=$seed2 → draws=$r2a")
+        TestLog.log("Draws are deterministic per-seed for the same command sequence:")
+        TestLog.log("  seed=$seed1 → draws=$r1a")
+        TestLog.log("  seed=$seed2 → draws=$r2a")
         if (r1a != r2a) {
-            println("  (expected) different seeds may yield different draws due to branch-dependent RNG usage")
+            TestLog.log("  (expected) different seeds may yield different draws due to branch-dependent RNG usage")
         }
     }
 
@@ -129,7 +130,7 @@ class RngDrawOrderGoldenTest {
         val state1 = initialState(stateSeed)
         step(state1, AdvanceDay(cmdId = 1L), rng1)
         val advanceDayDraws = rng1.draws
-        println("AdvanceDay draws: $advanceDayDraws")
+        TestLog.log("AdvanceDay draws: $advanceDayDraws")
 
         // PostContract after AdvanceDay (to have inbox)
         val rng2 = Rng(100L)
@@ -138,14 +139,14 @@ class RngDrawOrderGoldenTest {
         val drawsBeforePost = rng2.draws
         step(state2, PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 2L), rng2)
         val postContractDraws = rng2.draws - drawsBeforePost
-        println("PostContract draws (incremental): $postContractDraws")
+        TestLog.log("PostContract draws (incremental): $postContractDraws")
 
         // SellTrophies alone
         val rng3 = Rng(100L)
         val state3 = initialState(stateSeed)
         step(state3, SellTrophies(amount = 0, cmdId = 1L), rng3)
         val sellTrophiesDraws = rng3.draws
-        println("SellTrophies draws: $sellTrophiesDraws")
+        TestLog.log("SellTrophies draws: $sellTrophiesDraws")
     }
 
     @Test
@@ -181,7 +182,7 @@ class RngDrawOrderGoldenTest {
         )
 
         val baseline = runScenario(scenario).rngDraws
-        println("GR1 GOLDEN RNG DRAW COUNT (seed=100): $baseline")
+        TestLog.log("GR1 GOLDEN RNG DRAW COUNT (seed=100): $baseline")
 
         val rerun = runScenario(scenario).rngDraws
         assertEquals(baseline, rerun, "GR1 RNG draw count must be stable within the same test run (same seed)")

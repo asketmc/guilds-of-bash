@@ -77,8 +77,7 @@ object DiegeticStatus {
      *
      * @param rng Reserved for future deterministic variation (currently unused).
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun render(state: GameState, rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
+    fun render(state: GameState, _rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): String {
         val returnsNeedingClose = state.contracts.returns.count { it.requiresPlayerClose }
         val activeWipCount = state.contracts.active.count { it.status == ActiveStatus.WIP }
         val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
@@ -155,8 +154,8 @@ object DiegeticStatus {
         return BoxRenderer.boxWithSections(TITLE, sections, cfg)
     }
 
-    fun renderLines(state: GameState, rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
-        render(state, rng, cfg).split("\n")
+    fun renderLines(state: GameState, _rng: Rng, cfg: RenderConfig = RenderConfig(renderWidth = 86, useUnicodeBorders = true)): List<String> =
+        render(state, _rng, cfg).split("\n")
 
     /**
      * Generate 2-3 deterministic concerns based on state thresholds.

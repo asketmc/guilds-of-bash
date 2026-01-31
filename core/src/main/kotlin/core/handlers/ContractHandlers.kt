@@ -33,11 +33,10 @@ import core.state.*
  * - Moves a draft from inbox to board.
  * - Reserves only the player's top-up portion; client deposit stays external to player funds.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handlePostContract(
     state: GameState,
     cmd: PostContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val draft = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.inboxId } ?: return state
@@ -92,11 +91,10 @@ internal fun handlePostContract(
  * How:
  * - Creates an inbox draft and advances id counters monotonically.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleCreateContract(
     state: GameState,
     cmd: CreateContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val newId = state.meta.ids.nextContractId
@@ -148,11 +146,10 @@ internal fun handleCreateContract(
  * - Applies updates either in inbox or on board.
  * - Adjusts reserved copper only by the player's top-up delta.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleUpdateContractTerms(
     state: GameState,
     cmd: UpdateContractTerms,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
@@ -234,11 +231,10 @@ internal fun handleUpdateContractTerms(
  * - Inbox cancellation has no economic impact.
  * - Board cancellation refunds only the player's top-up portion.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleCancelContract(
     state: GameState,
     cmd: CancelContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
@@ -298,11 +294,11 @@ internal fun handleCancelContract(
  * - In STRICT: silently no-ops on damaged proof or suspected theft.
  * - Otherwise: applies salvage, closes the active, releases escrow, and advances rank.
  */
-@Suppress("UNUSED_PARAMETER", "ReturnCount")
+@Suppress("ReturnCount")
 internal fun handleCloseReturn(
     state: GameState,
     cmd: CloseReturn,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val ret = state.contracts.returns.firstOrNull { it.activeContractId.value.toLong() == cmd.activeContractId } ?: return state
