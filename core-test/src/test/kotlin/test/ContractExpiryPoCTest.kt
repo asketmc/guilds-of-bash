@@ -45,11 +45,14 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // ScriptedRng must include values for: inbox generation (2 drafts), hero name picks (2 heroes), then anything else.
+        // ScriptedRng must include values for: inbox generation (2 drafts with baseDifficulty + payout + clientPaysRoll each), hero name picks (2 heroes), then anything else.
         // Not-due path doesn't consume expiry bucket.
+        // Per draft: baseDifficulty(1), payout(1), clientPaysRoll(1) = 3 draws
+        // 2 drafts = 6 draws, then 2 hero names = 2 draws
         val rng = ScriptedRng(
-            0, 0, // inbox baseDifficulty (2 drafts)
-            0, 0  // hero name picks (2 heroes)
+            0, 0, 50, // draft 1: baseDifficulty, payout, clientPaysRoll (50 >= 50 means no deposit)
+            0, 0, 50, // draft 2: baseDifficulty, payout, clientPaysRoll
+            0, 0      // hero name picks (2 heroes)
         )
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
@@ -85,8 +88,13 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [inbox baseDifficulty x2, heroName x2, bucket=GOOD(0)]
-        val rng = ScriptedRng(0, 0, 0, 0, 0)
+        // Script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2, bucket=GOOD(0)
+        val rng = ScriptedRng(
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0,     // hero names
+            0         // bucket=GOOD
+        )
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
@@ -104,7 +112,7 @@ class ContractExpiryPoCTest {
 
     @Test
     fun `due - NEUTRAL keeps draft and schedules next week`() {
-        // Script: [inbox baseDifficulty x2, heroName x2, bucket=NEUTRAL(1)]
+        // Script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2, bucket=NEUTRAL(1)
         val state = initialState(42u).copy(
             meta = initialState(42u).meta.copy(dayIndex = 14),
             contracts = ContractState(
@@ -126,7 +134,12 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        val rng = ScriptedRng(0, 0, 0, 0, 1)
+        val rng = ScriptedRng(
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0,     // hero names
+            1         // bucket=NEUTRAL
+        )
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
@@ -171,8 +184,13 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [inbox baseDifficulty x2, heroName x2, bucket=BAD(2)]
-        val rng = ScriptedRng(0, 0, 0, 0, 2)
+        // Script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2, bucket=BAD(2)
+        val rng = ScriptedRng(
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0,     // hero names
+            2         // bucket=BAD
+        )
 
         // WHEN
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
@@ -214,9 +232,19 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Day1 script: [inbox baseDifficulty x2, heroName x2, bucket=NEUTRAL(1)]
-        // Day2 script: [inbox baseDifficulty x2, heroName x2] (not due => no bucket)
-        val rng = ScriptedRng(0, 0, 0, 0, 1, 0, 0, 0, 0)
+        // Day1 script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2, bucket=NEUTRAL(1)
+        // Day2 script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2 (not due => no bucket)
+        val rng = ScriptedRng(
+            // Day 1
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0,     // hero names
+            1,        // bucket=NEUTRAL
+            // Day 2
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0      // hero names
+        )
 
         // WHEN
         val r1 = step(state, AdvanceDay(cmdId = 1L), rng)
@@ -278,8 +306,13 @@ class ContractExpiryPoCTest {
                 returns = emptyList()
             )
         )
-        // Script: [inbox baseDifficulty x2, heroName x2, bucket1, bucket2, bucket3]
-        val rng = ScriptedRng(0, 0, 0, 0, 0, 1, 2)
+        // Script: [per draft: baseDifficulty, payout, clientPaysRoll] x2, heroName x2, bucket1, bucket2, bucket3
+        val rng = ScriptedRng(
+            0, 0, 50, // draft 1
+            0, 0, 50, // draft 2
+            0, 0,     // hero names
+            0, 1, 2   // buckets for 3 due drafts: GOOD, NEUTRAL, BAD
+        )
 
         val r = step(state, AdvanceDay(cmdId = 1L), rng)
 
