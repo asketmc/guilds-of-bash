@@ -57,8 +57,9 @@ object InboxLifecycle {
             val threatLevel = calculateThreatLevel(stability)
             val baseDifficulty = calculateBaseDifficulty(threatLevel, rng)
 
-            // Sample client deposit using rank-based pricing
-            val clientDeposit = ContractPricing.sampleClientDepositGp(Rank.F, rng)
+            // Sample payout and client deposit using rank-based pricing (FP-ECON-02)
+            val payout = ContractPricing.samplePayoutMoney(Rank.F, rng)
+            val clientDeposit = ContractPricing.sampleClientDepositMoney(payout, rng)
 
             drafts.add(
                 ContractDraft(
@@ -67,11 +68,11 @@ object InboxLifecycle {
                     nextAutoResolveDay = currentDay + BalanceSettings.AUTO_RESOLVE_INTERVAL_DAYS,
                     title = "Request #$draftId",
                     rankSuggested = Rank.F,
-                    feeOffered = 0,
+                    feeOffered = payout.copper,  // Now using sampled payout in copper!
                     salvage = SalvagePolicy.GUILD,
                     baseDifficulty = baseDifficulty,
                     proofHint = "proof",
-                    clientDeposit = clientDeposit
+                    clientDeposit = clientDeposit.copper
                 )
             )
         }
