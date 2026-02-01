@@ -106,6 +106,12 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is ContractAutoResolved -> serializeContractAutoResolved(event, sb)
         is HeroDied -> serializeHeroDied(event, sb)
         is ReturnClosureBlocked -> serializeReturnClosureBlocked(event, sb)
+        // Fraud investigation events (v0)
+        is FraudInvestigated -> serializeFraudInvestigated(event, sb)
+        is HeroWarned -> serializeHeroWarned(event, sb)
+        is HeroBanned -> serializeHeroBanned(event, sb)
+        is RumorScheduled -> serializeRumorScheduled(event, sb)
+        is WeeklyReportPublished -> serializeWeeklyReportPublished(event, sb)
     }
 }
 
@@ -914,3 +920,114 @@ private fun serializeReturnClosureBlocked(event: ReturnClosureBlocked, sb: Strin
     sb.appendStringField("reason", event.reason)
     sb.append('}')
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fraud Investigation Events (v0)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Serializes [FraudInvestigated].
+ *
+ * Emitted additional fields (in order):
+ * - `heroId` (Int)
+ * - `activeContractId` (Int)
+ * - `policy` (String; `event.policy.name`)
+ * - `caught` (Boolean)
+ * - `rumorScheduled` (Boolean)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeFraudInvestigated(event: FraudInvestigated, sb: StringBuilder) {
+    sb.appendCommonFields("FraudInvestigated", event)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("activeContractId", event.activeContractId)
+    sb.appendStringField("policy", event.policy.name)
+    sb.append(",\"caught\":")
+    sb.append(if (event.caught) "true" else "false")
+    sb.append(",\"rumorScheduled\":")
+    sb.append(if (event.rumorScheduled) "true" else "false")
+    sb.append('}')
+}
+
+/**
+ * Serializes [HeroWarned].
+ *
+ * Emitted additional fields (in order):
+ * - `heroId` (Int)
+ * - `untilDay` (Int)
+ * - `reason` (String; escaped)
+ *
+ * ## Complexity
+ * - Time: O(reason.length)
+ * - Memory: O(1)
+ */
+private fun serializeHeroWarned(event: HeroWarned, sb: StringBuilder) {
+    sb.appendCommonFields("HeroWarned", event)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("untilDay", event.untilDay)
+    sb.appendStringField("reason", event.reason)
+    sb.append('}')
+}
+
+/**
+ * Serializes [HeroBanned].
+ *
+ * Emitted additional fields (in order):
+ * - `heroId` (Int)
+ * - `untilDay` (Int)
+ * - `reason` (String; escaped)
+ *
+ * ## Complexity
+ * - Time: O(reason.length)
+ * - Memory: O(1)
+ */
+private fun serializeHeroBanned(event: HeroBanned, sb: StringBuilder) {
+    sb.appendCommonFields("HeroBanned", event)
+    sb.appendIntField("heroId", event.heroId)
+    sb.appendIntField("untilDay", event.untilDay)
+    sb.appendStringField("reason", event.reason)
+    sb.append('}')
+}
+
+/**
+ * Serializes [RumorScheduled].
+ *
+ * Emitted additional fields (in order):
+ * - `policy` (String; `event.policy.name`)
+ * - `repDeltaPlanned` (Int)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeRumorScheduled(event: RumorScheduled, sb: StringBuilder) {
+    sb.appendCommonFields("RumorScheduled", event)
+    sb.appendStringField("policy", event.policy.name)
+    sb.appendIntField("repDeltaPlanned", event.repDeltaPlanned)
+    sb.append('}')
+}
+
+/**
+ * Serializes [WeeklyReportPublished].
+ *
+ * Emitted additional fields (in order):
+ * - `reputationDeltaApplied` (Int)
+ * - `rumorsCount` (Int)
+ * - `bansCount` (Int)
+ * - `warnsCount` (Int)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeWeeklyReportPublished(event: WeeklyReportPublished, sb: StringBuilder) {
+    sb.appendCommonFields("WeeklyReportPublished", event)
+    sb.appendIntField("reputationDeltaApplied", event.reputationDeltaApplied)
+    sb.appendIntField("rumorsCount", event.rumorsCount)
+    sb.appendIntField("bansCount", event.bansCount)
+    sb.appendIntField("warnsCount", event.warnsCount)
+    sb.append('}')
+}
+

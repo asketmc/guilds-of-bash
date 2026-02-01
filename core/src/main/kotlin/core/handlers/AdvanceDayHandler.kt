@@ -43,11 +43,28 @@ import core.state.*
  * @property state Updated state after WIP advancement + resolution.
  * @property successfulReturns Count of successful returns contributing to stability.
  * @property failedReturns Count of failed returns contributing to stability.
+ * @property fraudStats Statistics from fraud investigations during resolution.
  */
 data class WipResolveResult(
     val state: GameState,
     val successfulReturns: Int,
-    val failedReturns: Int
+    val failedReturns: Int,
+    val fraudStats: FraudInvestigationStats
+)
+
+/**
+ * Statistics from fraud investigations.
+ *
+ * @property warnsIssued Number of WARN penalties issued.
+ * @property bansIssued Number of BAN penalties issued.
+ * @property rumorsScheduled Number of rumors scheduled.
+ * @property totalRepDelta Total reputation delta from rumors (negative or 0).
+ */
+data class FraudInvestigationStats(
+    val warnsIssued: Int = 0,
+    val bansIssued: Int = 0,
+    val rumorsScheduled: Int = 0,
+    val totalRepDelta: Int = 0
 )
 
 /**
@@ -81,10 +98,17 @@ internal fun handleAdvanceDay(
     workingState = phaseAutoResolveInbox(workingState, cmd, rng, ctx, newDay)
     workingState = phasePickup(workingState, cmd, rng, ctx, newDay)
 
-    val (stateAfterWip, successfulReturns, failedReturns) = phaseWipAndResolve(workingState, cmd, rng, ctx, newDay)
+    val (stateAfterWip, successfulReturns, failedReturns, fraudStats) = phaseWipAndResolve(workingState, cmd, rng, ctx, newDay)
     workingState = stateAfterWip
 
+    // Phase 5.5: Fraud Investigation (processed during WIP resolve, stats returned)
+    workingState = phaseFraudInvestigation(workingState, cmd, ctx, newDay, fraudStats)
+
     workingState = phaseStabilityUpdate(workingState, cmd, ctx, newDay, successfulReturns, failedReturns)
+
+    // Weekly report phase (applies pending reputation delta)
+    workingState = phaseWeeklyReport(workingState, cmd, ctx, newDay, fraudStats)
+
     workingState = phaseTax(workingState, cmd, ctx, newDay)
     workingState = phaseDayEndedAndSnapshot(workingState, cmd, ctx, newDay)
 
@@ -334,6 +358,12 @@ private fun phaseWipAndResolve(
     var successfulReturns = 0
     var failedReturns = 0
 
+    // Fraud investigation stats tracking
+    var warnsIssued = 0
+    var bansIssued = 0
+    var rumorsScheduled = 0
+    var totalRepDelta = 0
+
     // Step 1: Advance WIP days using WipProgression module
     val (wipActives, nonWipActives) = workingState.contracts.active.partition { it.status == ActiveStatus.WIP }
     val wipResult = WipProgression.advance(wipActives)
@@ -359,7 +389,8 @@ private fun phaseWipAndResolve(
 
     // Pre-build lookup maps for O(1) access
     var boardById = workingState.contracts.board.associateBy { it.id }
-    val heroById = workingState.heroes.roster.associateBy { it.id }
+    var heroById = workingState.heroes.roster.associateBy { it.id }
+    var mutableRoster = workingState.heroes.roster.toMutableList()
 
     // Step 2: Resolve completed contracts
     for (activeId in wipResult.completedActiveIds) {
@@ -395,6 +426,113 @@ private fun phaseWipAndResolve(
             )
         }
 
+        // Create return packet (needed for fraud investigation)
+        val returnPacket = ReturnPacket(
+            activeContractId = active.id,
+            boardContractId = active.boardContractId,
+            heroIds = active.heroIds,
+            resolvedDay = newDay,
+            outcome = resolution.outcome,
+            trophiesCount = resolution.trophiesCount,
+            trophiesQuality = resolution.trophiesQuality,
+            reasonTags = emptyList(),
+            requiresPlayerClose = resolution.requiresPlayerClose,
+            suspectedTheft = resolution.theftOccurred
+        )
+        newReturns.add(returnPacket)
+
+        // Step 2.5: Fraud Investigation Pipeline (if theft suspected)
+        if (resolution.theftOccurred && hero != null) {
+            val investigation = FraudInvestigationModel.investigate(
+                hero = hero,
+                returnPacket = returnPacket,
+                policy = workingState.guild.proofPolicy,
+                currentDay = newDay,
+                rng = rng
+            )
+
+            if (investigation.investigated) {
+                // Emit FraudInvestigated event
+                ctx.emit(
+                    FraudInvestigated(
+                        day = newDay,
+                        revision = workingState.meta.revision,
+                        cmdId = cmd.cmdId,
+                        seq = 0L,
+                        heroId = investigation.heroId,
+                        activeContractId = investigation.activeContractId,
+                        policy = investigation.policy,
+                        caught = investigation.caught,
+                        rumorScheduled = investigation.rumorScheduled
+                    )
+                )
+
+                // Apply penalty to hero roster
+                when (investigation.penaltyType) {
+                    PenaltyType.WARN -> {
+                        val heroIndex = mutableRoster.indexOfFirst { it.id.value == investigation.heroId }
+                        if (heroIndex >= 0) {
+                            mutableRoster[heroIndex] = mutableRoster[heroIndex].copy(
+                                warnUntilDay = investigation.penaltyUntilDay,
+                                status = HeroStatus.WARNED
+                            )
+                        }
+                        ctx.emit(
+                            HeroWarned(
+                                day = newDay,
+                                revision = workingState.meta.revision,
+                                cmdId = cmd.cmdId,
+                                seq = 0L,
+                                heroId = investigation.heroId,
+                                untilDay = investigation.penaltyUntilDay!!,
+                                reason = "fraud"
+                            )
+                        )
+                        warnsIssued++
+                    }
+                    PenaltyType.BAN -> {
+                        val heroIndex = mutableRoster.indexOfFirst { it.id.value == investigation.heroId }
+                        if (heroIndex >= 0) {
+                            mutableRoster[heroIndex] = mutableRoster[heroIndex].copy(
+                                banUntilDay = investigation.penaltyUntilDay,
+                                warnUntilDay = null, // Clear warn on ban
+                                status = HeroStatus.BANNED
+                            )
+                        }
+                        ctx.emit(
+                            HeroBanned(
+                                day = newDay,
+                                revision = workingState.meta.revision,
+                                cmdId = cmd.cmdId,
+                                seq = 0L,
+                                heroId = investigation.heroId,
+                                untilDay = investigation.penaltyUntilDay!!,
+                                reason = "fraud_repeat"
+                            )
+                        )
+                        bansIssued++
+                    }
+                    PenaltyType.NONE -> { /* No penalty */ }
+                }
+
+                // Handle rumor scheduling
+                if (investigation.rumorScheduled) {
+                    ctx.emit(
+                        RumorScheduled(
+                            day = newDay,
+                            revision = workingState.meta.revision,
+                            cmdId = cmd.cmdId,
+                            seq = 0L,
+                            policy = investigation.policy,
+                            repDeltaPlanned = investigation.repDeltaPlanned
+                        )
+                    )
+                    rumorsScheduled++
+                    totalRepDelta += investigation.repDeltaPlanned
+                }
+            }
+        }
+
         // Track success/fail for stability
         val stabilityContrib = ResolutionModel.computeStabilityContribution(
             resolution.outcome,
@@ -418,22 +556,6 @@ private fun phaseWipAndResolve(
             )
         )
 
-        // Create return packet
-        newReturns.add(
-            ReturnPacket(
-                activeContractId = active.id,
-                boardContractId = active.boardContractId,
-                heroIds = active.heroIds,
-                resolvedDay = newDay,
-                outcome = resolution.outcome,
-                trophiesCount = resolution.trophiesCount,
-                trophiesQuality = resolution.trophiesQuality,
-                reasonTags = emptyList(),
-                requiresPlayerClose = resolution.requiresPlayerClose,
-                suspectedTheft = resolution.theftOccurred
-            )
-        )
-
         // Branch: player-close vs auto-close
         if (resolution.requiresPlayerClose) {
             val idx = updatedActives.indexOfFirst { it.id.value == activeId }
@@ -452,10 +574,12 @@ private fun phaseWipAndResolve(
             val heroResult = HeroLifecycle.computePostResolution(
                 active.heroIds,
                 resolution.outcome,
-                workingState.heroes.roster,
+                mutableRoster,
                 workingState.heroes.arrivalsToday,
                 requiresPlayerClose = false
             )
+            // Update mutable roster with post-resolution state
+            mutableRoster = heroResult.updatedRoster.toMutableList()
 
             // Emit HeroDied events if any
             for (hid in heroResult.diedHeroIds) {
@@ -508,14 +632,14 @@ private fun phaseWipAndResolve(
             }
 
             // Keep arrivalsToday consistent
-            val rosterIdSet = heroResult.updatedRoster.map { it.id }.toHashSet()
+            val rosterIdSet = mutableRoster.map { it.id }.toHashSet()
             val safeArrivalsToday = heroResult.updatedArrivalsToday.filter { it in rosterIdSet }
 
             // Apply all settlements
             workingState = workingState.copy(
                 contracts = workingState.contracts.copy(board = updatedBoard, archive = workingState.contracts.archive + newlyArchived),
                 heroes = workingState.heroes.copy(
-                    roster = heroResult.updatedRoster,
+                    roster = mutableRoster,
                     arrivalsToday = safeArrivalsToday
                 ),
                 economy = economyDelta.applyTo(workingState.economy),
@@ -538,17 +662,119 @@ private fun phaseWipAndResolve(
             )
 
             boardById = workingState.contracts.board.associateBy { it.id }
+            heroById = mutableRoster.associateBy { it.id }
         }
     }
 
+    // Update state with mutable roster changes (including fraud penalties)
     workingState = workingState.copy(
         contracts = workingState.contracts.copy(
             active = updatedActives,
             returns = workingState.contracts.returns + newReturns
+        ),
+        heroes = workingState.heroes.copy(roster = mutableRoster),
+        // Accumulate pending reputation delta from rumors
+        guild = workingState.guild.copy(
+            pendingReputationDelta = workingState.guild.pendingReputationDelta + totalRepDelta
         )
     )
 
-    return WipResolveResult(workingState, successfulReturns, failedReturns)
+    val fraudStats = FraudInvestigationStats(
+        warnsIssued = warnsIssued,
+        bansIssued = bansIssued,
+        rumorsScheduled = rumorsScheduled,
+        totalRepDelta = totalRepDelta
+    )
+
+    return WipResolveResult(workingState, successfulReturns, failedReturns, fraudStats)
+}
+
+/**
+ * Phase 5.5: Fraud Investigation Status Update.
+ *
+ * Updates hero statuses based on expired warnings/bans. This is a housekeeping phase
+ * that doesn't perform new investigations (those happen during resolution).
+ *
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
+ * @param fraudStats Statistics from fraud investigations.
+ */
+private fun phaseFraudInvestigation(
+    state: GameState,
+    cmd: AdvanceDay,
+    ctx: SeqContext,
+    newDay: Int,
+    fraudStats: FraudInvestigationStats
+): GameState {
+    // Update hero statuses for expired warnings/bans
+    val updatedRoster = state.heroes.roster.map { hero ->
+        val effectiveStatus = FraudInvestigationModel.getEffectiveStatus(hero, newDay)
+        if (effectiveStatus != hero.status) {
+            hero.copy(status = effectiveStatus)
+        } else {
+            hero
+        }
+    }
+
+    return state.copy(
+        heroes = state.heroes.copy(roster = updatedRoster)
+    )
+}
+
+/**
+ * Phase 5.6: Weekly Report Publication.
+ *
+ * On weekly boundary (day % TAX_INTERVAL_DAYS == 0), applies pending reputation delta
+ * and emits a summary report.
+ *
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
+ * @param fraudStats Statistics from fraud investigations this day.
+ */
+private fun phaseWeeklyReport(
+    state: GameState,
+    cmd: AdvanceDay,
+    ctx: SeqContext,
+    newDay: Int,
+    fraudStats: FraudInvestigationStats
+): GameState {
+    // Check if this is a weekly boundary (same interval as tax)
+    if (newDay % BalanceSettings.TAX_INTERVAL_DAYS != 0) {
+        return state
+    }
+
+    val pendingDelta = state.guild.pendingReputationDelta
+    if (pendingDelta == 0 && fraudStats.warnsIssued == 0 && fraudStats.bansIssued == 0 && fraudStats.rumorsScheduled == 0) {
+        // No fraud activity to report
+        return state
+    }
+
+    // Apply pending reputation delta (floor at 0)
+    val newReputation = (state.guild.reputation + pendingDelta).coerceAtLeast(0)
+
+    ctx.emit(
+        WeeklyReportPublished(
+            day = newDay,
+            revision = state.meta.revision,
+            cmdId = cmd.cmdId,
+            seq = 0L,
+            reputationDeltaApplied = pendingDelta,
+            rumorsCount = fraudStats.rumorsScheduled,
+            bansCount = fraudStats.bansIssued,
+            warnsCount = fraudStats.warnsIssued
+        )
+    )
+
+    return state.copy(
+        guild = state.guild.copy(
+            reputation = newReputation,
+            pendingReputationDelta = 0 // Reset accumulator
+        )
+    )
 }
 
 /**

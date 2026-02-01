@@ -49,6 +49,7 @@ object ReturnClosurePolicy {
                     else -> ClosureCheck(allowed = true, reason = null)
                 }
             }
+            ProofPolicy.SOFT -> ClosureCheck(allowed = true, reason = null)
             ProofPolicy.FAST -> ClosureCheck(allowed = true, reason = null)
         }
     }

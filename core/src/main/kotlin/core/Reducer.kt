@@ -151,6 +151,12 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is ContractAutoResolved -> event.copy(seq = seq)
         is HeroDied -> event.copy(seq = seq)
         is ReturnClosureBlocked -> event.copy(seq = seq)
+        // Fraud investigation events (v0)
+        is FraudInvestigated -> event.copy(seq = seq)
+        is HeroWarned -> event.copy(seq = seq)
+        is HeroBanned -> event.copy(seq = seq)
+        is RumorScheduled -> event.copy(seq = seq)
+        is WeeklyReportPublished -> event.copy(seq = seq)
     }
 }
 

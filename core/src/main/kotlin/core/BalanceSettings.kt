@@ -103,6 +103,52 @@ object BalanceSettings {
     const val DEFAULT_CONTRACT_DIFFICULTY: Int = 1
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Fraud Investigation Settings (v0)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Duration of WARN status in days.
+     * A hero caught for fraud the first time receives a WARN for this duration.
+     */
+    const val WARN_DURATION_DAYS: Int = 7
+
+    /**
+     * Duration of BAN status in days.
+     * A hero caught for fraud while already warned receives a BAN for this duration.
+     */
+    const val BAN_DURATION_DAYS: Int = 90
+
+    /**
+     * Probability (percent) of catching fraud under STRICT policy.
+     * Higher than SOFT to reward stricter oversight.
+     */
+    const val CATCH_CHANCE_STRICT_PERCENT: Int = 90
+
+    /**
+     * Probability (percent) of catching fraud under SOFT policy.
+     * Lower than STRICT, reflecting lenient oversight.
+     */
+    const val CATCH_CHANCE_SOFT_PERCENT: Int = 50
+
+    /**
+     * Probability (percent) of a rumor spreading when fraud escapes under STRICT policy.
+     * Lower than SOFT because strict policy catches more fraud, fewer escapes to spread rumors.
+     */
+    const val RUMOR_CHANCE_ON_ESCAPE_STRICT_PERCENT: Int = 10
+
+    /**
+     * Probability (percent) of a rumor spreading when fraud escapes under SOFT policy.
+     * Higher than STRICT because lenient policy lets more fraud escape, more rumors spread.
+     */
+    const val RUMOR_CHANCE_ON_ESCAPE_SOFT_PERCENT: Int = 50
+
+    /**
+     * Reputation penalty applied when a rumor spreads about escaped fraud.
+     * Accumulated into pendingReputationDelta and applied on weekly boundary.
+     */
+    const val REP_PENALTY_ON_RUMOR: Int = 1
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Contract Pricing (Client Deposit)
     // ─────────────────────────────────────────────────────────────────────────
 
