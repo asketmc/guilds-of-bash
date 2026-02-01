@@ -105,6 +105,7 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is ContractCancelled -> serializeContractCancelled(event, sb)
         is ContractAutoResolved -> serializeContractAutoResolved(event, sb)
         is HeroDied -> serializeHeroDied(event, sb)
+        is ReturnClosureBlocked -> serializeReturnClosureBlocked(event, sb)
     }
 }
 
@@ -891,5 +892,25 @@ private fun serializeHeroDied(event: HeroDied, sb: StringBuilder) {
     sb.appendIntField("heroId", event.heroId)
     sb.appendIntField("activeContractId", event.activeContractId)
     sb.appendIntField("boardContractId", event.boardContractId)
+    sb.append('}')
+}
+
+/**
+ * Serializes [ReturnClosureBlocked].
+ *
+ * Emitted additional fields (in order):
+ * - `activeContractId` (Int)
+ * - `policy` (String; `event.policy.name`)
+ * - `reason` (String; escaped)
+ *
+ * ## Complexity
+ * - Time: O(reason.length)
+ * - Memory: O(1)
+ */
+private fun serializeReturnClosureBlocked(event: ReturnClosureBlocked, sb: StringBuilder) {
+    sb.appendCommonFields("ReturnClosureBlocked", event)
+    sb.appendIntField("activeContractId", event.activeContractId)
+    sb.appendStringField("policy", event.policy.name)
+    sb.appendStringField("reason", event.reason)
     sb.append('}')
 }

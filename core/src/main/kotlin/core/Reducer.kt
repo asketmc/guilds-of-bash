@@ -150,6 +150,7 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is ContractCancelled -> event.copy(seq = seq)
         is ContractAutoResolved -> event.copy(seq = seq)
         is HeroDied -> event.copy(seq = seq)
+        is ReturnClosureBlocked -> event.copy(seq = seq)
     }
 }
 

@@ -297,7 +297,20 @@ internal fun handleCloseReturn(
         ret.trophiesQuality,
         ret.suspectedTheft
     )
-    if (!closureCheck.allowed) return state
+    if (!closureCheck.allowed) {
+        ctx.emit(
+            ReturnClosureBlocked(
+                day = state.meta.dayIndex,
+                revision = state.meta.revision,
+                cmdId = cmd.cmdId,
+                seq = 0L,
+                activeContractId = ret.activeContractId.value,
+                policy = state.guild.proofPolicy,
+                reason = closureCheck.reason ?: "unknown"
+            )
+        )
+        return state
+    }
 
     // Settlement: Hero lifecycle
     val updatedRoster = HeroLifecycle.computeManualCloseUpdate(

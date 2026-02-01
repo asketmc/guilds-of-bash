@@ -770,4 +770,5 @@ private fun formatEvent(e: Event): String =
         is ProofPolicyChanged -> "E#${e.seq} ProofPolicyChanged day=${e.day} rev=${e.revision} cmdId=${e.cmdId} oldPolicy=${e.oldPolicy} newPolicy=${e.newPolicy}"
         is ContractAutoResolved -> "E#${e.seq} ContractAutoResolved day=${e.day} rev=${e.revision} cmdId=${e.cmdId} draftId=${e.draftId} bucket=${e.bucket}"
         is HeroDied -> "E#${e.seq} HeroDied day=${e.day} rev=${e.revision} cmdId=${e.cmdId} heroId=${e.heroId} activeId=${e.activeContractId} boardId=${e.boardContractId}"
+        else -> "E#? ${e::class.simpleName}"
     }

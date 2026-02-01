@@ -6,6 +6,7 @@ import core.primitives.Outcome
 import core.primitives.Quality
 import core.primitives.Rank
 import core.primitives.SalvagePolicy
+import core.primitives.ProofPolicy
 
 /**
  * Domain events are the ONLY observation channel for external consumers.
@@ -892,4 +893,30 @@ data class HeroDied(
     val heroId: Int,
     val activeContractId: Int,
     val boardContractId: Int
+) : Event
+
+/**
+ * Emitted when a manual return closure (CloseReturn) is blocked by policy.
+ *
+ * ## Purpose
+ * STRICT policy currently denies closure for certain proof outcomes. This event preserves the
+ * existing behavior (state unchanged) while making the decision observable for logs, tests,
+ * adapters, and future dispute/arbitration mechanics.
+ *
+ * ## Determinism
+ * - No RNG draws.
+ * - Purely derived from current state and command inputs.
+ *
+ * @property activeContractId Active contract id for the return the player attempted to close.
+ * @property policy Proof policy that blocked closure.
+ * @property reason Machine-readable reason tag (see ReturnClosurePolicy).
+ */
+data class ReturnClosureBlocked(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val activeContractId: Int,
+    val policy: ProofPolicy,
+    val reason: String
 ) : Event

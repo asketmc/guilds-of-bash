@@ -198,7 +198,7 @@ private fun eventToPhase(event: Event): NarrativePhase = when (event) {
     is ContractTaken, is HeroDeclined -> NarrativePhase.CONTRACT_TAKEN
     is WipAdvanced -> NarrativePhase.WIP_ADVANCED
     is ContractResolved, is TrophyTheftSuspected -> NarrativePhase.CONTRACT_RESOLVED
-    is ReturnClosed -> NarrativePhase.RETURN_CLOSED
+    is ReturnClosed, is ReturnClosureBlocked -> NarrativePhase.RETURN_CLOSED
     is StabilityUpdated, is TaxDue, is TaxPaid, is TaxMissed, is GuildShutdown, is GuildRankUp -> NarrativePhase.STABILITY_TAX_SHUTDOWN
     is DayEnded -> NarrativePhase.DAY_ENDED
     else -> NarrativePhase.OTHER
@@ -359,6 +359,15 @@ private fun renderEventLine(event: Event, ctx: RenderContext): String? {
             else "\"By order of the Crown, this guild is hereby dissolved.\""
         }
         is DayEnded -> null
+        is ReturnClosureBlocked -> {
+            val v = pick2(eventKey("ReturnClosureBlocked", day, event.cmdId, event.seq, contractId = event.activeContractId))
+            val msg = when (event.reason) {
+                "strict_policy_damaged_proof" -> if (v == 0) "The proof is damaged. The clerk refuses to close the return." else "Damaged proof — STRICT policy blocks closure."
+                "strict_policy_theft_suspected" -> if (v == 0) "The guild suspects theft. The return is held for review." else "Theft suspected — STRICT policy blocks closure."
+                else -> if (v == 0) "Return closure is blocked by policy." else "Policy blocks closure (${event.reason})."
+            }
+            "[STRICT] CloseReturn denied for #${event.activeContractId}: $msg"
+        }
         else -> null
     }
 }

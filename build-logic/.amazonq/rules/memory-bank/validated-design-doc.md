@@ -47,9 +47,10 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 
 - **P3. Trust/validation/fraud (early, minimal layer)**:
   - **MATCH**: ProofPolicy (FAST|STRICT) exists as guild state and SetProofPolicy command
-  - **MATCH**: In STRICT, CloseReturn performs silent no-op (not CommandRejected) for DAMAGED quality or suspectedTheft=true
-  - **MATCH**: No separate "dispute workflow"/ProofRejected events in current implementation
-  - **Code Anchor**: `core/primitives/ProofPolicy.kt`, `core/Reducer.kt`: handleCloseReturn
+  - **MATCH**: In STRICT, CloseReturn can be denied without state change for DAMAGED quality or suspectedTheft=true
+    - **MATCH**: Denial emits ReturnClosureBlocked (not CommandRejected)
+  - **MATCH**: No separate "dispute workflow" beyond this policy gate in current implementation
+  - **Code Anchor**: `core/primitives/ProofPolicy.kt`, `core/pipeline/ReturnClosurePolicy.kt`, `core/handlers/ContractHandlers.kt`: handleCloseReturn
 
 - **P4. World growth = threat growth**: stability → threat level → baseDifficulty of incoming contracts
   - **MATCH**: Implemented via `ThreatScaling.kt`
@@ -118,12 +119,30 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 ### 2.4 Proof Policy (Actual)
 **Status**: MATCH
 
-**Code Anchor**: `core/state/GuildState.kt`, `core/Reducer.kt`: handleCloseReturn
+**Code Anchor**: `core/state/GuildState.kt`, `core/handlers/ContractHandlers.kt`: handleCloseReturn
 
 - **MATCH**: Guild state contains proofPolicy (FAST|STRICT)
-- **MATCH**: In STRICT, CloseReturn performs silent no-op (early return without changes) if trophiesQuality == DAMAGED OR suspectedTheft == true - this is the intended behavior for strict validation
+- **MATCH**: In STRICT, CloseReturn is denied (state unchanged) if trophiesQuality == DAMAGED OR suspectedTheft == true
+  - **MATCH**: Denial is now observable via `ReturnClosureBlocked(policy=STRICT, reason=...)` event
+  - **MATCH**: This is intentionally not a CommandRejected; it’s a policy decision point for future disputes/arbitration
 - **MATCH**: SetProofPolicy command exists and emits ProofPolicyChanged
 - **MATCH**: Console adapter intentionally does not expose SetProofPolicy as CLI command (core feature available for future adapters)
+
+---
+
+### 2.5 Contract Lifecycle Collections (Actual)
+**Status**: MATCH
+
+**Code Anchor**: `core/state/ContractStateManagement.kt`
+
+Contract records are grouped into five lifecycle collections:
+- **inbox**: generated drafts awaiting publication
+- **board**: published contracts available for pickup
+- **active**: taken contracts currently in execution
+- **returns**: resolved contracts requiring manual player action
+- **archive**: terminal, append-only snapshots of completed board contracts
+
+Archive is used for audit/debug/replay visibility and is not consulted for gameplay decisions.
 
 ---
 
@@ -383,6 +402,7 @@ mismatch bugs (GP vs copper) and preserve deterministic rounding.
 **ContractState**
 - **MATCH**: inbox: List<ContractDraft>
 - **MATCH**: board: List<BoardContract>
+- **MATCH**: archive: List<BoardContract> (terminal, append-only snapshots)
 - **MATCH**: active: List<ActiveContract>
 - **MATCH**: returns: List<ReturnPacket>
 
@@ -452,7 +472,7 @@ mismatch bugs (GP vs copper) and preserve deterministic rounding.
   - **MATCH**: Must exist return by activeContractId
   - **MATCH**: Return must require close (requiresPlayerClose==true)
   - **MATCH**: reservedCopper >= fee and moneyCopper >= fee
-  - **MISMATCH**: Additional check (not via reject, but as "no-op"): proofPolicy==STRICT and (quality==DAMAGED or suspectedTheft) → command ignored without events
+  - **MATCH**: ProofPolicy STRICT + (quality==DAMAGED or suspectedTheft) → state unchanged and emits ReturnClosureBlocked (not CommandRejected)
 
 - **SellTrophies**:
   - **MATCH**: amount <= 0 allowed (sellAll)
@@ -508,6 +528,7 @@ All events listed in doc are present in code with matching field structures. Key
 - **MATCH**: ProofPolicyChanged, CommandRejected, InvariantViolated
 - **MATCH**: ContractDraftCreated, ContractTermsUpdated, ContractCancelled
 - **MATCH**: TrophyTheftSuspected, HeroDeclined, ContractAutoResolved, HeroDied
+- **MATCH**: ReturnClosureBlocked
 
 ---
 
@@ -597,7 +618,7 @@ All events listed in doc are present in code with matching field structures. Key
 
 **ProofPolicy**:
 - **MATCH**: FAST: close allowed always
-- **MATCH**: STRICT: if quality==DAMAGED or suspectedTheft==true → command ignored (silent no-op, intended behavior for strict validation)
+- **MATCH**: STRICT: if quality==DAMAGED or suspectedTheft==true → state unchanged and ReturnClosureBlocked emitted (no CommandRejected)
 
 ### 11.2 Salvage Policy (Actual Impact)
 **Status**: MATCH
@@ -874,7 +895,7 @@ ProofPolicy affects only **manual return closure** (CloseReturn command for PART
 | Policy     | Behavior                                                                                       |
 |------------|------------------------------------------------------------------------------------------------|
 | **FAST**   | Always allows closure — guild gets trophies regardless of quality or theft suspicion           |
-| **STRICT** | **Blocks closure** (silent no-op) if: `trophiesQuality == DAMAGED` OR `suspectedTheft == true` |
+| **STRICT** | **Blocks closure** (state unchanged, ReturnClosureBlocked emitted) if: `trophiesQuality == DAMAGED` OR `suspectedTheft == true` |
 
 ### Code Flow
 
@@ -889,8 +910,8 @@ CloseReturn command
 ```
 
 When closure is **blocked** under STRICT:
-- Command **silently does nothing** (no CommandRejected event)
-- State remains unchanged
+- Command does not change state
+- `ReturnClosureBlocked(policy=STRICT, reason=...)` is emitted
 - Return packet stays pending
 
 ### Comparison Table
