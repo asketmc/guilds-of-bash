@@ -12,38 +12,44 @@ import java.math.BigDecimal
  * Rank-based deterministic pricing for contract drafts.
  *
  * ## Role
- * - Converts target contract rank into (a) sampled payout and (b) clientDeposit contribution.
+ * - Converts target contract rank into (a) sampled payout (money) and
+ *   (b) clientDeposit contribution.
  *
- * ## Contract
- * - All outputs are Int GP, >= 0.
- * - Output payout is clamped to rank band caps/floors from BalanceSettings.
- * - Deterministic: depends only on (rank, rng draw stream).
- *
- * ## Stability Gradient
- * STABLE: Pure sampling logic with explicit rules from BalanceSettings.
+ * ## Money Contract (FP-ECON-02)
+ * - Canonical storage unit across core is **copper**.
+ * - `BalanceSettings.PAYOUT_*` ranges are expressed in **GP** (design bands).
+ * - This pricing component samples from GP bands, then converts to
+ *   [MoneyCopper] (1 gp = 100 copper).
+ * - Any decimal → copper conversion uses **floor** rounding as implemented
+ *   in [Money].
  *
  * ## Determinism
- * - Uses explicit RNG draws in fixed order.
+ * - Uses explicit RNG draws in a fixed order.
  * - Same seed + same rank → identical results.
+ * - Do not reorder draws without updating determinism tests.
  *
  * ## Boundary Rules
  * - Must NOT emit events.
  * - Must NOT mutate state.
- *
- * ## Notes
- * - Non-linearity is approximated by piecewise bands + explicit tail (no floating lognormal yet).
  */
 object ContractPricing {
 
     /**
      * Sample the payout value for a contract in copper units.
      *
-     * This is the NEW API (FP-ECON-02) that returns money in copper, eliminating
-     * the GP→copper unit mismatch.
+     * ## Inputs
+     * - [rank] selects the GP payout band from [BalanceSettings].
+     * - [rng] provides deterministic draws.
      *
-     * @param rank Target contract rank
-     * @param rng Deterministic RNG
-     * @return Sampled payout in copper (>= 0)
+     * @param rank Target contract rank.
+     * @param rng Deterministic RNG.
+     *
+     * ## Output
+     * @return Sampled payout as [MoneyCopper] (>= 0).
+     *
+     * ## Notes
+     * - Sampling is uniform over the configured GP band.
+     * - Conversion: `gp * 100` copper (via [Money.fromGoldDecimal]).
      */
     fun samplePayoutMoney(rank: Rank, rng: Rng): MoneyCopper {
         val payoutGp = when (rank) {
@@ -62,12 +68,19 @@ object ContractPricing {
     /**
      * Sample the client's deposit contribution in copper units.
      *
-     * This is the NEW API (FP-ECON-02) that computes deposits in copper,
-     * preventing truncation bugs (e.g., 1 GP * 50% → 50 copper, not 0).
+     * ## Behavior
+     * - Performs a percent roll (`CLIENT_PAYS_CHANCE_PERCENT`).
+     * - If client pays: deposit = floor(payout * CLIENT_PAYS_FRACTION_BP / 10_000)
+     *   computed in copper via [Money.mulFractionBp].
+     * - Otherwise: deposit = 0.
      *
-     * @param payout The sampled payout in copper
-     * @param rng Deterministic RNG
-     * @return Client deposit in copper (>= 0, <= payout)
+     * @param payout Sampled payout in copper.
+     * @param rng Deterministic RNG.
+     * @return Client deposit in copper.
+     *
+     * ## Invariants
+     * - deposit >= 0
+     * - deposit <= payout
      */
     fun sampleClientDepositMoney(payout: MoneyCopper, rng: Rng): MoneyCopper {
         val roll = rng.nextInt(BalanceSettings.PERCENT_ROLL_MAX)
@@ -78,14 +91,14 @@ object ContractPricing {
     }
 
     /**
-     * Sample the "economic value" of the quest for the requester (gp/quest).
-     * This is not directly paid out; it feeds deposit logic and future balancing.
+     * Legacy API: sample payout in GP as an Int.
      *
-     * @deprecated Use samplePayoutMoney() instead (FP-ECON-02). This method
-     *   returns GP as Int which causes unit mismatch bugs.
      * @param rank Target contract rank.
      * @param rng Deterministic RNG.
-     * @return Sampled payout value in GP (>= 0).
+     * @return Sampled payout in GP.
+     *
+     * @deprecated FP-ECON-02: Use [samplePayoutMoney] for copper-safe logic.
+     * This method returns GP as Int and should be avoided in domain logic.
      */
     @Deprecated(
         message = "Use samplePayoutMoney() for copper-based calculations",
@@ -104,17 +117,15 @@ object ContractPricing {
     }
 
     /**
-     * Sample the client's deposit contribution (gp).
+     * Legacy API: sample deposit in GP as an Int.
      *
-     * Hardcoded MVP rule:
-     * - with probability CLIENT_PAYS_CHANCE_PERCENT: deposit = payout * CLIENT_PAYS_FRACTION_BP / 10000
-     * - otherwise: deposit = 0
-     *
-     * @deprecated Use sampleClientDepositMoney() instead (FP-ECON-02). This method
-     *   uses integer division which truncates small deposits to 0.
      * @param rank Target contract rank.
      * @param rng Deterministic RNG.
-     * @return Client deposit in GP (>= 0).
+     * @return Client deposit in GP.
+     *
+     * @deprecated FP-ECON-02: Use [sampleClientDepositMoney] for copper-safe
+     * deposit logic. This method uses integer division in GP space and may
+     * truncate small values to 0.
      */
     @Deprecated(
         message = "Use sampleClientDepositMoney() for copper-based calculations",
@@ -134,6 +145,8 @@ object ContractPricing {
      *
      * Most of the time samples from base range [A_MIN, A_MAX].
      * With PAYOUT_A_TAIL_CHANCE_PERCENT probability, samples from tail range [A_TAIL_MIN, A_TAIL_MAX].
+     *
+     * @param rng Deterministic RNG.
      */
     private fun sampleAWithTail(rng: Rng): Int {
         val roll = rng.nextInt(BalanceSettings.PERCENT_ROLL_MAX)

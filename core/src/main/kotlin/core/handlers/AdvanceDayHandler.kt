@@ -39,6 +39,10 @@ import core.state.*
 
 /**
  * Result of WIP and resolution phase.
+ *
+ * @property state Updated state after WIP advancement + resolution.
+ * @property successfulReturns Count of successful returns contributing to stability.
+ * @property failedReturns Count of failed returns contributing to stability.
  */
 data class WipResolveResult(
     val state: GameState,
@@ -49,13 +53,10 @@ data class WipResolveResult(
 /**
  * Main AdvanceDay handler - orchestrates all day phases.
  *
- * Why:
- * - A day tick must be atomic from the player perspective.
- * - The pipeline must be stable so telemetry and replay stay comparable over time.
- *
- * How:
- * - Runs a fixed phase order.
- * - Emits summary events as the authoritative narrative of the day.
+ * @param state Current immutable game state.
+ * @param cmd AdvanceDay command payload.
+ * @param rng Deterministic RNG stream (do not add/reorder draws casually).
+ * @param ctx Event emission context.
  */
 internal fun handleAdvanceDay(
     state: GameState,
@@ -95,16 +96,14 @@ internal fun handleAdvanceDay(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Phase 1: Inbox Generation
+ * Phase 1: Inbox Generation.
  *
- * Why:
- * - Inbox exists to decouple content generation from player publication decisions.
- *
- * How:
- * - Generates drafts using stability-driven threat scaling and seeded RNG.
- * - Advances id counters in one direction only.
- *
- * RNG: N draws for draft difficulty (N = nInbox)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param rng Deterministic RNG.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
+ * @param nInbox Number of drafts to generate.
  */
 private fun phaseInboxGeneration(
     state: GameState,
@@ -140,15 +139,14 @@ private fun phaseInboxGeneration(
 }
 
 /**
- * Phase 2: Hero Arrivals
+ * Phase 2: Hero Arrivals.
  *
- * Why:
- * - Heroes are agents. Arrivals are the simulation's supply side.
- *
- * How:
- * - Appends new heroes and records their ids as "arrivalsToday" to lock ordering.
- *
- * RNG: M draws for hero traits (M = nHeroes * traits_per_hero)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param rng Deterministic RNG.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
+ * @param nHeroes Number of heroes to generate.
  */
 private fun phaseHeroArrivals(
     state: GameState,
@@ -185,17 +183,13 @@ private fun phaseHeroArrivals(
 }
 
 /**
- * Phase 3: Auto-Resolve Inbox
+ * Phase 3: Auto-Resolve Inbox.
  *
- * Why:
- * - The world must not accumulate stale drafts forever.
- * - Ignored requests must have a measurable systemic cost.
- *
- * How:
- * - Delegates bucket decision to AutoResolveModel.
- * - Emits events and applies stability adjustment.
- *
- * RNG: K draws for bucket decisions (K = due drafts count)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param rng Deterministic RNG.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
  */
 private fun phaseAutoResolveInbox(
     state: GameState,
@@ -253,17 +247,13 @@ private fun phaseAutoResolveInbox(
 }
 
 /**
- * Phase 4: Contract Pickup
+ * Phase 4: Contract Pickup.
  *
- * Why:
- * - Contract pickup is the core agent decision loop.
- * - The player does not micro-manage; the system must select and explain.
- *
- * How:
- * - Iterates arriving heroes in deterministic id order.
- * - Locks the chosen board contract before creating the active contract.
- *
- * RNG: 0 draws (deterministic selection)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param _rng Deterministic RNG (unused in this phase).
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
  */
 private fun phasePickup(
     state: GameState,
@@ -325,17 +315,13 @@ private fun phasePickup(
 }
 
 /**
- * Phase 5: WIP Advancement and Resolution
+ * Phase 5: WIP Advancement and Resolution.
  *
- * Why:
- * - WIP advancement and resolution must be serial and stable to keep replay valid.
- * - Auto-closure must apply economy, rank, and hero lifecycle rules without adapter logic.
- *
- * How:
- * - Processes actives in deterministic id order.
- * - Emits intermediate and terminal events in causal order.
- *
- * RNG: Per completed contract: 1-3 draws for outcome, 1 draw for theft
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param rng Deterministic RNG.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
  */
 private fun phaseWipAndResolve(
     state: GameState,
@@ -566,16 +552,14 @@ private fun phaseWipAndResolve(
 }
 
 /**
- * Phase 6: Stability Update
+ * Phase 6: Stability Update.
  *
- * Why:
- * - Stability is the public health meter of the region.
- * - It is the long-term difficulty driver.
- *
- * How:
- * - Applies a single clamp-bounded delta and emits a single event when changed.
- *
- * RNG: 0 draws (deterministic)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
+ * @param successfulReturns Success count.
+ * @param failedReturns Fail count.
  */
 private fun phaseStabilityUpdate(
     state: GameState,
@@ -608,17 +592,12 @@ private fun phaseStabilityUpdate(
 }
 
 /**
- * Phase 7: Tax Evaluation
+ * Phase 7: Tax Evaluation.
  *
- * Why:
- * - Taxes are the primary growth limiter.
- * - Misses must accumulate into an unambiguous shutdown risk.
- *
- * How:
- * - Evaluates due-day after the day pipeline.
- * - Applies penalty and miss counter updates in one place.
- *
- * RNG: 0 draws (deterministic)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
  */
 private fun phaseTax(
     state: GameState,
@@ -688,15 +667,12 @@ private fun phaseTax(
 }
 
 /**
- * Phase 8: Day Ended Snapshot
+ * Phase 8: Day Ended Snapshot.
  *
- * Why:
- * - DayEnded is a stable integration point for analytics and UI.
- *
- * How:
- * - Captures a snapshot from the authoritative state without extra computation paths.
- *
- * RNG: 0 draws (deterministic)
+ * @param state Current state.
+ * @param cmd AdvanceDay command.
+ * @param ctx Event emission context.
+ * @param newDay Day index after increment.
  */
 private fun phaseDayEndedAndSnapshot(
     state: GameState,

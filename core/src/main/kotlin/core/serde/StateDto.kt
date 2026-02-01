@@ -16,6 +16,13 @@ import kotlinx.serialization.Serializable
 
 /**
  * Root DTO for complete game state serialization.
+ *
+ * @property meta Meta state (counters, revision, tax).
+ * @property guild Guild state (rank/progression/policy).
+ * @property region Region simulation state.
+ * @property economy Economy state (money/trophies/reserved).
+ * @property contracts Contract lifecycle state.
+ * @property heroes Hero roster state.
  */
 @Serializable
 data class GameStateDto(
@@ -29,6 +36,16 @@ data class GameStateDto(
 
 /**
  * DTO for meta state including counters and tax tracking.
+ *
+ * @property saveVersion Save format version.
+ * @property seed State seed (UInt) used for determinism.
+ * @property dayIndex Current day index.
+ * @property revision Monotonic state revision.
+ * @property ids Monotonic id counters.
+ * @property taxDueDay Next due day for taxes.
+ * @property taxAmountDue Current cycle amount due.
+ * @property taxPenalty Accumulated penalty.
+ * @property taxMissedCount Missed payment strike counter.
  */
 @Serializable
 data class MetaStateDto(
@@ -45,6 +62,10 @@ data class MetaStateDto(
 
 /**
  * DTO for monotonic ID counters.
+ *
+ * @property nextContractId Next contract id.
+ * @property nextHeroId Next hero id.
+ * @property nextActiveContractId Next active contract id.
  */
 @Serializable
 data class IdCountersDto(
@@ -55,6 +76,12 @@ data class IdCountersDto(
 
 /**
  * DTO for guild progression and policy state.
+ *
+ * @property guildRank Guild rank (stored as ordinal/int).
+ * @property reputation Guild reputation.
+ * @property completedContractsTotal Total completed contracts.
+ * @property contractsForNextRank Remaining contracts for next rank.
+ * @property proofPolicy Proof policy name (e.g. FAST/STRICT).
  */
 @Serializable
 data class GuildStateDto(
@@ -67,6 +94,8 @@ data class GuildStateDto(
 
 /**
  * DTO for regional simulation state.
+ *
+ * @property stability Regional stability (0..100).
  */
 @Serializable
 data class RegionStateDto(
@@ -75,6 +104,10 @@ data class RegionStateDto(
 
 /**
  * DTO for economy state.
+ *
+ * @property moneyCopper Money stored in copper.
+ * @property trophiesStock Total trophies held.
+ * @property reservedCopper Reserved copper (escrow).
  */
 @Serializable
 data class EconomyStateDto(
@@ -85,6 +118,12 @@ data class EconomyStateDto(
 
 /**
  * DTO for contract lifecycle collections.
+ *
+ * @property inbox Inbox drafts.
+ * @property board Posted board contracts.
+ * @property archive Archived/completed board contracts.
+ * @property active Active in-progress contracts.
+ * @property returns Return packets awaiting close/processing.
  */
 @Serializable
 data class ContractStateDto(
@@ -97,6 +136,17 @@ data class ContractStateDto(
 
 /**
  * DTO for contract draft in inbox.
+ *
+ * @property id Contract id.
+ * @property createdDay Created day index.
+ * @property nextAutoResolveDay Auto resolve day index.
+ * @property title Title.
+ * @property rankSuggested Suggested rank name.
+ * @property feeOffered Offered fee in copper.
+ * @property salvage Salvage policy name.
+ * @property baseDifficulty Difficulty scalar.
+ * @property proofHint Proof hint string.
+ * @property clientDeposit Client deposit in copper.
  */
 @Serializable
 data class ContractDraftDto(
@@ -114,6 +164,16 @@ data class ContractDraftDto(
 
 /**
  * DTO for posted board contract.
+ *
+ * @property id Contract id.
+ * @property postedDay Posted day index.
+ * @property title Title.
+ * @property rank Rank name.
+ * @property fee Fee in copper.
+ * @property salvage Salvage policy name.
+ * @property baseDifficulty Difficulty scalar.
+ * @property status Board status name.
+ * @property clientDeposit Client deposit in copper.
  */
 @Serializable
 data class BoardContractDto(
@@ -130,6 +190,13 @@ data class BoardContractDto(
 
 /**
  * DTO for active in-progress contract.
+ *
+ * @property id Active contract id.
+ * @property boardContractId Board contract id.
+ * @property takenDay Taken day index.
+ * @property daysRemaining Days remaining.
+ * @property heroIds Participating hero ids.
+ * @property status Active status name.
  */
 @Serializable
 data class ActiveContractDto(
@@ -143,6 +210,17 @@ data class ActiveContractDto(
 
 /**
  * DTO for resolved contract return packet.
+ *
+ * @property activeContractId Active contract id.
+ * @property boardContractId Board contract id.
+ * @property heroIds Participating hero ids.
+ * @property resolvedDay Resolved day index.
+ * @property outcome Outcome name.
+ * @property trophiesCount Trophy count.
+ * @property trophiesQuality Quality name.
+ * @property reasonTags Reason tags.
+ * @property requiresPlayerClose Whether player close is required.
+ * @property suspectedTheft Whether theft is suspected.
  */
 @Serializable
 data class ReturnPacketDto(
@@ -160,6 +238,8 @@ data class ReturnPacketDto(
 
 /**
  * DTO for hero roster (arrivalsToday excluded).
+ *
+ * @property roster List of heroes.
  */
 @Serializable
 data class HeroStateDto(
@@ -168,6 +248,14 @@ data class HeroStateDto(
 
 /**
  * DTO for individual hero entity.
+ *
+ * @property id Hero id.
+ * @property name Display name.
+ * @property rank Rank name.
+ * @property klass Class name.
+ * @property traits Personality traits.
+ * @property status Hero status name.
+ * @property historyCompleted Completed missions count.
  */
 @Serializable
 data class HeroDto(
@@ -182,6 +270,10 @@ data class HeroDto(
 
 /**
  * DTO for hero personality traits.
+ *
+ * @property greed Greed trait (0..100).
+ * @property honesty Honesty trait (0..100).
+ * @property courage Courage trait (0..100).
  */
 @Serializable
 data class TraitsDto(

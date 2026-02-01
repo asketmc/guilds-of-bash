@@ -25,13 +25,10 @@ import core.state.*
 /**
  * Posts a draft contract from inbox to board.
  *
- * Why:
- * - Publication is the player's commitment point.
- * - Escrow exists to make commitment economically binding.
- *
- * How:
- * - Moves a draft from inbox to board.
- * - Reserves only the player's top-up portion; client deposit stays external to player funds.
+ * @param state Current state.
+ * @param cmd PostContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
 internal fun handlePostContract(
     state: GameState,
@@ -85,11 +82,10 @@ internal fun handlePostContract(
 /**
  * Creates a new contract draft in the inbox.
  *
- * Why:
- * - Contract authoring is a content injection point for tools and future adapters.
- *
- * How:
- * - Creates an inbox draft and advances id counters monotonically.
+ * @param state Current state.
+ * @param cmd CreateContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
 internal fun handleCreateContract(
     state: GameState,
@@ -138,13 +134,10 @@ internal fun handleCreateContract(
 /**
  * Updates contract terms in inbox or on board.
  *
- * Why:
- * - Negotiation is allowed before commitment.
- * - Terms changes must preserve escrow correctness.
- *
- * How:
- * - Applies updates either in inbox or on board.
- * - Adjusts reserved copper only by the player's top-up delta.
+ * @param state Current state.
+ * @param cmd UpdateContractTerms command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
 internal fun handleUpdateContractTerms(
     state: GameState,
@@ -223,13 +216,10 @@ internal fun handleUpdateContractTerms(
 /**
  * Cancels a contract from inbox or board.
  *
- * Why:
- * - Cancellation prevents dead contracts from blocking the board.
- * - Refund rules must match the escrow model.
- *
- * How:
- * - Inbox cancellation has no economic impact.
- * - Board cancellation refunds only the player's top-up portion.
+ * @param state Current state.
+ * @param cmd CancelContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
 internal fun handleCancelContract(
     state: GameState,
@@ -286,13 +276,10 @@ internal fun handleCancelContract(
 /**
  * Closes a completed return (manual player action).
  *
- * Why:
- * - Manual return closure is the player's governance moment.
- * - Strict proof is enforced by refusal to mutate state, not by rejection spam.
- *
- * How:
- * - In STRICT: silently no-ops on damaged proof or suspected theft.
- * - Otherwise: applies salvage, closes the active, releases escrow, and advances rank.
+ * @param state Current state.
+ * @param cmd CloseReturn command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
 @Suppress("ReturnCount")
 internal fun handleCloseReturn(
@@ -320,8 +307,8 @@ internal fun handleCloseReturn(
 
     // Filter out this return and mark active as CLOSED
     val updatedReturns = state.contracts.returns.filter { it.activeContractId.value.toLong() != cmd.activeContractId }
-    val updatedActives = state.contracts.active.map { active ->
-        if (active.id.value.toLong() == cmd.activeContractId) active.copy(status = ActiveStatus.CLOSED) else active
+    val updatedActives = state.contracts.active.map {
+        if (it.id.value.toLong() == cmd.activeContractId) it.copy(status = ActiveStatus.CLOSED) else it
     }
 
     // Settlement: Economy

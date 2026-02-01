@@ -5,64 +5,88 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 /**
- * Money value stored in copper units (1 gp = 100 copper, 1 silver = 10 copper).
+ * Money value stored in **copper** units.
+ *
+ * ## Units
+ * - Storage unit: **copper** (Int)
+ * - 1 gp = 100 copper
+ * - 1 silver = 10 copper
  *
  * ## Contract
- * - Copper value must always be >= 0
- * - Immutable value type
- * - Deterministic: same inputs → same outputs across all JVMs
+ * - [copper] is always **>= 0**.
+ * - Immutable value type.
+ * - Intended as the canonical in-core representation at API boundaries
+ *   (pricing, escrow, tax, settlements).
  *
- * ## Stability Gradient
- * STABLE: Core money primitive used throughout economy calculations.
+ * ## Determinism
+ * Pure value wrapper; determinism depends on callers. All computations should
+ * be performed via [Money] helpers to preserve consistent floor-rounding
+ * semantics.
  */
 @JvmInline
-value class MoneyCopper(val copper: Int) {
+value class MoneyCopper(
+    /** Amount in copper units (>= 0). */
+    val copper: Int
+) {
     init {
         require(copper >= 0) { "Money cannot be negative: $copper copper" }
     }
 
+    /**
+     * Add copper amounts.
+     *
+     * @param other Addend.
+     */
     operator fun plus(other: MoneyCopper): MoneyCopper = MoneyCopper(copper + other.copper)
 
+    /**
+     * Compare copper amounts.
+     *
+     * @param other Comparator value.
+     */
     operator fun compareTo(other: MoneyCopper): Int = copper.compareTo(other.copper)
 
+    /** Human-readable debug string (unit: copper). */
     override fun toString(): String = "$copper copper"
 }
 
 /**
- * Money conversion and calculation API.
+ * FP-ECON-02 Money Contract: conversion & arithmetic utilities.
  *
  * ## Role
- * - Single source of truth for all money unit conversions
- * - Enforces floor-rounding semantics for all decimal → copper conversions
- * - Provides fraction/percentage calculations in copper units
+ * Single source of truth for:
+ * - Unit conversion (gp/silver ↔ copper)
+ * - Basis-point fraction math in copper
+ * - Centralized rounding semantics (floor) when converting decimal → copper
  *
- * ## Contract
- * - All conversions from decimal to copper use floor (round down)
- * - All fraction calculations preserve determinism (no floating-point errors)
- * - Basis points (bp) are in range [0..10000] where 10000 = 100%
+ * ## Normative Semantics
+ * - Any conversion from a decimal amount (gp/silver) to copper uses
+ *   **floor** (round down) to avoid creating money from rounding.
+ * - Any percentage/fraction calculation runs in integer space and implicitly
+ *   floors (see [mulFractionBp]).
  *
  * ## Determinism
- * - Uses BigDecimal with explicit scale and rounding mode
- * - Same inputs always produce same outputs across JVM instances
+ * - No floating-point math.
+ * - Uses [BigDecimal] only with explicit scale and [RoundingMode]
+ *   to keep results stable across JVMs.
  */
 object Money {
-    /** Copper per gold piece */
+    /** Copper per gold piece (gp). */
     const val COPPER_PER_GP = 100
 
-    /** Copper per silver piece */
+    /** Copper per silver piece. */
     const val COPPER_PER_SILVER = 10
 
-    /** Basis points divisor (10000 = 100%) */
+    /** Basis points divisor (10_000 = 100%). */
     const val BP_DIVISOR = 10_000
 
-    /** Zero money constant */
+    /** Zero money constant. */
     val ZERO = MoneyCopper(0)
 
     /**
-     * Create money from copper value.
+     * Create from a raw copper value.
      *
-     * @param copper Amount in copper (must be >= 0)
-     * @return MoneyCopper instance
+     * @param copper Amount in copper (must be >= 0).
      */
     fun fromCopper(copper: Int): MoneyCopper {
         require(copper >= 0) { "Copper must be non-negative: $copper" }
@@ -70,11 +94,12 @@ object Money {
     }
 
     /**
-     * Create money from gold pieces (decimal).
-     * Rounds down (floor) to nearest copper.
+     * Convert a gold-piece decimal amount into copper.
      *
-     * @param gp Amount in gold pieces
-     * @return MoneyCopper instance (floored to copper)
+     * Rounding: **floor** (round down) to the nearest copper.
+     *
+     * @param gp Amount in gold pieces (decimal).
+     * @return Equivalent amount in copper (floored).
      */
     fun fromGoldDecimal(gp: BigDecimal): MoneyCopper {
         val copper = gp.multiply(BigDecimal(COPPER_PER_GP))
@@ -84,11 +109,12 @@ object Money {
     }
 
     /**
-     * Create money from silver pieces (decimal).
-     * Rounds down (floor) to nearest copper.
+     * Convert a silver-piece decimal amount into copper.
      *
-     * @param silver Amount in silver pieces
-     * @return MoneyCopper instance (floored to copper)
+     * Rounding: **floor** (round down) to the nearest copper.
+     *
+     * @param silver Amount in silver pieces (decimal).
+     * @return Equivalent amount in copper (floored).
      */
     fun fromSilverDecimal(silver: BigDecimal): MoneyCopper {
         val copper = silver.multiply(BigDecimal(COPPER_PER_SILVER))
@@ -98,24 +124,25 @@ object Money {
     }
 
     /**
-     * Convert money to gold pieces as decimal (for display/tests).
+     * Convert copper into a gold-piece decimal representation.
      *
-     * @param money Money in copper
-     * @return Amount in gold pieces (exact decimal)
+     * Intended for display and tests; state storage remains copper.
+     *
+     * @param money Money in copper.
      */
     fun toGoldDecimal(money: MoneyCopper): BigDecimal {
         return BigDecimal(money.copper).divide(BigDecimal(COPPER_PER_GP), 2, RoundingMode.HALF_UP)
     }
 
     /**
-     * Multiply money by a fraction expressed in basis points.
-     * Result is floored to copper.
+     * Multiply a copper amount by a basis-point fraction.
      *
-     * Formula: result = floor(copper * bp / 10000)
+     * Formula: `floor(copper * bp / 10_000)`
      *
-     * @param money Money to multiply
-     * @param bp Basis points (0..10000, where 10000 = 100%)
-     * @return Result money (floored)
+     * This is the canonical helper for deposits, taxes, penalties, etc.
+     *
+     * @param money Money amount to multiply.
+     * @param bp Basis points in [0..10_000].
      */
     fun mulFractionBp(money: MoneyCopper, bp: Int): MoneyCopper {
         require(bp in 0..BP_DIVISOR) { "Basis points must be in [0, $BP_DIVISOR]: $bp" }
@@ -126,21 +153,18 @@ object Money {
     /**
      * Add two money amounts.
      *
-     * @param a First amount
-     * @param b Second amount
-     * @return Sum
+     * @param a First amount.
+     * @param b Second amount.
      */
     fun plus(a: MoneyCopper, b: MoneyCopper): MoneyCopper {
         return MoneyCopper(a.copper + b.copper)
     }
 
     /**
-     * Subtract money amounts, ensuring result is non-negative.
-     * If b > a, returns ZERO.
+     * Subtract money amounts and clamp at zero.
      *
-     * @param a Amount to subtract from
-     * @param b Amount to subtract
-     * @return Result (clamped to >= 0)
+     * @param a Minuend.
+     * @param b Subtrahend.
      */
     fun minusNonNegative(a: MoneyCopper, b: MoneyCopper): MoneyCopper {
         val result = a.copper - b.copper
@@ -148,14 +172,20 @@ object Money {
     }
 
     /**
-     * Return minimum of two money amounts.
+     * Minimum of two money amounts.
+     *
+     * @param a First amount.
+     * @param b Second amount.
      */
     fun min(a: MoneyCopper, b: MoneyCopper): MoneyCopper {
         return if (a.copper <= b.copper) a else b
     }
 
     /**
-     * Return maximum of two money amounts.
+     * Maximum of two money amounts.
+     *
+     * @param a First amount.
+     * @param b Second amount.
      */
     fun max(a: MoneyCopper, b: MoneyCopper): MoneyCopper {
         return if (a.copper >= b.copper) a else b

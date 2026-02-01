@@ -176,6 +176,43 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 - **After command execution prints**:
   - **MATCH**: HASH: state=<stateHash> events=<eventsHash> rngDraws=<n>
 
+### 3.5 FP-ECON-02 Money Contract (Decimal Semantics, Copper Storage)
+**Status**: MATCH
+
+**Goal**: Introduce a single canonical money contract in `core` to prevent unit
+mismatch bugs (GP vs copper) and preserve deterministic rounding.
+
+### Normative Rules (Actual)
+- **MATCH**: Storage unit is **copper** (Int) everywhere in core state.
+  - 1 gp = 100 copper
+  - 1 silver = 10 copper
+- **MATCH**: Decimal-to-copper conversions are **floor** rounded.
+- **MATCH**: Percent / fraction calculations are performed in copper via basis
+  points and floor rounding.
+- **MATCH**: Pricing samples payout bands expressed in **GP** (design-time
+  constants in `BalanceSettings`) and converts sampled values to copper.
+
+### Why it exists
+- **MATCH**: Prevents truncation bugs such as:
+  - payout = 1 gp
+  - client deposit fraction = 50%
+  - deposit must be 50 copper (not 0)
+
+### Code Anchors
+- Money primitives and conversion rules:
+  - `core/primitives/Money.kt`: `MoneyCopper`, `Money.fromGoldDecimal`,
+    `Money.mulFractionBp`
+- Pricing integration:
+  - `core/flavour/ContractPricing.kt`: `samplePayoutMoney`,
+    `sampleClientDepositMoney`
+- Draft generation uses copper semantics:
+  - `core/pipeline/InboxLifecycle.kt`: sets `ContractDraft.feeOffered` and
+    `clientDeposit` from pricing outputs
+
+### Compatibility Notes
+- **MATCH**: Legacy GP-returning pricing methods remain but are deprecated.
+  They should not be used in domain logic.
+
 ---
 
 ## 4) Terms and Vocabulary (Design ↔ Code)
@@ -616,8 +653,14 @@ All events listed in doc are present in code with matching field structures. Key
 - **MATCH**: Allows posting with money=0 if clientDeposit covers entire fee
 
 **Inbox Generation**:
-- **MATCH**: InboxLifecycle.generateDrafts calls ContractPricing.sampleClientDepositGp
-- **MATCH**: Draft may have non-zero clientDeposit scaling with rank
+- **MATCH**: InboxLifecycle.generateDrafts uses copper-safe pricing:
+  - `ContractPricing.samplePayoutMoney(...)`
+  - `ContractPricing.sampleClientDepositMoney(payout, ...)`
+- **MATCH**: Draft may have non-zero `feeOffered` and `clientDeposit` in copper
+  (including sub-1 gp fees expressed as 1..99 copper).
+
+> Note: legacy `sampleClientDepositGp` / `samplePayoutGp` remain deprecated and
+> should not be used in domain logic.
 
 ### 11.6 Taxes (Actual)
 **Status**: MATCH

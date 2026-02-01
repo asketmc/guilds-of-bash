@@ -42,8 +42,8 @@ object BoardStatusModel {
             return BoardStatusDecision(shouldComplete = false)
         }
 
-        val hasNonClosedActives = activeContracts.any { active ->
-            active.boardContractId == boardContract.id && active.status != ActiveStatus.CLOSED
+        val hasNonClosedActives = activeContracts.any {
+            it.boardContractId == boardContract.id && it.status != ActiveStatus.CLOSED
         }
 
         return BoardStatusDecision(shouldComplete = !hasNonClosedActives)
@@ -69,14 +69,19 @@ object BoardStatusModel {
 
         if (!decision.shouldComplete) return boards
 
-        return boards.map { b ->
-            if (b.id == boardIdToComplete) b.copy(status = BoardStatus.COMPLETED) else b
+        return boards.map {
+            if (it.id == boardIdToComplete) it.copy(status = BoardStatus.COMPLETED) else it
         }
     }
 
     /**
      * Completes the specified board contract (if eligible) and returns an archived copy.
-     * Returns Pair(updatedBoardsWithoutCompleted, archivedList).
+     *
+     * @param boards Current board contracts.
+     * @param boardIdToComplete ID of board to potentially complete.
+     * @param activeContracts Current active contracts (for completion check).
+     * @return Pair(remainingBoards, archivedBoards) where archivedBoards is either
+     *   empty or contains the completed board.
      */
     fun completeBoardAndExtract(
         boards: List<BoardContract>,
