@@ -73,6 +73,28 @@ object BoardStatusModel {
             if (b.id == boardIdToComplete) b.copy(status = BoardStatus.COMPLETED) else b
         }
     }
+
+    /**
+     * Completes the specified board contract (if eligible) and returns an archived copy.
+     * Returns Pair(updatedBoardsWithoutCompleted, archivedList).
+     */
+    fun completeBoardAndExtract(
+        boards: List<BoardContract>,
+        boardIdToComplete: ContractId?,
+        activeContracts: List<ActiveContract>
+    ): Pair<List<BoardContract>, List<BoardContract>> {
+        if (boardIdToComplete == null) return Pair(boards, emptyList())
+
+        val boardContract = boards.firstOrNull { it.id == boardIdToComplete }
+        val decision = shouldComplete(boardContract, activeContracts)
+
+        if (!decision.shouldComplete || boardContract == null) return Pair(boards, emptyList())
+
+        // Mark completed and export to archive
+        val completed = boardContract.copy(status = BoardStatus.COMPLETED)
+        val remaining = boards.filter { it.id != boardIdToComplete }
+        return Pair(remaining, listOf(completed))
+    }
 }
 
 /**

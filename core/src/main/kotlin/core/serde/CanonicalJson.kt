@@ -30,12 +30,12 @@ fun serialize(state: GameState): String {
 
 fun deserialize(jsonString: String): GameState {
     val dto = json.decodeFromString<GameStateDto>(jsonString)
-    
+
     // Validate save version
     require(dto.meta.saveVersion == SUPPORTED_SAVE_VERSION) {
         "Unsupported saveVersion: ${dto.meta.saveVersion}"
     }
-    
+
     return fromDto(dto)
 }
 
@@ -98,6 +98,7 @@ fun toDto(contracts: ContractState): ContractStateDto {
     return ContractStateDto(
         inbox = contracts.inbox.map { toDto(it) },
         board = contracts.board.map { toDto(it) },
+        archive = contracts.archive.map { toDto(it) },
         active = contracts.active.map { toDto(it) },
         returns = contracts.returns.map { toDto(it) }
     )
@@ -240,6 +241,7 @@ fun fromDto(dto: ContractStateDto): ContractState {
     return ContractState(
         inbox = dto.inbox.map { fromDtoDraft(it) },
         board = dto.board.map { fromDtoBoard(it) },
+        archive = dto.archive.map { fromDtoBoard(it) },
         active = dto.active.map { fromDtoActive(it) },
         returns = dto.returns.map { fromDtoReturn(it) }
     )

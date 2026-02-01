@@ -9,6 +9,8 @@ import core.primitives.BoardStatus
 import test.helpers.active
 import test.helpers.assertActiveStatusIn
 import test.helpers.assertBoardStatus
+import test.helpers.assertArchiveStatus
+import test.helpers.assertBoardAbsent
 import test.helpers.assertHasLockedBoardViolation
 import test.helpers.assertNoInvariantViolation
 import test.helpers.assertNoLockedBoardViolations
@@ -52,7 +54,9 @@ class LockedBoardInvariantTest {
 
         val res = closeReturn(fx.initial, activeContractId = 1L, cmdId = 1L, rng = fx.rng)
 
-        assertBoardStatus(res.state, BoardStatus.COMPLETED)
+        // Under the archive spec, completion removes the contract from the active board
+        assertBoardAbsent(res.state, boardContractId = 1L)
+        assertArchiveStatus(res.state, BoardStatus.COMPLETED, boardContractId = 1L)
         assertActiveStatusIn(
             res.state,
             activeContractId = 1L,
@@ -82,7 +86,8 @@ class LockedBoardInvariantTest {
         assertNoLockedBoardViolations(r1.state)
 
         val r2 = closeReturn(r1.state, activeContractId = 2L, cmdId = 2L, rng = fx.rng)
-        assertBoardStatus(r2.state, BoardStatus.COMPLETED)
+        assertBoardAbsent(r2.state, boardContractId = 1L)
+        assertArchiveStatus(r2.state, BoardStatus.COMPLETED, boardContractId = 1L)
         assertNoLockedBoardViolations(r2.state)
     }
 

@@ -102,6 +102,7 @@ fun initialState(seed: UInt): GameState {
         contracts = ContractState(
             inbox = initialInbox,
             board = emptyList(),
+            archive = emptyList(),
             active = emptyList(),
             returns = emptyList()
         ),

@@ -305,6 +305,7 @@ class GoldenOutputTest {
             contracts = ContractState(
                 inbox = emptyList(),
                 board = emptyList(),
+                archive = emptyList(),
                 active = emptyList(),
                 returns = listOf(createTestReturn())
             )
@@ -399,6 +400,7 @@ class GoldenOutputTest {
             contracts = ContractState(
                 inbox = listOf(createTestDraft()),
                 board = emptyList(),
+                archive = emptyList(),
                 active = emptyList(),
                 returns = emptyList()
             )
@@ -541,6 +543,7 @@ class GoldenOutputTest {
         contracts = ContractState(
             inbox = emptyList(),
             board = emptyList(),
+            archive = emptyList(),
             active = emptyList(),
             returns = emptyList()
         ),

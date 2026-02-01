@@ -486,12 +486,20 @@ private fun phaseWipAndResolve(
                 )
             }
 
-            // Settlement: Board status
-            val updatedBoard = if (boardContract != null && boardContract.status == BoardStatus.LOCKED) {
-                workingState.contracts.board.map { b ->
-                    if (b.id == boardContract.id) b.copy(status = BoardStatus.COMPLETED) else b
-                }
-            } else workingState.contracts.board
+            // Settlement: Board status -> close this active, then complete/archive the board if eligible.
+            // The active must be marked CLOSED before board completion is evaluated so completion sees it as closed.
+            val idx = updatedActives.indexOfFirst { it.id.value == activeId }
+            if (idx >= 0) {
+                updatedActives[idx] = updatedActives[idx].copy(daysRemaining = 0, status = ActiveStatus.CLOSED)
+            }
+
+            val (updatedBoard, newlyArchived) = if (boardContract != null) {
+                BoardStatusModel.completeBoardAndExtract(
+                    boards = workingState.contracts.board,
+                    boardIdToComplete = boardContract.id,
+                    activeContracts = updatedActives
+                )
+            } else Pair(workingState.contracts.board, emptyList())
 
             // Settlement: Guild progression
             val guildResult = GuildProgression.computeAfterCompletion(
@@ -519,7 +527,7 @@ private fun phaseWipAndResolve(
 
             // Apply all settlements
             workingState = workingState.copy(
-                contracts = workingState.contracts.copy(board = updatedBoard),
+                contracts = workingState.contracts.copy(board = updatedBoard, archive = workingState.contracts.archive + newlyArchived),
                 heroes = workingState.heroes.copy(
                     roster = heroResult.updatedRoster,
                     arrivalsToday = safeArrivalsToday
@@ -532,11 +540,7 @@ private fun phaseWipAndResolve(
                 )
             )
 
-            val idx = updatedActives.indexOfFirst { it.id.value == activeId }
-            if (idx >= 0) {
-                updatedActives[idx] = updatedActives[idx].copy(daysRemaining = 0, status = ActiveStatus.CLOSED)
-            }
-
+            // Note: active was already marked CLOSED prior to completion evaluation
             ctx.emit(
                 ReturnClosed(
                     day = workingState.meta.dayIndex,

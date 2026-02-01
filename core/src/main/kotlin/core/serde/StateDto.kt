@@ -90,6 +90,7 @@ data class EconomyStateDto(
 data class ContractStateDto(
     val inbox: List<ContractDraftDto>,
     val board: List<BoardContractDto>,
+    val archive: List<BoardContractDto>,
     val active: List<ActiveContractDto>,
     val returns: List<ReturnPacketDto>
 )

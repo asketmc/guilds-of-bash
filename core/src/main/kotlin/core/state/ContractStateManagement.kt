@@ -29,12 +29,14 @@ import core.primitives.*
  *
  * @property inbox Draft contracts ([ContractDraft]) waiting to be posted to the board.
  * @property board Posted contracts ([BoardContract]) available for pickup.
+ * @property archive Completed or archived contracts ([BoardContract]).
  * @property active In-progress contracts ([ActiveContract]) indexed by [ActiveContractId].
  * @property returns Return records ([ReturnPacket]) pending explicit close when [ReturnPacket.requiresPlayerClose] is true.
  */
 data class ContractState(
     val inbox: List<ContractDraft>,
     val board: List<BoardContract>,
+    val archive: List<BoardContract> = emptyList(),
     val active: List<ActiveContract>,
     val returns: List<ReturnPacket>
 )

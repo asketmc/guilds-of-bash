@@ -334,8 +334,8 @@ internal fun handleCloseReturn(
         state.economy
     )
 
-    // Settlement: Board status
-    val updatedBoard = BoardStatusModel.updateBoardStatus(
+    // Settlement: Board status -> complete and archive if eligible
+    val (updatedBoard, newlyArchived) = BoardStatusModel.completeBoardAndExtract(
         boards = state.contracts.board,
         boardIdToComplete = board?.id,
         activeContracts = updatedActives
@@ -365,6 +365,7 @@ internal fun handleCloseReturn(
     val newState = state.copy(
         contracts = state.contracts.copy(
             board = updatedBoard,
+            archive = state.contracts.archive + newlyArchived,
             active = updatedActives,
             returns = updatedReturns
         ),
