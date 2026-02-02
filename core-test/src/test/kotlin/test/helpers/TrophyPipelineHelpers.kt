@@ -166,8 +166,8 @@ fun sellAllTrophies(state: GameState, cmdId: Long, rng: Rng): StepResult = step(
 fun assertSingleResolvedCreatesSingleReturn(state: GameState, events: List<Event>) {
     val resolved = events.filter { it::class.simpleName == "ContractResolved" }
     if (resolved.size != 1) {
-        println("DEBUG: Events emitted: ${events.map { it::class.simpleName }}")
-        println("DEBUG: State returns size=${state.contracts.returns.size}")
+        TestLog.log("DEBUG: Events emitted: ${events.map { it::class.simpleName }}")
+        TestLog.log("DEBUG: State returns size=${state.contracts.returns.size}")
     }
     assertEquals(1, resolved.size, "Expected exactly one ContractResolved event")
     assertEquals(1, state.contracts.returns.size, "Expected one return present in state")

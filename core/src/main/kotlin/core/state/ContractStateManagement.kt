@@ -8,10 +8,16 @@ import core.primitives.*
  *
  * ## Contract
  * Holds all contract records grouped by lifecycle stage:
- * - inbox: drafts available for posting
- * - board: posted contracts visible for pickup
- * - active: taken contracts currently in progress
- * - returns: resolved contracts awaiting explicit close (player interaction)
+ * 1) inbox   — generated drafts awaiting publication
+ * 2) board   — published contracts available for pickup
+ * 3) active  — taken contracts currently in execution
+ * 4) returns — resolved contracts requiring manual player action
+ * 5) archive — completed contracts stored as append-only snapshots
+ *
+ * ### Archive semantics
+ * - Terminal stage: contracts in [archive] do not transition further.
+ * - Append-only / read-only: contracts are only added; not consulted for gameplay decisions.
+ * - Intended uses: audit trail, replay/debug tooling, future analytics.
  *
  * ## Invariants
  * - IDs are expected to be unique within each collection (by their respective id type).
@@ -29,12 +35,15 @@ import core.primitives.*
  *
  * @property inbox Draft contracts ([ContractDraft]) waiting to be posted to the board.
  * @property board Posted contracts ([BoardContract]) available for pickup.
+ * @property archive Completed contracts stored as terminal snapshots ([BoardContract]).
  * @property active In-progress contracts ([ActiveContract]) indexed by [ActiveContractId].
- * @property returns Return records ([ReturnPacket]) pending explicit close when [ReturnPacket.requiresPlayerClose] is true.
+ * @property returns Return records ([ReturnPacket]) pending explicit close when
+ *   [ReturnPacket.requiresPlayerClose] is true.
  */
 data class ContractState(
     val inbox: List<ContractDraft>,
     val board: List<BoardContract>,
+    val archive: List<BoardContract> = emptyList(),
     val active: List<ActiveContract>,
     val returns: List<ReturnPacket>
 )

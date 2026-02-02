@@ -170,4 +170,84 @@ class FeeEscrowTest {
         val closed = result.events.filterIsInstance<ReturnClosed>()
         assertEquals(1, closed.size)
     }
+
+    @Test
+    fun `post accepts when clientDeposit covers entire fee with zero money`() {
+        // GIVEN money=0 reserved=0 available=0, inbox draft with clientDeposit=10
+        val rng = Rng(100L)
+        val deposit = 10
+        val state = stateWithEconomy(moneyCopper = 0, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
+
+        // WHEN PostContract fee=10 (fully covered by clientDeposit)
+        val cmd = PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 5L)
+        val result = step(state, cmd, rng)
+
+        // THEN accepted (no CommandRejected), contract posted
+        val rejections = result.events.filterIsInstance<CommandRejected>()
+        assertTrue(rejections.isEmpty(), "Should not be rejected: $rejections")
+
+        val posted = result.events.filterIsInstance<ContractPosted>()
+        assertEquals(1, posted.size, "Contract should be posted")
+        assertEquals(10, posted[0].fee)
+        assertEquals(deposit, posted[0].clientDeposit)
+
+        // Guild receives deposit and reserves it
+        assertEquals(deposit, result.state.economy.moneyCopper, "Money should include client deposit")
+        assertReservedCopper(result.state, deposit, "Client deposit should be reserved")
+    }
+
+    @Test
+    fun `post accepts when clientDeposit partially covers fee`() {
+        // GIVEN money=5 reserved=0 available=5, inbox draft with clientDeposit=5
+        val rng = Rng(100L)
+        val deposit = 5
+        val state = stateWithEconomy(moneyCopper = 5, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
+
+        // WHEN PostContract fee=10 (5 from deposit, need 5 from guild -> have 5 available)
+        val cmd = PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 5L)
+        val result = step(state, cmd, rng)
+
+        // THEN accepted
+        val rejections = result.events.filterIsInstance<CommandRejected>()
+        assertTrue(rejections.isEmpty(), "Should not be rejected: $rejections")
+
+        val posted = result.events.filterIsInstance<ContractPosted>()
+        assertEquals(1, posted.size, "Contract should be posted")
+    }
+
+    @Test
+    fun `post rejects when clientDeposit insufficient and no available funds`() {
+        // GIVEN money=0 reserved=0 available=0, inbox draft with clientDeposit=5
+        val rng = Rng(100L)
+        val deposit = 5
+        val state = stateWithEconomy(moneyCopper = 0, reservedCopper = 0, trophiesStock = 0).copy(
+            contracts = ContractState(
+                inbox = listOf(contractDraft(id = 1L, clientDeposit = deposit)),
+                board = emptyList(),
+                active = emptyList(),
+                returns = emptyList()
+            )
+        )
+
+        // WHEN PostContract fee=10 (5 from deposit, need 5 from guild -> have 0 available)
+        val cmd = PostContract(inboxId = 1L, fee = 10, salvage = SalvagePolicy.GUILD, cmdId = 5L)
+        val result = step(state, cmd, rng)
+
+        // THEN rejected with INVALID_STATE
+        assertSingleRejection(result.events, RejectReason.INVALID_STATE)
+    }
 }

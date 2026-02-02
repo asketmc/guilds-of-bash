@@ -1,6 +1,6 @@
 # Guilds of Bash - Main Design Document (Code-Validated)
-**Version**: 2.0 (Code-Aligned)  
-**Last Updated**: 2024-01-21  
+**Version**: 2.1 (Code-Aligned)  
+**Last Updated**: 2026-01-31  
 **Source of Truth**: Repository codebase  
 
 ## Doc→Code Alignment Summary
@@ -47,9 +47,10 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 
 - **P3. Trust/validation/fraud (early, minimal layer)**:
   - **MATCH**: ProofPolicy (FAST|STRICT) exists as guild state and SetProofPolicy command
-  - **MATCH**: In STRICT, CloseReturn performs silent no-op (not CommandRejected) for DAMAGED quality or suspectedTheft=true
-  - **MATCH**: No separate "dispute workflow"/ProofRejected events in current implementation
-  - **Code Anchor**: `core/primitives/ProofPolicy.kt`, `core/Reducer.kt`: handleCloseReturn
+  - **MATCH**: In STRICT, CloseReturn can be denied without state change for DAMAGED quality or suspectedTheft=true
+    - **MATCH**: Denial emits ReturnClosureBlocked (not CommandRejected)
+  - **MATCH**: No separate "dispute workflow" beyond this policy gate in current implementation
+  - **Code Anchor**: `core/primitives/ProofPolicy.kt`, `core/pipeline/ReturnClosurePolicy.kt`, `core/handlers/ContractHandlers.kt`: handleCloseReturn
 
 - **P4. World growth = threat growth**: stability → threat level → baseDifficulty of incoming contracts
   - **MATCH**: Implemented via `ThreatScaling.kt`
@@ -118,12 +119,30 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 ### 2.4 Proof Policy (Actual)
 **Status**: MATCH
 
-**Code Anchor**: `core/state/GuildState.kt`, `core/Reducer.kt`: handleCloseReturn
+**Code Anchor**: `core/state/GuildState.kt`, `core/handlers/ContractHandlers.kt`: handleCloseReturn
 
 - **MATCH**: Guild state contains proofPolicy (FAST|STRICT)
-- **MATCH**: In STRICT, CloseReturn performs silent no-op (early return without changes) if trophiesQuality == DAMAGED OR suspectedTheft == true - this is the intended behavior for strict validation
+- **MATCH**: In STRICT, CloseReturn is denied (state unchanged) if trophiesQuality == DAMAGED OR suspectedTheft == true
+  - **MATCH**: Denial is now observable via `ReturnClosureBlocked(policy=STRICT, reason=...)` event
+  - **MATCH**: This is intentionally not a CommandRejected; it’s a policy decision point for future disputes/arbitration
 - **MATCH**: SetProofPolicy command exists and emits ProofPolicyChanged
 - **MATCH**: Console adapter intentionally does not expose SetProofPolicy as CLI command (core feature available for future adapters)
+
+---
+
+### 2.5 Contract Lifecycle Collections (Actual)
+**Status**: MATCH
+
+**Code Anchor**: `core/state/ContractStateManagement.kt`
+
+Contract records are grouped into five lifecycle collections:
+- **inbox**: generated drafts awaiting publication
+- **board**: published contracts available for pickup
+- **active**: taken contracts currently in execution
+- **returns**: resolved contracts requiring manual player action
+- **archive**: terminal, append-only snapshots of completed board contracts
+
+Archive is used for audit/debug/replay visibility and is not consulted for gameplay decisions.
 
 ---
 
@@ -175,6 +194,43 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 - **MATCH**: status prints rngDraws=<...> and hash=<stateHash>
 - **After command execution prints**:
   - **MATCH**: HASH: state=<stateHash> events=<eventsHash> rngDraws=<n>
+
+### 3.5 FP-ECON-02 Money Contract (Decimal Semantics, Copper Storage)
+**Status**: MATCH
+
+**Goal**: Introduce a single canonical money contract in `core` to prevent unit
+mismatch bugs (GP vs copper) and preserve deterministic rounding.
+
+### Normative Rules (Actual)
+- **MATCH**: Storage unit is **copper** (Int) everywhere in core state.
+  - 1 gp = 100 copper
+  - 1 silver = 10 copper
+- **MATCH**: Decimal-to-copper conversions are **floor** rounded.
+- **MATCH**: Percent / fraction calculations are performed in copper via basis
+  points and floor rounding.
+- **MATCH**: Pricing samples payout bands expressed in **GP** (design-time
+  constants in `BalanceSettings`) and converts sampled values to copper.
+
+### Why it exists
+- **MATCH**: Prevents truncation bugs such as:
+  - payout = 1 gp
+  - client deposit fraction = 50%
+  - deposit must be 50 copper (not 0)
+
+### Code Anchors
+- Money primitives and conversion rules:
+  - `core/primitives/Money.kt`: `MoneyCopper`, `Money.fromGoldDecimal`,
+    `Money.mulFractionBp`
+- Pricing integration:
+  - `core/flavour/ContractPricing.kt`: `samplePayoutMoney`,
+    `sampleClientDepositMoney`
+- Draft generation uses copper semantics:
+  - `core/pipeline/InboxLifecycle.kt`: sets `ContractDraft.feeOffered` and
+    `clientDeposit` from pricing outputs
+
+### Compatibility Notes
+- **MATCH**: Legacy GP-returning pricing methods remain but are deprecated.
+  They should not be used in domain logic.
 
 ---
 
@@ -346,6 +402,7 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 **ContractState**
 - **MATCH**: inbox: List<ContractDraft>
 - **MATCH**: board: List<BoardContract>
+- **MATCH**: archive: List<BoardContract> (terminal, append-only snapshots)
 - **MATCH**: active: List<ActiveContract>
 - **MATCH**: returns: List<ReturnPacket>
 
@@ -394,7 +451,8 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
 - **PostContract**:
   - **MATCH**: Draft must exist in inbox
   - **MATCH**: fee >= 0
-  - **MATCH**: availableCopper >= fee (escrow reservation on posting)
+  - **MATCH**: requiredFromGuild = max(0, fee - clientDeposit)
+  - **MATCH**: availableCopper >= requiredFromGuild (client deposit can cover part/all of fee)
 
 - **CreateContract**:
   - **MATCH**: title not blank
@@ -414,7 +472,7 @@ Player is not a sword-wielding hero; player is a guild branch manager and city "
   - **MATCH**: Must exist return by activeContractId
   - **MATCH**: Return must require close (requiresPlayerClose==true)
   - **MATCH**: reservedCopper >= fee and moneyCopper >= fee
-  - **MISMATCH**: Additional check (not via reject, but as "no-op"): proofPolicy==STRICT and (quality==DAMAGED or suspectedTheft) → command ignored without events
+  - **MATCH**: ProofPolicy STRICT + (quality==DAMAGED or suspectedTheft) → state unchanged and emits ReturnClosureBlocked (not CommandRejected)
 
 - **SellTrophies**:
   - **MATCH**: amount <= 0 allowed (sellAll)
@@ -470,6 +528,7 @@ All events listed in doc are present in code with matching field structures. Key
 - **MATCH**: ProofPolicyChanged, CommandRejected, InvariantViolated
 - **MATCH**: ContractDraftCreated, ContractTermsUpdated, ContractCancelled
 - **MATCH**: TrophyTheftSuspected, HeroDeclined, ContractAutoResolved, HeroDied
+- **MATCH**: ReturnClosureBlocked
 
 ---
 
@@ -559,7 +618,7 @@ All events listed in doc are present in code with matching field structures. Key
 
 **ProofPolicy**:
 - **MATCH**: FAST: close allowed always
-- **MATCH**: STRICT: if quality==DAMAGED or suspectedTheft==true → command ignored (silent no-op, intended behavior for strict validation)
+- **MATCH**: STRICT: if quality==DAMAGED or suspectedTheft==true → state unchanged and ReturnClosureBlocked emitted (no CommandRejected)
 
 ### 11.2 Salvage Policy (Actual Impact)
 **Status**: MATCH
@@ -584,11 +643,47 @@ All events listed in doc are present in code with matching field structures. Key
 
 **Code Anchor**: `core/Reducer.kt`: handlePostContract, auto-close, handleCloseReturn
 
-- **On post**: reservedCopper += fee
-- **On auto-close (SUCCESS/FAIL/DEATH)**: reservedCopper -= fee always, money deducted only if outcome != FAIL
-- **On manual close (PARTIAL)**: reservedCopper -= fee, moneyCopper -= fee
+- **On post**: reservedCopper += clientDeposit (client's contribution, not fee)
+- **On auto-close (SUCCESS/FAIL/DEATH)**: reservedCopper -= clientDeposit always, money deducted only if outcome != FAIL
+- **On manual close (PARTIAL)**: reservedCopper -= clientDeposit, moneyCopper -= fee
 
-### 11.5 Taxes (Actual)
+### 11.5 Contract Pricing (Rank-Based Client Deposits)
+**Status**: MATCH
+
+**Code Anchor**: `core/flavour/ContractPricing.kt`, `core/BalanceSettings.kt`
+
+**Payout Bands (gp/quest by rank)**:
+| Rank | Payout Range |
+|------|--------------|
+| F | 0..1 |
+| E | 1..6 |
+| D | 6..25 |
+| C | 25..150 |
+| B | 150..700 |
+| A | 700..2500 (10% tail: 2500..8000) |
+| S | 2000..10000 |
+
+**Client Deposit Rule (MVP)**:
+- **MATCH**: 50% chance client pays a deposit
+- **MATCH**: When paying, deposit = payout × 50% (basis points: 5000/10000)
+- **MATCH**: clientDeposit stored on ContractDraft and BoardContract
+
+**PostContract Validation (clientDeposit-aware)**:
+- **MATCH**: requiredFromGuild = max(0, fee - clientDeposit)
+- **MATCH**: availableCopper >= requiredFromGuild (not full fee)
+- **MATCH**: Allows posting with money=0 if clientDeposit covers entire fee
+
+**Inbox Generation**:
+- **MATCH**: InboxLifecycle.generateDrafts uses copper-safe pricing:
+  - `ContractPricing.samplePayoutMoney(...)`
+  - `ContractPricing.sampleClientDepositMoney(payout, ...)`
+- **MATCH**: Draft may have non-zero `feeOffered` and `clientDeposit` in copper
+  (including sub-1 gp fees expressed as 1..99 copper).
+
+> Note: legacy `sampleClientDepositGp` / `samplePayoutGp` remain deprecated and
+> should not be used in domain logic.
+
+### 11.6 Taxes (Actual)
 **Status**: MATCH
 
 **Code Anchor**: `core/state/MetaStateData.kt`, `core/Reducer.kt`, `core/BalanceSettings.kt`
@@ -758,44 +853,101 @@ All output formats confirmed matching doc specifications.
 
 ## Doc→Code Alignment Table
 
-| Chapter                     | Status  | Issues                                       |
-|-----------------------------|---------|----------------------------------------------|
-| 1. Product Concept          | MATCH   | None                                         |
-| 2. Implementation Snapshot  | MATCH   | Tax system fully implemented                |
-| 3. Architecture/Determinism | MATCH   | None                                         |
-| 4. Terms/Vocabulary         | MATCH   | Trophy model clarified                       |
-| 5. Game Cycle               | MATCH   | None                                         |
-| 6. Data Schemas             | MATCH   | Field names corrected                        |
-| 7. Commands                 | MATCH   | None                                         |
-| 8. Events                   | MATCH   | None                                         |
-| 9. Step Semantics           | MATCH   | None                                         |
-| 10. Auto-Resolve/Trophies   | PARTIAL | MISSING outcome not implemented              |
-| 11. Returns/Economy/Taxes   | MATCH   | Tax system fully implemented                |
-| 12. Region/Stability        | MATCH   | None                                         |
-| 13. Errors/Validation       | MATCH   | None                                         |
-| 14. Invariants              | MATCH   | None                                         |
-| 15. Telemetry               | MATCH   | None                                         |
-| 16. Console Output          | MATCH   | S7 metric calculation documented             |
+| Chapter                     | Status | Issues                                    |
+|-----------------------------|-------|-------------------------------------------|
+| 1. Product Concept          | MATCH | None                                      |
+| 2. Implementation Snapshot  | MATCH | Tax system fully implemented              |
+| 3. Architecture/Determinism | MATCH | None                                      |
+| 4. Terms/Vocabulary         | MATCH | Trophy model clarified                    |
+| 5. Game Cycle               | MATCH | None                                      |
+| 6. Data Schemas             | MATCH | Field names corrected                     |
+| 7. Commands                 | MATCH | None                                      |
+| 8. Events                   | MATCH | None                                      |
+| 9. Step Semantics           | MATCH | None                                      |
+| 10. Auto-Resolve/Trophies   | MATCH | Missing implemented (MvP = death outcome) |
+| 11. Returns/Economy/Taxes   | MATCH | Tax system fully implemented              |
+| 12. Region/Stability        | MATCH | None                                      |
+| 13. Errors/Validation       | MATCH | None                                      |
+| 14. Invariants              | MATCH | None                                      |
+| 15. Telemetry               | MATCH | None                                      |
+| 16. Console Output          | MATCH | S7 metric calculation documented          |
 
 ## Mismatch Ledger
 
-| Doc Claim                                      | Code Anchor                                 | Impact   | Status                                                           |
-|------------------------------------------------|---------------------------------------------|----------|------------------------------------------------------------------|
-| ProofPolicy STRICT rejects via CommandRejected | `core/Reducer.kt:handleCloseReturn`         | Medium   | ✅ RESOLVED: Updated to reflect silent no-op behavior           |
-| TrophyStack ownership model                    | `core/state/EconomyState.kt`                | Low      | ✅ RESOLVED: Updated to reflect aggregated trophiesStock model  |
-| Theft conditions: "salvage==GUILD and fee==0"  | `core/Reducer.kt:resolveTheft`              | Low      | ✅ RESOLVED: Updated with actual complex conditions             |
-| MISSING outcome generated                      | `core/primitives/Outcome.kt`                | Low      | ⚠️ REMAINS: MISSING outcome exists in enum but not generated    |
-| S7 ContractTakeRate calculation                | `adapter-console/Main.kt:printDayAnalytics` | Low      | ✅ RESOLVED: Updated to reflect actual calculation method       |
-| Field names (inboxId vs ContractId, etc.)      | Various state classes                       | Low      | ✅ RESOLVED: Updated to use canonical code names                |
+*No outstanding mismatches.*
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **SetProofPolicy Console Exposure**: Command exists in core but not exposed in console adapter - intentional?
-2. **DEATH Outcome Frequency**: DEATH outcome exists but generation conditions unclear from balance settings
-3. **ClientDeposit Field**: Present in code but not documented - part of fee escrow system?
+1. **SetProofPolicy Console Exposure**: ✅ RESOLVED - Command exists in core, handler implemented (`GovernanceHandlers.kt`), validation passes (always valid). **Not exposed in console adapter intentionally** — feature available for future adapters/tests. Consider adding `proof <FAST|STRICT>` CLI command.
+2. **DEATH Outcome Frequency**: ✅ RESOLVED - DEATH is generated when roll >= 95 (top 5% of fail rolls). Within DEATH, MISSING is a 10% narrative alias (`MISSING_CHANCE_PERCENT`). Formula: `roll >= PERCENT_ROLL_MAX - 5` triggers death-like outcome. Tunable via `BalanceSettings` if needed.
+3. **ClientDeposit Field**: ✅ RESOLVED - Fully implemented as part of **Contract Pricing** feature (section 11.5). `clientDeposit` is a rank-based client contribution that reduces guild's out-of-pocket cost when posting contracts. Generated via `ContractPricing.sampleClientDepositGp()` during inbox generation.
+
+---
+
+## ProofPolicy: FAST vs STRICT — Design Analysis
+
+### How It Works
+
+**Code Anchors**: `core/pipeline/ReturnClosurePolicy.kt`, `core/handlers/ContractHandlers.kt`
+
+ProofPolicy affects only **manual return closure** (CloseReturn command for PARTIAL outcomes). It does NOT affect auto-close (SUCCESS/FAIL/DEATH).
+
+| Policy     | Behavior                                                                                       |
+|------------|------------------------------------------------------------------------------------------------|
+| **FAST**   | Always allows closure — guild gets trophies regardless of quality or theft suspicion           |
+| **STRICT** | **Blocks closure** (state unchanged, ReturnClosureBlocked emitted) if: `trophiesQuality == DAMAGED` OR `suspectedTheft == true` |
+
+### Code Flow
+
+```
+CloseReturn command
+  └→ ReturnClosurePolicy.canClose(proofPolicy, quality, suspectedTheft)
+      ├→ FAST: always allowed = true
+      └→ STRICT: 
+           ├→ quality == DAMAGED → allowed = false (reason: "strict_policy_damaged_proof")
+           ├→ suspectedTheft == true → allowed = false (reason: "strict_policy_theft_suspected")
+           └→ otherwise → allowed = true
+```
+
+When closure is **blocked** under STRICT:
+- Command does not change state
+- `ReturnClosureBlocked(policy=STRICT, reason=...)` is emitted
+- Return packet stays pending
+
+### Comparison Table
+
+| Aspect               | FAST                                      | STRICT                                                 |
+|----------------------|-------------------------------------------|--------------------------------------------------------|
+| **DAMAGED trophies** | ✅ Accepted, guild gets trophies           | ❌ Blocked — return stays pending, trophies stuck       |
+| **Suspected theft**  | ✅ Accepted, guild gets remaining trophies | ❌ Blocked — return stays pending, hero stuck           |
+| **Money flow**       | Fee paid to hero                          | No fee paid (command ignored)                          |
+| **Risk**             | Accept potentially "bad" returns          | **Permanently stuck returns** if condition can't clear |
+
+### Current Limitation (PoC/MVP)
+
+**STRICT has a design flaw**: if a return has `DAMAGED` quality or `suspectedTheft`, you **cannot close it**. There's no:
+- Way to "dispute" and resolve
+- Alternate close path
+- Timeout/auto-resolution
+
+This means stuck returns lead to:
+1. Return packet remains forever
+2. Hero stays `ON_MISSION` forever
+3. Contract stays `LOCKED` forever
+4. Escrow (clientDeposit) stays reserved forever
+
+### Recommendation
+
+STRICT policy needs enhancement to be useful. Options:
+1. Add a "dispute" workflow that resolves stuck returns
+2. Add auto-resolution after N days for STRICT-blocked returns
+3. Allow CloseReturn with `forceClose=true` flag that accepts the loss
+
+**Currently, FAST is the only practical option in PoC/MVP.**
 
 ---
 
 **Document Status**: Code-validated and aligned  
+**Last Updated**: 2026-01-31  
 **Next Review**: When core implementation changes  
 **Validation Method**: Direct code inspection with concrete anchors

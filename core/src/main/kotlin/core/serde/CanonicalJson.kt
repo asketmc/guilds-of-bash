@@ -23,24 +23,43 @@ private val json = Json {
 
 private const val SUPPORTED_SAVE_VERSION = 1
 
+/**
+ * Serialize a [GameState] into canonical JSON.
+ *
+ * @param state State to serialize.
+ * @return Canonical JSON string (deterministic).
+ */
 fun serialize(state: GameState): String {
     val dto = toDto(state)
     return json.encodeToString(dto)
 }
 
+/**
+ * Deserialize canonical JSON into a [GameState].
+ *
+ * @param jsonString Canonical JSON produced by [serialize].
+ * @return Deserialized [GameState].
+ * @throws IllegalArgumentException if the save version is unsupported.
+ */
 fun deserialize(jsonString: String): GameState {
     val dto = json.decodeFromString<GameStateDto>(jsonString)
-    
+
     // Validate save version
     require(dto.meta.saveVersion == SUPPORTED_SAVE_VERSION) {
         "Unsupported saveVersion: ${dto.meta.saveVersion}"
     }
-    
+
     return fromDto(dto)
 }
 
 // --- toDto mappings ---
 
+/**
+ * Map domain [GameState] to its serializable DTO.
+ *
+ * @param state Domain state.
+ * @return DTO suitable for serialization.
+ */
 fun toDto(state: GameState): GameStateDto {
     return GameStateDto(
         meta = toDto(state.meta),
@@ -52,6 +71,11 @@ fun toDto(state: GameState): GameStateDto {
     )
 }
 
+/**
+ * Map domain [MetaState] to DTO.
+ *
+ * @param meta Domain meta state.
+ */
 fun toDto(meta: MetaState): MetaStateDto {
     return MetaStateDto(
         saveVersion = meta.saveVersion,
@@ -71,6 +95,11 @@ fun toDto(meta: MetaState): MetaStateDto {
     )
 }
 
+/**
+ * Map domain [GuildState] to DTO.
+ *
+ * @param guild Domain guild state.
+ */
 fun toDto(guild: GuildState): GuildStateDto {
     return GuildStateDto(
         guildRank = guild.guildRank,
@@ -80,12 +109,22 @@ fun toDto(guild: GuildState): GuildStateDto {
     )
 }
 
+/**
+ * Map domain [RegionState] to DTO.
+ *
+ * @param region Domain region state.
+ */
 fun toDto(region: RegionState): RegionStateDto {
     return RegionStateDto(
         stability = region.stability
     )
 }
 
+/**
+ * Map domain [EconomyState] to DTO.
+ *
+ * @param economy Domain economy state.
+ */
 fun toDto(economy: EconomyState): EconomyStateDto {
     return EconomyStateDto(
         moneyCopper = economy.moneyCopper,
@@ -94,15 +133,26 @@ fun toDto(economy: EconomyState): EconomyStateDto {
     )
 }
 
+/**
+ * Map domain [ContractState] to DTO.
+ *
+ * @param contracts Domain contract state.
+ */
 fun toDto(contracts: ContractState): ContractStateDto {
     return ContractStateDto(
         inbox = contracts.inbox.map { toDto(it) },
         board = contracts.board.map { toDto(it) },
+        archive = contracts.archive.map { toDto(it) },
         active = contracts.active.map { toDto(it) },
         returns = contracts.returns.map { toDto(it) }
     )
 }
 
+/**
+ * Map domain [ContractDraft] to DTO.
+ *
+ * @param draft Domain draft.
+ */
 fun toDto(draft: ContractDraft): ContractDraftDto {
     return ContractDraftDto(
         id = draft.id.value,
@@ -118,6 +168,11 @@ fun toDto(draft: ContractDraft): ContractDraftDto {
     )
 }
 
+/**
+ * Map domain [BoardContract] to DTO.
+ *
+ * @param board Domain board contract.
+ */
 fun toDto(board: BoardContract): BoardContractDto {
     return BoardContractDto(
         id = board.id.value,
@@ -132,6 +187,11 @@ fun toDto(board: BoardContract): BoardContractDto {
     )
 }
 
+/**
+ * Map domain [ActiveContract] to DTO.
+ *
+ * @param active Domain active contract.
+ */
 fun toDto(active: ActiveContract): ActiveContractDto {
     return ActiveContractDto(
         id = active.id.value,
@@ -143,6 +203,11 @@ fun toDto(active: ActiveContract): ActiveContractDto {
     )
 }
 
+/**
+ * Map domain [ReturnPacket] to DTO.
+ *
+ * @param packet Domain return packet.
+ */
 fun toDto(packet: ReturnPacket): ReturnPacketDto {
     return ReturnPacketDto(
         activeContractId = packet.activeContractId.value,
@@ -158,6 +223,11 @@ fun toDto(packet: ReturnPacket): ReturnPacketDto {
     )
 }
 
+/**
+ * Map domain [HeroState] to DTO.
+ *
+ * @param heroes Domain hero state.
+ */
 fun toDto(heroes: HeroState): HeroStateDto {
     return HeroStateDto(
         roster = heroes.roster.map { toDto(it) }
@@ -165,6 +235,11 @@ fun toDto(heroes: HeroState): HeroStateDto {
     )
 }
 
+/**
+ * Map domain [Hero] to DTO.
+ *
+ * @param hero Domain hero.
+ */
 fun toDto(hero: Hero): HeroDto {
     return HeroDto(
         id = hero.id.value,
@@ -183,6 +258,11 @@ fun toDto(hero: Hero): HeroDto {
 
 // --- fromDto mappings ---
 
+/**
+ * Map DTO [GameStateDto] back into domain [GameState].
+ *
+ * @param dto DTO produced by decoding JSON.
+ */
 fun fromDto(dto: GameStateDto): GameState {
     return GameState(
         meta = fromDtoMeta(dto.meta),
@@ -194,6 +274,11 @@ fun fromDto(dto: GameStateDto): GameState {
     )
 }
 
+/**
+ * Map DTO [MetaStateDto] into domain [MetaState].
+ *
+ * @param dto Meta DTO.
+ */
 fun fromDtoMeta(dto: MetaStateDto): MetaState {
     return MetaState(
         saveVersion = dto.saveVersion,
@@ -213,6 +298,11 @@ fun fromDtoMeta(dto: MetaStateDto): MetaState {
     )
 }
 
+/**
+ * Map DTO [GuildStateDto] into domain [GuildState].
+ *
+ * @param dto Guild DTO.
+ */
 fun fromDto(dto: GuildStateDto): GuildState {
     return GuildState(
         guildRank = dto.guildRank,
@@ -222,12 +312,22 @@ fun fromDto(dto: GuildStateDto): GuildState {
     )
 }
 
+/**
+ * Map DTO [RegionStateDto] into domain [RegionState].
+ *
+ * @param dto Region DTO.
+ */
 fun fromDto(dto: RegionStateDto): RegionState {
     return RegionState(
         stability = dto.stability
     )
 }
 
+/**
+ * Map DTO [EconomyStateDto] into domain [EconomyState].
+ *
+ * @param dto Economy DTO.
+ */
 fun fromDto(dto: EconomyStateDto): EconomyState {
     return EconomyState(
         moneyCopper = dto.moneyCopper,
@@ -236,15 +336,26 @@ fun fromDto(dto: EconomyStateDto): EconomyState {
     )
 }
 
+/**
+ * Map DTO [ContractStateDto] into domain [ContractState].
+ *
+ * @param dto Contract state DTO.
+ */
 fun fromDto(dto: ContractStateDto): ContractState {
     return ContractState(
         inbox = dto.inbox.map { fromDtoDraft(it) },
         board = dto.board.map { fromDtoBoard(it) },
+        archive = dto.archive.map { fromDtoBoard(it) },
         active = dto.active.map { fromDtoActive(it) },
         returns = dto.returns.map { fromDtoReturn(it) }
     )
 }
 
+/**
+ * Map DTO [ContractDraftDto] into domain [ContractDraft].
+ *
+ * @param dto Draft DTO.
+ */
 fun fromDtoDraft(dto: ContractDraftDto): ContractDraft {
     return ContractDraft(
         id = ContractId(dto.id),
@@ -260,6 +371,11 @@ fun fromDtoDraft(dto: ContractDraftDto): ContractDraft {
     )
 }
 
+/**
+ * Map DTO [BoardContractDto] into domain [BoardContract].
+ *
+ * @param dto Board DTO.
+ */
 fun fromDtoBoard(dto: BoardContractDto): BoardContract {
     return BoardContract(
         id = ContractId(dto.id),
@@ -274,6 +390,11 @@ fun fromDtoBoard(dto: BoardContractDto): BoardContract {
     )
 }
 
+/**
+ * Map DTO [ActiveContractDto] into domain [ActiveContract].
+ *
+ * @param dto Active DTO.
+ */
 fun fromDtoActive(dto: ActiveContractDto): ActiveContract {
     return ActiveContract(
         id = ActiveContractId(dto.id),
@@ -285,6 +406,11 @@ fun fromDtoActive(dto: ActiveContractDto): ActiveContract {
     )
 }
 
+/**
+ * Map DTO [ReturnPacketDto] into domain [ReturnPacket].
+ *
+ * @param dto Return DTO.
+ */
 fun fromDtoReturn(dto: ReturnPacketDto): ReturnPacket {
     return ReturnPacket(
         activeContractId = ActiveContractId(dto.activeContractId),
@@ -300,6 +426,11 @@ fun fromDtoReturn(dto: ReturnPacketDto): ReturnPacket {
     )
 }
 
+/**
+ * Map DTO [HeroStateDto] into domain [HeroState].
+ *
+ * @param dto Hero state DTO.
+ */
 fun fromDto(dto: HeroStateDto): HeroState {
     return HeroState(
         roster = dto.roster.map { fromDtoHero(it) },
@@ -307,6 +438,11 @@ fun fromDto(dto: HeroStateDto): HeroState {
     )
 }
 
+/**
+ * Map DTO [HeroDto] into domain [Hero].
+ *
+ * @param dto Hero DTO.
+ */
 fun fromDtoHero(dto: HeroDto): Hero {
     return Hero(
         id = HeroId(dto.id),

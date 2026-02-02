@@ -50,6 +50,12 @@ object BalanceSettings {
      */
     const val PERCENT_ROLL_MAX: Int = 100
 
+    /**
+     * Chance (percent) that a DEATH resolution is reported as MISSING instead, for narrative variety.
+     * PoC/MVP: small fixed chance; kept deterministic via RNG seed. Value in [0,100).
+     */
+    const val MISSING_CHANCE_PERCENT: Int = 10
+
     // ─────────────────────────────────────────────────────────────────────────
     // Gameplay Timing & Economic Parameters
     // ─────────────────────────────────────────────────────────────────────────
@@ -97,6 +103,51 @@ object BalanceSettings {
     const val DEFAULT_CONTRACT_DIFFICULTY: Int = 1
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Contract Pricing (Client Deposit)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Chance (percent) that the client pays a deposit upfront. MVP: 50%. */
+    const val CLIENT_PAYS_CHANCE_PERCENT: Int = 50
+
+    /** Fraction of payout that becomes deposit when client pays. Basis points (5000 = 50%). */
+    const val CLIENT_PAYS_FRACTION_BP: Int = 5_000
+
+    /** Rank F payout range (gp). */
+    const val PAYOUT_F_MIN: Int = 0
+    const val PAYOUT_F_MAX: Int = 1
+
+    /** Rank E payout range (gp). */
+    const val PAYOUT_E_MIN: Int = 1
+    const val PAYOUT_E_MAX: Int = 6
+
+    /** Rank D payout range (gp). */
+    const val PAYOUT_D_MIN: Int = 6
+    const val PAYOUT_D_MAX: Int = 25
+
+    /** Rank C payout range (gp). */
+    const val PAYOUT_C_MIN: Int = 25
+    const val PAYOUT_C_MAX: Int = 150
+
+    /** Rank B payout range (gp). */
+    const val PAYOUT_B_MIN: Int = 150
+    const val PAYOUT_B_MAX: Int = 700
+
+    /** Rank A payout base range (gp). */
+    const val PAYOUT_A_MIN: Int = 700
+    const val PAYOUT_A_MAX: Int = 2500
+
+    /** Rank A tail probability (percent) for heavy-tail sampling. */
+    const val PAYOUT_A_TAIL_CHANCE_PERCENT: Int = 10
+
+    /** Rank A tail range (gp) for heavy-tail sampling. */
+    const val PAYOUT_A_TAIL_MIN: Int = 2500
+    const val PAYOUT_A_TAIL_MAX: Int = 8000
+
+    /** Rank S payout range (gp). */
+    const val PAYOUT_S_MIN: Int = 2000
+    const val PAYOUT_S_MAX: Int = 10_000
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Derived Constraints (compile-time assertions via init block)
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -114,5 +165,20 @@ object BalanceSettings {
                 "must leave room for FAIL_CHANCE_MIN ($FAIL_CHANCE_MIN): max non-fail = $maxPossibleNonFail, " +
                 "but 100 - FAIL_CHANCE_MIN = ${100 - FAIL_CHANCE_MIN}"
         }
+
+        // Contract pricing validations
+        require(CLIENT_PAYS_CHANCE_PERCENT in 0..100) { "CLIENT_PAYS_CHANCE_PERCENT must be in [0,100]" }
+        require(CLIENT_PAYS_FRACTION_BP in 0..10_000) { "CLIENT_PAYS_FRACTION_BP must be in [0,10000]" }
+
+        // Payout band validations (min <= max)
+        require(PAYOUT_F_MIN <= PAYOUT_F_MAX) { "PAYOUT_F_MIN must be <= PAYOUT_F_MAX" }
+        require(PAYOUT_E_MIN <= PAYOUT_E_MAX) { "PAYOUT_E_MIN must be <= PAYOUT_E_MAX" }
+        require(PAYOUT_D_MIN <= PAYOUT_D_MAX) { "PAYOUT_D_MIN must be <= PAYOUT_D_MAX" }
+        require(PAYOUT_C_MIN <= PAYOUT_C_MAX) { "PAYOUT_C_MIN must be <= PAYOUT_C_MAX" }
+        require(PAYOUT_B_MIN <= PAYOUT_B_MAX) { "PAYOUT_B_MIN must be <= PAYOUT_B_MAX" }
+        require(PAYOUT_A_MIN <= PAYOUT_A_MAX) { "PAYOUT_A_MIN must be <= PAYOUT_A_MAX" }
+        require(PAYOUT_A_TAIL_MIN <= PAYOUT_A_TAIL_MAX) { "PAYOUT_A_TAIL_MIN must be <= PAYOUT_A_TAIL_MAX" }
+        require(PAYOUT_S_MIN <= PAYOUT_S_MAX) { "PAYOUT_S_MIN must be <= PAYOUT_S_MAX" }
+        require(PAYOUT_A_TAIL_CHANCE_PERCENT in 0..100) { "PAYOUT_A_TAIL_CHANCE_PERCENT must be in [0,100]" }
     }
 }

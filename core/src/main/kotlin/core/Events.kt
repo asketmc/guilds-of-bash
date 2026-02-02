@@ -6,15 +6,31 @@ import core.primitives.Outcome
 import core.primitives.Quality
 import core.primitives.Rank
 import core.primitives.SalvagePolicy
+import core.primitives.ProofPolicy
 
 /**
- * Events are the ONLY observation channel for the outside world.
- * - seq is a per-step monotonically increasing counter (1..N within a step).
- * - step() is responsible for assigning seq.
+ * Domain events are the ONLY observation channel for external consumers.
  *
- * DAY SEMANTICS:
- * - AdvanceDay increments state.meta.dayIndex first.
- * - All events emitted for AdvanceDay use day = newDayIndex.
+ * ## Role
+ * - Every state mutation emits events that fully explain the transition.
+ * - Events form an auditable journal for replay, testing, and analytics.
+ *
+ * ## Stability
+ * - Stable API: yes; Audience: adapters/tests/analytics
+ *
+ * ## Invariants
+ * - `seq` is monotonically increasing within a single `step()` call (1..N).
+ * - `day` reflects the authoritative `dayIndex` at emission time.
+ * - `revision` matches the state revision when the event was produced.
+ *
+ * ## DAY SEMANTICS
+ * - `AdvanceDay` increments `state.meta.dayIndex` first.
+ * - All events emitted for `AdvanceDay` use `day = newDayIndex`.
+ *
+ * @property day Day index when this event was emitted.
+ * @property revision State revision at emission time.
+ * @property cmdId Command identifier that triggered this event.
+ * @property seq Sequence number within the step (1..N, ascending).
  */
 sealed interface Event {
     val day: Int
@@ -24,8 +40,20 @@ sealed interface Event {
 }
 
 /**
- * A minimal snapshot of the state at the end of a day.
- * Uses only primitive values for stable hashing and portability.
+ * End-of-day summary snapshot of key game metrics.
+ *
+ * Uses only primitive values for stable hashing and cross-platform portability.
+ *
+ * @property day Day index of this snapshot.
+ * @property revision State revision at snapshot time.
+ * @property money Guild copper balance.
+ * @property trophies Guild trophy inventory count.
+ * @property regionStability Current regional stability (0..100).
+ * @property guildReputation Guild reputation points.
+ * @property inboxCount Number of drafts in inbox.
+ * @property boardCount Number of contracts on board.
+ * @property activeCount Number of WIP active contracts.
+ * @property returnsNeedingCloseCount Returns requiring manual player close.
  */
 data class DaySnapshot(
     val day: Int,
@@ -40,6 +68,11 @@ data class DaySnapshot(
     val returnsNeedingCloseCount: Int
 )
 
+/**
+ * Emitted when a new day begins.
+ *
+ * First event in the `AdvanceDay` pipeline; marks the transition to `newDayIndex`.
+ */
 data class DayStarted(
     override val day: Int,
     override val revision: Long,
@@ -47,14 +80,45 @@ data class DayStarted(
     override val seq: Long
 ) : Event
 
+/**
+ * Emitted when new contract drafts are generated for the inbox.
+ *
+ * @property count Number of drafts generated.
+ * @property contractIds Array of generated contract IDs (sorted ascending).
+ */
 data class InboxGenerated(
     override val day: Int,
     override val revision: Long,
     override val cmdId: Long,
     override val seq: Long,
     val count: Int,
-    val contractIds: IntArray // sorted ascending
+    val contractIds: IntArray
 ) : Event {
+    /**
+     * ## Contract
+     * - Structural equality for [InboxGenerated] is based on all scalar fields plus element-wise
+     *   equality of [contractIds].
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returns `true` iff [other] is an [InboxGenerated] with equal `day`, `revision`, `cmdId`, `seq`, `count`,
+     *   and `contractIds` contents.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure comparison against immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `contractIds.size`
+     * - Memory: O(1)
+     *
+     * @param other Candidate object to compare.
+     * @return Whether objects are equal under the above contract.
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -68,6 +132,28 @@ data class InboxGenerated(
         return true
     }
 
+    /**
+     * ## Contract
+     * - Hash code includes element-wise hashing for [contractIds] to keep equality/hashCode consistent.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Equal objects (per [equals]) produce equal hash codes.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure function over immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `contractIds.size`
+     * - Memory: O(1)
+     *
+     * @return Hash code for this value.
+     */
     override fun hashCode(): Int {
         var result = day
         result = 31 * result + revision.hashCode()
@@ -78,11 +164,44 @@ data class InboxGenerated(
         return result
     }
 
+    /**
+     * ## Contract
+     * - Produces a deterministic diagnostic string for logs/tests.
+     * - Intended for debugging and golden-output comparisons; not a stable public protocol.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returned string includes all fields, including `contractIds` rendered in-order.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Deterministic given immutable fields and fixed `contentToString()` order.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `contractIds.size`
+     * - Memory: O(n) due to string construction
+     *
+     * @return Human-readable representation.
+     */
     override fun toString(): String {
         return "InboxGenerated(day=$day, revision=$revision, cmdId=$cmdId, seq=$seq, count=$count, contractIds=${contractIds.contentToString()})"
     }
 }
 
+/**
+ * Emitted when a draft contract is posted to the public board.
+ *
+ * @property boardContractId ID of the newly posted board contract.
+ * @property fromInboxId ID of the source inbox draft.
+ * @property rank Target difficulty tier.
+ * @property fee Escrowed fee in copper.
+ * @property salvage Trophy distribution policy.
+ * @property clientDeposit Client's contribution towards the fee.
+ */
 data class ContractPosted(
     override val day: Int,
     override val revision: Long,
@@ -96,6 +215,12 @@ data class ContractPosted(
     val clientDeposit: Int = 0
 ) : Event
 
+/**
+ * Emitted when new heroes arrive at the guild.
+ *
+ * @property count Number of heroes arrived.
+ * @property heroIds Array of arrived hero IDs (sorted ascending).
+ */
 data class HeroesArrived(
     override val day: Int,
     override val revision: Long,
@@ -104,6 +229,29 @@ data class HeroesArrived(
     val count: Int,
     val heroIds: IntArray // sorted ascending
 ) : Event {
+    /**
+     * ## Contract
+     * - Structural equality is based on all scalar fields plus element-wise equality of [heroIds].
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returns `true` iff [other] is a [HeroesArrived] with equal fields and equal `heroIds` contents.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure comparison against immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(1)
+     *
+     * @param other Candidate object to compare.
+     * @return Whether objects are equal under the above contract.
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -117,6 +265,28 @@ data class HeroesArrived(
         return true
     }
 
+    /**
+     * ## Contract
+     * - Hash code includes element-wise hashing for [heroIds] to keep equality/hashCode consistent.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Equal objects (per [equals]) produce equal hash codes.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure function over immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(1)
+     *
+     * @return Hash code for this value.
+     */
     override fun hashCode(): Int {
         var result = day
         result = 31 * result + revision.hashCode()
@@ -127,11 +297,41 @@ data class HeroesArrived(
         return result
     }
 
+    /**
+     * ## Contract
+     * - Produces a deterministic diagnostic string for logs/tests.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returned string includes all fields, including `heroIds` rendered in-order.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Deterministic given immutable fields and fixed `contentToString()` order.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(n) due to string construction
+     *
+     * @return Human-readable representation.
+     */
     override fun toString(): String {
         return "HeroesArrived(day=$day, revision=$revision, cmdId=$cmdId, seq=$seq, count=$count, heroIds=${heroIds.contentToString()})"
     }
 }
 
+/**
+ * Emitted when a hero accepts a board contract and begins the mission.
+ *
+ * @property activeContractId ID of the newly created active contract.
+ * @property boardContractId ID of the board contract taken.
+ * @property heroIds Array of participating hero IDs (sorted ascending).
+ * @property daysRemaining Initial days until resolution.
+ */
 data class ContractTaken(
     override val day: Int,
     override val revision: Long,
@@ -142,6 +342,29 @@ data class ContractTaken(
     val heroIds: IntArray, // sorted ascending
     val daysRemaining: Int
 ) : Event {
+    /**
+     * ## Contract
+     * - Structural equality is based on all scalar fields plus element-wise equality of [heroIds].
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returns `true` iff [other] is a [ContractTaken] with equal fields and equal `heroIds` contents.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure comparison against immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(1)
+     *
+     * @param other Candidate object to compare.
+     * @return Whether objects are equal under the above contract.
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -157,6 +380,28 @@ data class ContractTaken(
         return true
     }
 
+    /**
+     * ## Contract
+     * - Hash code includes element-wise hashing for [heroIds] to keep equality/hashCode consistent.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Equal objects (per [equals]) produce equal hash codes.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure function over immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(1)
+     *
+     * @return Hash code for this value.
+     */
     override fun hashCode(): Int {
         var result = day
         result = 31 * result + revision.hashCode()
@@ -169,11 +414,39 @@ data class ContractTaken(
         return result
     }
 
+    /**
+     * ## Contract
+     * - Produces a deterministic diagnostic string for logs/tests.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returned string includes all fields, including `heroIds` rendered in-order.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Deterministic given immutable fields and fixed `contentToString()` order.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `heroIds.size`
+     * - Memory: O(n) due to string construction
+     *
+     * @return Human-readable representation.
+     */
     override fun toString(): String {
         return "ContractTaken(day=$day, revision=$revision, cmdId=$cmdId, seq=$seq, activeContractId=$activeContractId, boardContractId=$boardContractId, heroIds=${heroIds.contentToString()}, daysRemaining=$daysRemaining)"
     }
 }
 
+/**
+ * Emitted when an active contract's remaining days are decremented.
+ *
+ * @property activeContractId ID of the advancing active contract.
+ * @property daysRemaining New remaining days after advancement.
+ */
 data class WipAdvanced(
     override val day: Int,
     override val revision: Long,
@@ -183,6 +456,15 @@ data class WipAdvanced(
     val daysRemaining: Int
 ) : Event
 
+/**
+ * Emitted when a contract reaches resolution (SUCCESS, PARTIAL, FAIL, DEATH, MISSING).
+ *
+ * @property activeContractId ID of the resolved active contract.
+ * @property outcome Resolution outcome.
+ * @property trophiesCount Trophies reported (after theft processing).
+ * @property quality Trophy quality grade.
+ * @property reasonTags Diagnostic reason tag ordinals (sorted ascending).
+ */
 data class ContractResolved(
     override val day: Int,
     override val revision: Long,
@@ -194,6 +476,30 @@ data class ContractResolved(
     val quality: Quality,
     val reasonTags: IntArray // ordinals, sorted ascending
 ) : Event {
+    /**
+     * ## Contract
+     * - Structural equality for [ContractResolved] is based on all scalar fields plus element-wise
+     *   equality of [reasonTags].
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returns `true` iff [other] is a [ContractResolved] with equal fields and equal `reasonTags` contents.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure comparison against immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `reasonTags.size`
+     * - Memory: O(1)
+     *
+     * @param other Candidate object to compare.
+     * @return Whether objects are equal under the above contract.
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -210,6 +516,28 @@ data class ContractResolved(
         return true
     }
 
+    /**
+     * ## Contract
+     * - Hash code includes element-wise hashing for [reasonTags] to keep equality/hashCode consistent.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Equal objects (per [equals]) produce equal hash codes.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Pure function over immutable values.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `reasonTags.size`
+     * - Memory: O(1)
+     *
+     * @return Hash code for this value.
+     */
     override fun hashCode(): Int {
         var result = day
         result = 31 * result + revision.hashCode()
@@ -223,11 +551,38 @@ data class ContractResolved(
         return result
     }
 
+    /**
+     * ## Contract
+     * - Produces a deterministic diagnostic string for logs/tests.
+     *
+     * ## Preconditions
+     * - None.
+     *
+     * ## Postconditions
+     * - Returned string includes all fields, including `reasonTags` rendered in-order.
+     *
+     * ## Invariants
+     * - None.
+     *
+     * ## Determinism
+     * - Deterministic given immutable fields and fixed `contentToString()` order.
+     *
+     * ## Complexity
+     * - Time: O(n) where n = `reasonTags.size`
+     * - Memory: O(n) due to string construction
+     *
+     * @return Human-readable representation.
+     */
     override fun toString(): String {
         return "ContractResolved(day=$day, revision=$revision, cmdId=$cmdId, seq=$seq, activeContractId=$activeContractId, outcome=$outcome, trophiesCount=$trophiesCount, quality=$quality, reasonTags=${reasonTags.contentToString()})"
     }
 }
 
+/**
+ * Emitted when a return is closed (either manually or automatically).
+ *
+ * @property activeContractId ID of the closed active contract.
+ */
 data class ReturnClosed(
     override val day: Int,
     override val revision: Long,
@@ -236,6 +591,12 @@ data class ReturnClosed(
     val activeContractId: Int
 ) : Event
 
+/**
+ * Emitted when the player sells trophies for copper.
+ *
+ * @property amount Number of trophies sold.
+ * @property moneyGained Copper received from sale.
+ */
 data class TrophySold(
     override val day: Int,
     override val revision: Long,
@@ -245,6 +606,12 @@ data class TrophySold(
     val moneyGained: Int
 ) : Event
 
+/**
+ * Emitted when regional stability changes.
+ *
+ * @property oldStability Previous stability value.
+ * @property newStability Updated stability value.
+ */
 data class StabilityUpdated(
     override val day: Int,
     override val revision: Long,
@@ -254,6 +621,13 @@ data class StabilityUpdated(
     val newStability: Int
 ) : Event
 
+/**
+ * Emitted at the end of each day with a summary snapshot.
+ *
+ * Terminal event for `AdvanceDay` command.
+ *
+ * @property snapshot End-of-day metrics snapshot.
+ */
 data class DayEnded(
     override val day: Int,
     override val revision: Long,
@@ -262,6 +636,13 @@ data class DayEnded(
     val snapshot: DaySnapshot
 ) : Event
 
+/**
+ * Emitted when a command fails validation.
+ *
+ * @property cmdType Simple name of the rejected command class.
+ * @property reason Machine-readable rejection code.
+ * @property detail Human-readable diagnostic message.
+ */
 data class CommandRejected(
     override val day: Int,
     override val revision: Long,
@@ -272,6 +653,14 @@ data class CommandRejected(
     val detail: String
 ) : Event
 
+/**
+ * Emitted when a state invariant is violated.
+ *
+ * Violations are surfaced as events for diagnostics; state is not rolled back.
+ *
+ * @property invariantId Identifier of the violated invariant.
+ * @property details Diagnostic description of the violation.
+ */
 data class InvariantViolated(
     override val day: Int,
     override val revision: Long,
@@ -281,6 +670,13 @@ data class InvariantViolated(
     val details: String
 ) : Event
 
+/**
+ * Emitted when a hero declines a contract during pickup phase.
+ *
+ * @property heroId ID of the declining hero.
+ * @property boardContractId ID of the declined board contract.
+ * @property reason Decline reason code (e.g., "low_profit", "too_risky").
+ */
 data class HeroDeclined(
     override val day: Int,
     override val revision: Long,
@@ -288,9 +684,17 @@ data class HeroDeclined(
     override val seq: Long,
     val heroId: Int,
     val boardContractId: Int,
-    val reason: String  // "low_profit", "too_risky", "bad_terms", etc.
+    val reason: String
 ) : Event
 
+/**
+ * Emitted when trophy theft is suspected based on hero traits.
+ *
+ * @property activeContractId ID of the affected active contract.
+ * @property heroId ID of the suspected hero.
+ * @property expectedTrophies Expected trophy count based on contract difficulty.
+ * @property reportedTrophies Actual trophy count reported by hero.
+ */
 data class TrophyTheftSuspected(
     override val day: Int,
     override val revision: Long,
@@ -298,11 +702,16 @@ data class TrophyTheftSuspected(
     override val seq: Long,
     val activeContractId: Int,
     val heroId: Int,
-    val expectedTrophies: Int,  // What guild expected based on contract difficulty
-    val reportedTrophies: Int   // What hero actually reported
+    val expectedTrophies: Int,
+    val reportedTrophies: Int
 ) : Event
 
-// Tax events (Phase 2)
+/**
+ * Emitted when tax becomes due at the end of a tax interval.
+ *
+ * @property amountDue Tax amount owed in copper.
+ * @property dueDay Day index when payment is expected.
+ */
 data class TaxDue(
     override val day: Int,
     override val revision: Long,
@@ -312,6 +721,13 @@ data class TaxDue(
     val dueDay: Int
 ) : Event
 
+/**
+ * Emitted when the player pays tax.
+ *
+ * @property amountPaid Copper amount paid.
+ * @property amountDue Remaining amount due after payment.
+ * @property isPartialPayment True if debt remains after payment.
+ */
 data class TaxPaid(
     override val day: Int,
     override val revision: Long,
@@ -322,6 +738,13 @@ data class TaxPaid(
     val isPartialPayment: Boolean
 ) : Event
 
+/**
+ * Emitted when tax payment is missed at end of day.
+ *
+ * @property amountDue Total amount that was due.
+ * @property penaltyAdded Penalty copper added for missing payment.
+ * @property missedCount New consecutive missed payment count.
+ */
 data class TaxMissed(
     override val day: Int,
     override val revision: Long,
@@ -332,6 +755,11 @@ data class TaxMissed(
     val missedCount: Int
 ) : Event
 
+/**
+ * Emitted when the guild is shut down (e.g., too many missed tax payments).
+ *
+ * @property reason Description of shutdown cause.
+ */
 data class GuildShutdown(
     override val day: Int,
     override val revision: Long,
@@ -340,6 +768,13 @@ data class GuildShutdown(
     val reason: String
 ) : Event
 
+/**
+ * Emitted when the guild achieves a new rank.
+ *
+ * @property oldRank Previous rank ordinal.
+ * @property newRank New rank ordinal achieved.
+ * @property completedContracts Total completed contracts at rank-up.
+ */
 data class GuildRankUp(
     override val day: Int,
     override val revision: Long,
@@ -350,6 +785,12 @@ data class GuildRankUp(
     val completedContracts: Int
 ) : Event
 
+/**
+ * Emitted when the guild's proof policy changes.
+ *
+ * @property oldPolicy Previous policy ordinal.
+ * @property newPolicy New policy ordinal.
+ */
 data class ProofPolicyChanged(
     override val day: Int,
     override val revision: Long,
@@ -359,7 +800,16 @@ data class ProofPolicyChanged(
     val newPolicy: Int
 ) : Event
 
-// R1: Lifecycle command events
+/**
+ * Emitted when a new contract draft is created via `CreateContract` command.
+ *
+ * @property draftId ID of the created draft.
+ * @property title Contract title.
+ * @property rank Target difficulty tier.
+ * @property difficulty Base difficulty value.
+ * @property reward Client contribution towards fee.
+ * @property salvage Default trophy distribution policy.
+ */
 data class ContractDraftCreated(
     override val day: Int,
     override val revision: Long,
@@ -373,29 +823,52 @@ data class ContractDraftCreated(
     val salvage: SalvagePolicy
 ) : Event
 
+/**
+ * Emitted when contract terms are updated via `UpdateContractTerms` command.
+ *
+ * @property contractId ID of the updated contract.
+ * @property location Where the contract was found ("inbox" or "board").
+ * @property oldFee Previous fee value (null if unchanged).
+ * @property newFee New fee value (null if unchanged).
+ * @property oldSalvage Previous salvage policy (null if unchanged).
+ * @property newSalvage New salvage policy (null if unchanged).
+ */
 data class ContractTermsUpdated(
     override val day: Int,
     override val revision: Long,
     override val cmdId: Long,
     override val seq: Long,
     val contractId: Int,
-    val location: String,  // "inbox" or "board"
+    val location: String,
     val oldFee: Int?,
     val newFee: Int?,
     val oldSalvage: SalvagePolicy?,
     val newSalvage: SalvagePolicy?
 ) : Event
 
+/**
+ * Emitted when a contract is cancelled via `CancelContract` command.
+ *
+ * @property contractId ID of the cancelled contract.
+ * @property location Where the contract was found ("inbox" or "board").
+ * @property refundedCopper Copper refunded (client deposit for board contracts).
+ */
 data class ContractCancelled(
     override val day: Int,
     override val revision: Long,
     override val cmdId: Long,
     override val seq: Long,
     val contractId: Int,
-    val location: String,  // "inbox" or "board"
+    val location: String,
     val refundedCopper: Int
 ) : Event
 
+/**
+ * Emitted when an inbox draft is auto-resolved due to expiration.
+ *
+ * @property draftId ID of the auto-resolved draft.
+ * @property bucket Resolution bucket (GOOD, NEUTRAL, BAD).
+ */
 data class ContractAutoResolved(
     override val day: Int,
     override val revision: Long,
@@ -405,6 +878,13 @@ data class ContractAutoResolved(
     val bucket: AutoResolveBucket
 ) : Event
 
+/**
+ * Emitted when a hero dies during contract resolution.
+ *
+ * @property heroId ID of the deceased hero.
+ * @property activeContractId ID of the active contract during death.
+ * @property boardContractId ID of the board contract.
+ */
 data class HeroDied(
     override val day: Int,
     override val revision: Long,
@@ -413,4 +893,30 @@ data class HeroDied(
     val heroId: Int,
     val activeContractId: Int,
     val boardContractId: Int
+) : Event
+
+/**
+ * Emitted when a manual return closure (CloseReturn) is blocked by policy.
+ *
+ * ## Purpose
+ * STRICT policy currently denies closure for certain proof outcomes. This event preserves the
+ * existing behavior (state unchanged) while making the decision observable for logs, tests,
+ * adapters, and future dispute/arbitration mechanics.
+ *
+ * ## Determinism
+ * - No RNG draws.
+ * - Purely derived from current state and command inputs.
+ *
+ * @property activeContractId Active contract id for the return the player attempted to close.
+ * @property policy Proof policy that blocked closure.
+ * @property reason Machine-readable reason tag (see ReturnClosurePolicy).
+ */
+data class ReturnClosureBlocked(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val activeContractId: Int,
+    val policy: ProofPolicy,
+    val reason: String
 ) : Event

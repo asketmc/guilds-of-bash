@@ -59,12 +59,12 @@ fun main() {
     var prevDaySnapshot: DaySnapshot? = null
     var gazetteBuffer = GazetteBuffer()
 
-    println("Console adapter ready")
-    println("stateSeed=$STATE_SEED rngSeed=$RNG_SEED")
+    ConsoleIO.writeln("Console adapter ready")
+    ConsoleIO.writeln("stateSeed=$STATE_SEED rngSeed=$RNG_SEED")
     printHelp()
 
     while (true) {
-        print("> ")
+        ConsoleIO.write("> ")
         val line = readLine() ?: break
         val trimmed = line.trim()
         if (trimmed.isEmpty()) continue
@@ -78,7 +78,7 @@ fun main() {
                 printCmdVars()
                 printHelp()
                 // Also print diegetic version
-                DiegeticHelp.renderLines().forEach { println(it) }
+                DiegeticHelp.renderLines().forEach { ConsoleIO.writeln(it) }
             }
 
             "quit", "q", "exit" -> {
@@ -92,14 +92,14 @@ fun main() {
                 printCmdVars()
                 printStatus(state, rng)
                 // Also print diegetic version
-                DiegeticStatus.renderLines(state, rng).forEach { println(it) }
+                DiegeticStatus.renderLines(state, rng).forEach { ConsoleIO.writeln(it) }
             }
 
             "list" -> {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
                     printCmdVars("error" to "missing target", "usage" to "list inbox|board|active|returns")
-                    println("Usage: list inbox|board|active|returns")
+                    ConsoleIO.writeln("Usage: list inbox|board|active|returns")
                     continue
                 }
                 val target = parts[1].lowercase()
@@ -108,12 +108,12 @@ fun main() {
                     "inbox" -> {
                         printInbox(state)
                         // Also print framed version with flavor
-                        ContractListRenderer.renderInboxLines(state).forEach { println(it) }
+                        ContractListRenderer.renderInboxLines(state).forEach { ConsoleIO.writeln(it) }
                     }
                     "board" -> {
                         printBoard(state)
                         // Also print framed version with flavor
-                        ContractListRenderer.renderBoardLines(state).forEach { println(it) }
+                        ContractListRenderer.renderBoardLines(state).forEach { ConsoleIO.writeln(it) }
                     }
                     "active" -> printActive(state)
                     "returns", "return" -> printReturns(state)
@@ -138,8 +138,8 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 4) {
                     printCmdVars("error" to "missing args", "usage" to "post <inboxId> <fee> <salvage>")
-                    println("Usage: post <inboxId> <fee> <salvage>")
-                    println("  salvage: GUILD | HERO | SPLIT")
+                    ConsoleIO.writeln("Usage: post <inboxId> <fee> <salvage>")
+                    ConsoleIO.writeln("  salvage: GUILD | HERO | SPLIT")
                     continue
                 }
 
@@ -150,14 +150,14 @@ fun main() {
                 val inboxId = inboxIdRaw.toLongOrNull()
                 if (inboxId == null) {
                     printCmdVars("error" to "invalid inboxId", "inboxIdRaw" to inboxIdRaw)
-                    println("Invalid inboxId: $inboxIdRaw")
+                    ConsoleIO.writeln("Invalid inboxId: $inboxIdRaw")
                     continue
                 }
 
                 val fee = feeRaw.toIntOrNull()
                 if (fee == null) {
                     printCmdVars("error" to "invalid fee", "feeRaw" to feeRaw)
-                    println("Invalid fee: $feeRaw")
+                    ConsoleIO.writeln("Invalid fee: $feeRaw")
                     continue
                 }
 
@@ -165,7 +165,7 @@ fun main() {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
                 } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
-                    println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
+                    ConsoleIO.writeln("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
                 }
 
@@ -190,7 +190,7 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
                     printCmdVars("error" to "missing activeId", "usage" to "close <activeId>")
-                    println("Usage: close <activeId>")
+                    ConsoleIO.writeln("Usage: close <activeId>")
                     continue
                 }
 
@@ -198,7 +198,7 @@ fun main() {
                 val activeId = activeIdRaw.toLongOrNull()
                 if (activeId == null) {
                     printCmdVars("error" to "invalid activeId", "activeIdRaw" to activeIdRaw)
-                    println("Invalid activeId: $activeIdRaw")
+                    ConsoleIO.writeln("Invalid activeId: $activeIdRaw")
                     continue
                 }
 
@@ -222,7 +222,7 @@ fun main() {
                     val parsed = raw.toIntOrNull()
                     if (parsed == null) {
                         printCmdVars("error" to "invalid amount", "amountRaw" to raw, "usage" to "sell <amount>")
-                        println("Invalid amount: $raw")
+                        ConsoleIO.writeln("Invalid amount: $raw")
                         continue
                     }
                     parsed
@@ -245,7 +245,7 @@ fun main() {
                     val amount = amountRaw.toIntOrNull()
                     if (amount == null) {
                         printCmdVars("error" to "invalid amount", "amountRaw" to amountRaw, "usage" to "tax pay <amount>")
-                        println("Invalid amount: $amountRaw")
+                        ConsoleIO.writeln("Invalid amount: $amountRaw")
                         continue
                     }
                     val cmdId = nextCmdId++
@@ -254,7 +254,7 @@ fun main() {
                     state = applyAndPrint(state, cmd, rng)
                 } else {
                     printCmdVars("error" to "invalid subcommand", "usage" to "tax pay <amount>")
-                    println("Usage: tax pay <amount>")
+                    ConsoleIO.writeln("Usage: tax pay <amount>")
                 }
             }
 
@@ -262,10 +262,10 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 5) {
                     printCmdVars("error" to "missing args", "usage" to "create <title> <rank> <difficulty> <reward> [salvage]")
-                    println("Usage: create <title> <rank> <difficulty> <reward> [salvage]")
-                    println("  rank: F|E|D|C|B|A|S")
-                    println("  difficulty: 0-100")
-                    println("  salvage: GUILD|HERO|SPLIT")
+                    ConsoleIO.writeln("Usage: create <title> <rank> <difficulty> <reward> [salvage]")
+                    ConsoleIO.writeln("  rank: F|E|D|C|B|A|S")
+                    ConsoleIO.writeln("  difficulty: 0-100")
+                    ConsoleIO.writeln("  salvage: GUILD|HERO|SPLIT")
                     continue
                 }
 
@@ -279,14 +279,14 @@ fun main() {
                 val difficulty = difficultyRaw.toIntOrNull()
                 if (difficulty == null) {
                     printCmdVars("error" to "invalid difficulty", "difficultyRaw" to difficultyRaw)
-                    println("Invalid difficulty: $difficultyRaw")
+                    ConsoleIO.writeln("Invalid difficulty: $difficultyRaw")
                     continue
                 }
 
                 val reward = rewardRaw.toIntOrNull()
                 if (reward == null) {
                     printCmdVars("error" to "invalid reward", "rewardRaw" to rewardRaw)
-                    println("Invalid reward: $rewardRaw")
+                    ConsoleIO.writeln("Invalid reward: $rewardRaw")
                     continue
                 }
 
@@ -294,7 +294,7 @@ fun main() {
                     core.primitives.Rank.valueOf(rankStr)
                 } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid rank", "rankRaw" to rankStr)
-                    println("Invalid rank: $rankStr. Use F, E, D, C, B, A, or S")
+                    ConsoleIO.writeln("Invalid rank: $rankStr. Use F, E, D, C, B, A, or S")
                     continue
                 }
 
@@ -302,7 +302,7 @@ fun main() {
                     core.primitives.SalvagePolicy.valueOf(salvageStr)
                 } catch (_: IllegalArgumentException) {
                     printCmdVars("error" to "invalid salvage", "salvageRaw" to salvageStr)
-                    println("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
+                    ConsoleIO.writeln("Invalid salvage policy: $salvageStr. Use GUILD, HERO, or SPLIT")
                     continue
                 }
 
@@ -331,10 +331,10 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
                     printCmdVars("error" to "missing contractId", "usage" to "update <contractId> [fee=<fee>] [salvage=<salvage>]")
-                    println("Usage: update <contractId> [fee=<fee>] [salvage=<salvage>]")
-                    println("  Example: update 5 fee=100")
-                    println("  Example: update 5 salvage=HERO")
-                    println("  Example: update 5 fee=80 salvage=SPLIT")
+                    ConsoleIO.writeln("Usage: update <contractId> [fee=<fee>] [salvage=<salvage>]")
+                    ConsoleIO.writeln("  Example: update 5 fee=100")
+                    ConsoleIO.writeln("  Example: update 5 salvage=HERO")
+                    ConsoleIO.writeln("  Example: update 5 fee=80 salvage=SPLIT")
                     continue
                 }
 
@@ -342,7 +342,7 @@ fun main() {
                 val contractId = contractIdRaw.toLongOrNull()
                 if (contractId == null) {
                     printCmdVars("error" to "invalid contractId", "contractIdRaw" to contractIdRaw)
-                    println("Invalid contractId: $contractIdRaw")
+                    ConsoleIO.writeln("Invalid contractId: $contractIdRaw")
                     continue
                 }
 
@@ -356,7 +356,7 @@ fun main() {
                             val raw = param.substringAfter("fee=")
                             val parsed = raw.toIntOrNull()
                             if (parsed == null) {
-                                println("Invalid fee: $raw")
+                                ConsoleIO.writeln("Invalid fee: $raw")
                             } else {
                                 newFee = parsed
                             }
@@ -366,7 +366,7 @@ fun main() {
                             newSalvage = try {
                                 core.primitives.SalvagePolicy.valueOf(salvageRaw)
                             } catch (_: IllegalArgumentException) {
-                                println("Invalid salvage policy: $salvageRaw")
+                                ConsoleIO.writeln("Invalid salvage policy: $salvageRaw")
                                 null
                             }
                         }
@@ -375,7 +375,7 @@ fun main() {
 
                 if (newFee == null && newSalvage == null) {
                     printCmdVars("contractId" to contractId, "newFee" to newFee, "newSalvage" to newSalvage, "error" to "no params")
-                    println("Must specify at least one parameter: fee=<value> or salvage=<policy>")
+                    ConsoleIO.writeln("Must specify at least one parameter: fee=<value> or salvage=<policy>")
                     continue
                 }
 
@@ -395,7 +395,7 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
                     printCmdVars("error" to "missing contractId", "usage" to "cancel <contractId>")
-                    println("Usage: cancel <contractId>")
+                    ConsoleIO.writeln("Usage: cancel <contractId>")
                     continue
                 }
 
@@ -403,7 +403,7 @@ fun main() {
                 val contractId = contractIdRaw.toLongOrNull()
                 if (contractId == null) {
                     printCmdVars("error" to "invalid contractId", "contractIdRaw" to contractIdRaw)
-                    println("Invalid contractId: $contractIdRaw")
+                    ConsoleIO.writeln("Invalid contractId: $contractIdRaw")
                     continue
                 }
 
@@ -421,7 +421,7 @@ fun main() {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
                     printCmdVars("error" to "missing n", "usage" to "auto <n>")
-                    println("Usage: auto <n>")
+                    ConsoleIO.writeln("Usage: auto <n>")
                     continue
                 }
 
@@ -429,12 +429,12 @@ fun main() {
                 val n = nRaw.toIntOrNull()
                 if (n == null) {
                     printCmdVars("error" to "invalid n", "nRaw" to nRaw)
-                    println("Invalid n: $nRaw")
+                    ConsoleIO.writeln("Invalid n: $nRaw")
                     continue
                 }
                 if (n < 0) {
                     printCmdVars("error" to "n<0", "n" to n)
-                    println("Invalid n: $n (must be >= 0)")
+                    ConsoleIO.writeln("Invalid n: $n (must be >= 0)")
                     continue
                 }
 
@@ -442,7 +442,7 @@ fun main() {
 
                 repeat(n) {
                     val cmdId = nextCmdId++
-                    println("AUTO_STEP: index=${it + 1}/$n")
+                    ConsoleIO.writeln("AUTO_STEP: index=${it + 1}/$n")
                     printCmdVars("cmdId" to cmdId)
                     val cmd = AdvanceDay(cmdId = cmdId)
                     val (newState, newSnapshot, newGazetteBuffer) = applyAndPrintWithAnalytics(
@@ -469,8 +469,8 @@ fun main() {
  * @param input Raw user input line.
  */
 private fun unknownCommand(input: String) {
-    println("Неизвестная команда: $input")
-    println("Введите 'help' для списка команд.")
+    ConsoleIO.writeln("Неизвестная команда: $input")
+    ConsoleIO.writeln("Введите 'help' для списка команд.")
 }
 
 /**
@@ -485,8 +485,8 @@ private fun unknownCommand(input: String) {
  * @param rng RNG instance used by `step`, exposing draw count for diagnostics.
  */
 private fun printCmdInput(input: String, state: GameState, rng: Rng) {
-    println("IN: \"$input\"")
-    println("CTX: day=${state.meta.dayIndex} rev=${state.meta.revision} rngDraws=${rng.draws}")
+    ConsoleIO.writeln("IN: \"$input\"")
+    ConsoleIO.writeln("CTX: day=${state.meta.dayIndex} rev=${state.meta.revision} rngDraws=${rng.draws}")
 }
 
 /**
@@ -500,10 +500,10 @@ private fun printCmdInput(input: String, state: GameState, rng: Rng) {
  */
 private fun printCmdVars(vararg kv: Pair<String, Any?>) {
     if (kv.isEmpty()) {
-        println("VARS: (none)")
+        ConsoleIO.writeln("VARS: (none)")
         return
     }
-    println("VARS: " + kv.joinToString(" ") { "${it.first}=${it.second}" })
+    ConsoleIO.writeln("VARS: " + kv.joinToString(" ") { "${it.first}=${it.second}" })
 }
 
 /**
@@ -526,21 +526,21 @@ private fun applyAndPrint(state: GameState, cmd: Command, rng: Rng): GameState {
     val newState = result.state
     val events = result.events
 
-    println("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
-    for (e in events) println(formatEvent(e))
+    ConsoleIO.writeln("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
+    for (e in events) ConsoleIO.writeln(formatEvent(e))
 
     // Print single-command flavor hook (for post, close, sell, tax pay)
     val flavourHook = renderCommandHook(state, newState, events)
     if (flavourHook != null) {
-        println("─── Flavour ───")
-        println(flavourHook)
-        println("───────────────")
+        ConsoleIO.writeln("─── Flavour ───")
+        ConsoleIO.writeln(flavourHook)
+        ConsoleIO.writeln("───────────────")
     }
 
     val stateHash = hashState(newState)
     val eventsHash = hashEvents(events)
-    println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
-    println()
+    ConsoleIO.writeln("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
+    ConsoleIO.writeln()
 
     return newState
 }
@@ -574,15 +574,15 @@ private fun applyAndPrintWithAnalytics(
     val newState = result.state
     val events = result.events
 
-    println("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
-    for (e in events) println(formatEvent(e))
+    ConsoleIO.writeln("CMD: ${cmd::class.simpleName} cmdId=${cmd.cmdId}")
+    for (e in events) ConsoleIO.writeln(formatEvent(e))
 
     // Print hero quotes for contract resolutions (Feature 5)
     events.filterIsInstance<ContractResolved>().forEach { resolved ->
         val quote = HeroQuotes.forResolution(resolved, newState)
-        println("─── Hero Quote ───")
-        println(quote)
-        println("──────────────────")
+        ConsoleIO.writeln("─── Hero Quote ───")
+        ConsoleIO.writeln(quote)
+        ConsoleIO.writeln("──────────────────")
     }
 
     // Check if DayEnded event is present to compute day analytics
@@ -590,7 +590,7 @@ private fun applyAndPrintWithAnalytics(
     if (currentSnapshot != null) {
         val cfg = RenderConfig(renderWidth = 86, useUnicodeBorders = true)
         val input = StewardReportRenderer.from(newState = newState, events = events)
-        print(StewardReportRenderer.renderStewardReport(input, cfg))
+        ConsoleIO.write(StewardReportRenderer.renderStewardReport(input, cfg))
 
         // Update gazette buffer and potentially render gazette (Feature 1)
         val gazetteSnapshot = GazetteSnapshot.fromDaySnapshot(currentSnapshot)
@@ -599,22 +599,22 @@ private fun applyAndPrintWithAnalytics(
         // Render weekly gazette if applicable
         val gazetteLines = GazetteRenderer.render(currentSnapshot.day, updatedBuffer, gazetteSnapshot)
         if (gazetteLines != null) {
-            println()
-            print(gazetteLines)
+            ConsoleIO.writeln()
+            ConsoleIO.write(gazetteLines)
         }
 
         val stateHash = hashState(newState)
         val eventsHash = hashEvents(events)
-        println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
-        println()
+        ConsoleIO.writeln("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
+        ConsoleIO.writeln()
 
         return Triple(newState, currentSnapshot, updatedBuffer)
     }
 
     val stateHash = hashState(newState)
     val eventsHash = hashEvents(events)
-    println("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
-    println()
+    ConsoleIO.writeln("HASH: state=$stateHash events=$eventsHash rngDraws=${rng.draws}")
+    ConsoleIO.writeln()
 
     return Triple(newState, prevSnapshot, gazetteBuffer)
 }
@@ -627,7 +627,7 @@ private fun applyAndPrintWithAnalytics(
  * - Makes the console a stable "tool" rather than a moving UI target while the core evolves.
  */
 private fun printHelp() {
-    println(
+    ConsoleIO.writeln(
         """
 Commands:
   help
@@ -661,12 +661,12 @@ private fun printStatus(state: GameState, rng: Rng) {
     val returnsNeedingClose = state.contracts.returns.count { it.requiresPlayerClose }
     val activeWipCount = state.contracts.active.count { it.status == ActiveStatus.WIP }
     val availableCopper = state.economy.moneyCopper - state.economy.reservedCopper
-    println("day=${state.meta.dayIndex} revision=${state.meta.revision} rngDraws=${rng.draws}")
-    println("money=${state.economy.moneyCopper} reserved=${state.economy.reservedCopper} available=${availableCopper} trophies=${state.economy.trophiesStock}")
-    println("stability=${state.region.stability} reputation=${state.guild.reputation} rank=${state.guild.guildRank}")
-    println("tax: nextDue=${state.meta.taxDueDay} amountDue=${state.meta.taxAmountDue} penalty=${state.meta.taxPenalty} missed=${state.meta.taxMissedCount}")
-    println("counts: inbox=${state.contracts.inbox.size} board=${state.contracts.board.size} active=${activeWipCount} returnsNeedingClose=${returnsNeedingClose}")
-    println("hash=${hashState(state)}")
+    ConsoleIO.writeln("day=${state.meta.dayIndex} revision=${state.meta.revision} rngDraws=${rng.draws}")
+    ConsoleIO.writeln("money=${state.economy.moneyCopper} reserved=${state.economy.reservedCopper} available=${availableCopper} trophies=${state.economy.trophiesStock}")
+    ConsoleIO.writeln("stability=${state.region.stability} reputation=${state.guild.reputation} rank=${state.guild.guildRank}")
+    ConsoleIO.writeln("tax: nextDue=${state.meta.taxDueDay} amountDue=${state.meta.taxAmountDue} penalty=${state.meta.taxPenalty} missed=${state.meta.taxMissedCount}")
+    ConsoleIO.writeln("counts: inbox=${state.contracts.inbox.size} board=${state.contracts.board.size} active=${activeWipCount} returnsNeedingClose=${returnsNeedingClose}")
+    ConsoleIO.writeln("hash=${hashState(state)}")
 }
 
 /**
@@ -678,9 +678,9 @@ private fun printStatus(state: GameState, rng: Rng) {
  */
 private fun printInbox(state: GameState) {
     val xs = state.contracts.inbox.sortedBy { it.id.value }
-    if (xs.isEmpty()) return println("(inbox empty)")
+    if (xs.isEmpty()) return ConsoleIO.writeln("(inbox empty)")
     for (d in xs) {
-        println("inboxId=${d.id.value} day=${d.createdDay} rank=${d.rankSuggested} feeOffered=${d.feeOffered} title=\"${d.title}\"")
+        ConsoleIO.writeln("inboxId=${d.id.value} day=${d.createdDay} rank=${d.rankSuggested} feeOffered=${d.feeOffered} title=\"${d.title}\"")
     }
 }
 
@@ -693,9 +693,9 @@ private fun printInbox(state: GameState) {
  */
 private fun printBoard(state: GameState) {
     val xs = state.contracts.board.sortedBy { it.id.value }
-    if (xs.isEmpty()) return println("(board empty)")
+    if (xs.isEmpty()) return ConsoleIO.writeln("(board empty)")
     for (b in xs) {
-        println("boardId=${b.id.value} status=${b.status} rank=${b.rank} fee=${b.fee} salvage=${b.salvage} title=\"${b.title}\"")
+        ConsoleIO.writeln("boardId=${b.id.value} status=${b.status} rank=${b.rank} fee=${b.fee} salvage=${b.salvage} title=\"${b.title}\"")
     }
 }
 
@@ -708,10 +708,10 @@ private fun printBoard(state: GameState) {
  */
 private fun printActive(state: GameState) {
     val xs = state.contracts.active.sortedBy { it.id.value }
-    if (xs.isEmpty()) return println("(active empty)")
+    if (xs.isEmpty()) return ConsoleIO.writeln("(active empty)")
     for (a in xs) {
         val heroes = a.heroIds.map { it.value }.sorted()
-        println("activeId=${a.id.value} boardId=${a.boardContractId.value} status=${a.status} daysRemaining=${a.daysRemaining} heroes=$heroes")
+        ConsoleIO.writeln("activeId=${a.id.value} boardId=${a.boardContractId.value} status=${a.status} daysRemaining=${a.daysRemaining} heroes=$heroes")
     }
 }
 
@@ -724,9 +724,9 @@ private fun printActive(state: GameState) {
  */
 private fun printReturns(state: GameState) {
     val xs = state.contracts.returns.sortedBy { it.activeContractId.value }
-    if (xs.isEmpty()) return println("(returns empty)")
+    if (xs.isEmpty()) return ConsoleIO.writeln("(returns empty)")
     for (r in xs) {
-        println("activeId=${r.activeContractId.value} resolvedDay=${r.resolvedDay} outcome=${r.outcome} trophies=${r.trophiesCount} quality=${r.trophiesQuality} requiresClose=${r.requiresPlayerClose}")
+        ConsoleIO.writeln("activeId=${r.activeContractId.value} resolvedDay=${r.resolvedDay} outcome=${r.outcome} trophies=${r.trophiesCount} quality=${r.trophiesQuality} requiresClose=${r.requiresPlayerClose}")
     }
 }
 
@@ -770,4 +770,5 @@ private fun formatEvent(e: Event): String =
         is ProofPolicyChanged -> "E#${e.seq} ProofPolicyChanged day=${e.day} rev=${e.revision} cmdId=${e.cmdId} oldPolicy=${e.oldPolicy} newPolicy=${e.newPolicy}"
         is ContractAutoResolved -> "E#${e.seq} ContractAutoResolved day=${e.day} rev=${e.revision} cmdId=${e.cmdId} draftId=${e.draftId} bucket=${e.bucket}"
         is HeroDied -> "E#${e.seq} HeroDied day=${e.day} rev=${e.revision} cmdId=${e.cmdId} heroId=${e.heroId} activeId=${e.activeContractId} boardId=${e.boardContractId}"
+        else -> "E#? ${e::class.simpleName}"
     }

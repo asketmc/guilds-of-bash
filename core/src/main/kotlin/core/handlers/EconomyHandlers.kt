@@ -4,7 +4,6 @@ package core.handlers
 import core.*
 import core.pipeline.EconomySettlement
 import core.pipeline.TaxPolicy
-import core.primitives.*
 import core.rng.Rng
 import core.state.*
 
@@ -28,11 +27,11 @@ import core.state.*
  * - Converts trophies into copper using a fixed exchange rate.
  * - Emits a single event that fully explains the transaction.
  */
-@Suppress("UNUSED_PARAMETER", "ReturnCount")
+@Suppress("ReturnCount")
 internal fun handleSellTrophies(
     state: GameState,
     cmd: SellTrophies,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val total = state.economy.trophiesStock
@@ -73,11 +72,10 @@ internal fun handleSellTrophies(
  * - Applies payment to penalty first, then to the base due.
  * - Emits the remaining due so adapters do not infer debt.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handlePayTax(
     state: GameState,
     cmd: PayTax,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     if (cmd.amount <= 0) return state

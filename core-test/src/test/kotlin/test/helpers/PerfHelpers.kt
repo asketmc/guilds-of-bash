@@ -99,7 +99,7 @@ fun runPerfLoop(
 fun printPerf(stats: PerfStats) {
     fun nsToMs(ns: Long) = ns / 1_000_000.0
     val avgUs = stats.nanosAvg / 1_000.0
-    println(
+    TestLog.log(
         """
         ── PERF: ${stats.label} ──
         steps=${stats.steps}

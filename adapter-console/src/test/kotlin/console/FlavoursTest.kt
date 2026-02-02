@@ -246,6 +246,7 @@ class FlavoursTest {
         contracts = ContractState(
             inbox = emptyList(),
             board = emptyList(),
+            archive = emptyList(),
             active = emptyList(),
             returns = emptyList()
         ),

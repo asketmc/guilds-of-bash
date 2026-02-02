@@ -4,6 +4,7 @@ package core.pipeline
 import core.BalanceSettings
 import core.calculateThreatLevel
 import core.calculateBaseDifficulty
+import core.flavour.ContractPricing
 import core.primitives.ContractId
 import core.primitives.Rank
 import core.primitives.SalvagePolicy
@@ -31,6 +32,12 @@ object InboxLifecycle {
     /**
      * Generates new inbox drafts for the day.
      *
+     * ## Money units
+     * - `feeOffered` is stored in **copper** (Int).
+     * - `clientDeposit` is stored in **copper** (Int).
+     * - Values are produced via [ContractPricing.samplePayoutMoney] /
+     *   [ContractPricing.sampleClientDepositMoney].
+     *
      * @param count Number of drafts to generate.
      * @param currentDay Current day index.
      * @param stability Current region stability.
@@ -56,6 +63,10 @@ object InboxLifecycle {
             val threatLevel = calculateThreatLevel(stability)
             val baseDifficulty = calculateBaseDifficulty(threatLevel, rng)
 
+            // Sample payout and client deposit using rank-based pricing (FP-ECON-02)
+            val payout = ContractPricing.samplePayoutMoney(Rank.F, rng)
+            val clientDeposit = ContractPricing.sampleClientDepositMoney(payout, rng)
+
             drafts.add(
                 ContractDraft(
                     id = ContractId(draftId),
@@ -63,10 +74,11 @@ object InboxLifecycle {
                     nextAutoResolveDay = currentDay + BalanceSettings.AUTO_RESOLVE_INTERVAL_DAYS,
                     title = "Request #$draftId",
                     rankSuggested = Rank.F,
-                    feeOffered = 0,
+                    feeOffered = payout.copper,  // Now using sampled payout in copper!
                     salvage = SalvagePolicy.GUILD,
                     baseDifficulty = baseDifficulty,
-                    proofHint = "proof"
+                    proofHint = "proof",
+                    clientDeposit = clientDeposit.copper
                 )
             )
         }
@@ -81,18 +93,30 @@ object InboxLifecycle {
 
 /**
  * Result of inbox generation.
+ *
+ * @property drafts Generated drafts.
+ * @property contractIds Raw integer IDs generated for the drafts (same order as [drafts]).
+ * @property nextContractId Next available contract ID after generation.
  */
 data class InboxGenerationResult(
     val drafts: List<ContractDraft>,
     val contractIds: IntArray,
     val nextContractId: Int
 ) {
+    /**
+     * Value equality that compares [contractIds] by content.
+     *
+     * @param other Object to compare.
+     */
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is InboxGenerationResult) return false
-        return drafts == other.drafts && contractIds.contentEquals(other.contractIds) && nextContractId == other.nextContractId
+        return drafts == other.drafts &&
+            contractIds.contentEquals(other.contractIds) &&
+            nextContractId == other.nextContractId
     }
 
+    /** Hash code that uses [IntArray.contentHashCode]. */
     override fun hashCode(): Int {
         var result = drafts.hashCode()
         result = 31 * result + contractIds.contentHashCode()

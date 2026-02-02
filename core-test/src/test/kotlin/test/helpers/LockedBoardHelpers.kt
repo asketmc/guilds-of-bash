@@ -172,9 +172,30 @@ fun closeReturn(state: GameState, activeContractId: Long, cmdId: Long, rng: Rng)
 fun boardStatusOf(state: GameState, boardContractId: Long = 1L): BoardStatus =
     state.contracts.board.first { it.id.value.toLong() == boardContractId }.status
 
+fun archiveStatusOf(state: GameState, boardContractId: Long = 1L): BoardStatus =
+    state.contracts.archive.first { it.id.value.toLong() == boardContractId }.status
+
+/**
+ * Assert board status on the active board (contracts.board).
+ */
 fun assertBoardStatus(state: GameState, expected: BoardStatus, boardContractId: Long = 1L, message: String = "") {
     val actual = boardStatusOf(state, boardContractId)
     assertEquals(expected, actual, message.ifBlank { "Expected board[$boardContractId]=$expected, actual=$actual" })
+}
+
+/**
+ * Assert status in archive (contracts.archive).
+ */
+fun assertArchiveStatus(state: GameState, expected: BoardStatus, boardContractId: Long = 1L, message: String = "") {
+    val actual = archiveStatusOf(state, boardContractId)
+    assertEquals(expected, actual, message.ifBlank { "Expected archive[$boardContractId]=$expected, actual=$actual" })
+}
+
+fun assertBoardAbsent(state: GameState, boardContractId: Long = 1L, message: String = "") {
+    val presentIds = state.contracts.board.map { it.id.value.toLong() }
+    assertTrue(state.contracts.board.none { it.id.value.toLong() == boardContractId }, message.ifBlank {
+        "Expected board to NOT contain id=$boardContractId, boardIds=$presentIds"
+    })
 }
 
 fun activeStatusOf(state: GameState, activeContractId: Long): ActiveStatus =

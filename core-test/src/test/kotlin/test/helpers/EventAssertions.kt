@@ -84,35 +84,36 @@ inline fun <reified T : Event> requireSingleMainEvent(events: List<Event>, messa
 }
 
 fun printScenarioResult(result: ScenarioResult, includeEvents: Boolean = false) {
-    println("=== Scenario Result ===")
-    println("Final day: ${result.finalState.meta.dayIndex}")
-    println("Final revision: ${result.finalState.meta.revision}")
-    println("Final money: ${result.finalState.economy.moneyCopper}")
-    println("Final trophies: ${result.finalState.economy.trophiesStock}")
-    println("Total RNG draws: ${result.rngDraws}")
-    println("Total events: ${result.allEvents.size}")
+    // Use TestLog for deterministic capture in test runs
+    TestLog.log("=== Scenario Result ===")
+    TestLog.log("Final day: ${result.finalState.meta.dayIndex}")
+    TestLog.log("Final revision: ${result.finalState.meta.revision}")
+    TestLog.log("Final money: ${result.finalState.economy.moneyCopper}")
+    TestLog.log("Final trophies: ${result.finalState.economy.trophiesStock}")
+    TestLog.log("Total RNG draws: ${result.rngDraws}")
+    TestLog.log("Total events: ${result.allEvents.size}")
 
     if (includeEvents) {
-        println("\n--- Events ---")
+        TestLog.log("\n--- Events ---")
         result.allEvents.forEachIndexed { index, event ->
-            println("[$index] ${event::class.simpleName} (day=${event.day}, rev=${event.revision}, seq=${event.seq})")
+            TestLog.log("[$index] ${event::class.simpleName} (day=${event.day}, rev=${event.revision}, seq=${event.seq})")
         }
     }
 
-    println("\n--- Event Types (main only) ---")
-    println(mainEventTypes(result.allEvents).joinToString(", "))
+    TestLog.log("\n--- Event Types (main only) ---")
+    TestLog.log(mainEventTypes(result.allEvents).joinToString(", "))
 
     val rejections = result.allEvents.filterIsInstance<CommandRejected>()
     if (rejections.isNotEmpty()) {
-        println("\n⚠ Rejections: ${rejections.size}")
-        rejections.forEach { println("  - ${it.cmdType}: ${it.reason} (${it.detail})") }
+        TestLog.log("\n⚠ Rejections: ${rejections.size}")
+        rejections.forEach { TestLog.log("  - ${it.cmdType}: ${it.reason} (${it.detail})") }
     }
 
     val violations = result.allEvents.filterIsInstance<InvariantViolated>()
     if (violations.isNotEmpty()) {
-        println("\n⚠ Invariant Violations: ${violations.size}")
-        violations.forEach { println("  - ${it.invariantId.code}: ${it.details}") }
+        TestLog.log("\n⚠ Invariant Violations: ${violations.size}")
+        violations.forEach { TestLog.log("  - ${it.invariantId.code}: ${it.details}") }
     }
 
-    println("=======================\n")
+    TestLog.log("=======================\n")
 }

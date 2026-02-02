@@ -25,19 +25,15 @@ import core.state.*
 /**
  * Posts a draft contract from inbox to board.
  *
- * Why:
- * - Publication is the player's commitment point.
- * - Escrow exists to make commitment economically binding.
- *
- * How:
- * - Moves a draft from inbox to board.
- * - Reserves only the player's top-up portion; client deposit stays external to player funds.
+ * @param state Current state.
+ * @param cmd PostContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handlePostContract(
     state: GameState,
     cmd: PostContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val draft = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.inboxId } ?: return state
@@ -86,17 +82,15 @@ internal fun handlePostContract(
 /**
  * Creates a new contract draft in the inbox.
  *
- * Why:
- * - Contract authoring is a content injection point for tools and future adapters.
- *
- * How:
- * - Creates an inbox draft and advances id counters monotonically.
+ * @param state Current state.
+ * @param cmd CreateContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleCreateContract(
     state: GameState,
     cmd: CreateContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val newId = state.meta.ids.nextContractId
@@ -140,19 +134,15 @@ internal fun handleCreateContract(
 /**
  * Updates contract terms in inbox or on board.
  *
- * Why:
- * - Negotiation is allowed before commitment.
- * - Terms changes must preserve escrow correctness.
- *
- * How:
- * - Applies updates either in inbox or on board.
- * - Adjusts reserved copper only by the player's top-up delta.
+ * @param state Current state.
+ * @param cmd UpdateContractTerms command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleUpdateContractTerms(
     state: GameState,
     cmd: UpdateContractTerms,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
@@ -226,19 +216,15 @@ internal fun handleUpdateContractTerms(
 /**
  * Cancels a contract from inbox or board.
  *
- * Why:
- * - Cancellation prevents dead contracts from blocking the board.
- * - Refund rules must match the escrow model.
- *
- * How:
- * - Inbox cancellation has no economic impact.
- * - Board cancellation refunds only the player's top-up portion.
+ * @param state Current state.
+ * @param cmd CancelContract command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
-@Suppress("UNUSED_PARAMETER")
 internal fun handleCancelContract(
     state: GameState,
     cmd: CancelContract,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val inboxContract = state.contracts.inbox.firstOrNull { it.id.value.toLong() == cmd.contractId }
@@ -290,19 +276,16 @@ internal fun handleCancelContract(
 /**
  * Closes a completed return (manual player action).
  *
- * Why:
- * - Manual return closure is the player's governance moment.
- * - Strict proof is enforced by refusal to mutate state, not by rejection spam.
- *
- * How:
- * - In STRICT: silently no-ops on damaged proof or suspected theft.
- * - Otherwise: applies salvage, closes the active, releases escrow, and advances rank.
+ * @param state Current state.
+ * @param cmd CloseReturn command.
+ * @param _rng Deterministic RNG (unused in this handler).
+ * @param ctx Event emission context.
  */
-@Suppress("UNUSED_PARAMETER", "ReturnCount")
+@Suppress("ReturnCount")
 internal fun handleCloseReturn(
     state: GameState,
     cmd: CloseReturn,
-    rng: Rng,
+    _rng: Rng,
     ctx: SeqContext
 ): GameState {
     val ret = state.contracts.returns.firstOrNull { it.activeContractId.value.toLong() == cmd.activeContractId } ?: return state
@@ -314,7 +297,20 @@ internal fun handleCloseReturn(
         ret.trophiesQuality,
         ret.suspectedTheft
     )
-    if (!closureCheck.allowed) return state
+    if (!closureCheck.allowed) {
+        ctx.emit(
+            ReturnClosureBlocked(
+                day = state.meta.dayIndex,
+                revision = state.meta.revision,
+                cmdId = cmd.cmdId,
+                seq = 0L,
+                activeContractId = ret.activeContractId.value,
+                policy = state.guild.proofPolicy,
+                reason = closureCheck.reason ?: "unknown"
+            )
+        )
+        return state
+    }
 
     // Settlement: Hero lifecycle
     val updatedRoster = HeroLifecycle.computeManualCloseUpdate(
@@ -324,8 +320,8 @@ internal fun handleCloseReturn(
 
     // Filter out this return and mark active as CLOSED
     val updatedReturns = state.contracts.returns.filter { it.activeContractId.value.toLong() != cmd.activeContractId }
-    val updatedActives = state.contracts.active.map { active ->
-        if (active.id.value.toLong() == cmd.activeContractId) active.copy(status = ActiveStatus.CLOSED) else active
+    val updatedActives = state.contracts.active.map {
+        if (it.id.value.toLong() == cmd.activeContractId) it.copy(status = ActiveStatus.CLOSED) else it
     }
 
     // Settlement: Economy
@@ -338,8 +334,8 @@ internal fun handleCloseReturn(
         state.economy
     )
 
-    // Settlement: Board status
-    val updatedBoard = BoardStatusModel.updateBoardStatus(
+    // Settlement: Board status -> complete and archive if eligible
+    val (updatedBoard, newlyArchived) = BoardStatusModel.completeBoardAndExtract(
         boards = state.contracts.board,
         boardIdToComplete = board?.id,
         activeContracts = updatedActives
@@ -369,6 +365,7 @@ internal fun handleCloseReturn(
     val newState = state.copy(
         contracts = state.contracts.copy(
             board = updatedBoard,
+            archive = state.contracts.archive + newlyArchived,
             active = updatedActives,
             returns = updatedReturns
         ),
