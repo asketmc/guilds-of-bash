@@ -276,9 +276,13 @@ internal fun handleCancelContract(
 /**
  * Closes a completed return (manual player action).
  *
+ * ## MVP: Accept/Reject Support
+ * - ACCEPT: Normal closure with payment and trophy allocation per salvage policy.
+ * - REJECT: Lifecycle terminated, no payment, zero trophies, escrow released.
+ *
  * @param state Current state.
- * @param cmd CloseReturn command.
- * @param _rng Deterministic RNG (unused in this handler).
+ * @param cmd CloseReturn command with optional decision.
+ * @param _rng Deterministic RNG (unused in this handler - zero RNG draws).
  * @param ctx Event emission context.
  */
 @Suppress("ReturnCount")
@@ -291,9 +295,13 @@ internal fun handleCloseReturn(
     val ret = state.contracts.returns.firstOrNull { it.activeContractId.value.toLong() == cmd.activeContractId } ?: return state
     val board = state.contracts.board.firstOrNull { it.id == ret.boardContractId }
 
-    // Policy: Check if closure is allowed
+    // Normalize decision: null defaults to ACCEPT only under non-STRICT policies
+    val effectiveDecision = cmd.decision ?: ReturnDecision.ACCEPT
+
+    // Policy: Check if closure is allowed with the given decision
     val closureCheck = ReturnClosurePolicy.canClose(
         state.guild.proofPolicy,
+        effectiveDecision,
         ret.trophiesQuality,
         ret.suspectedTheft
     )
@@ -312,7 +320,7 @@ internal fun handleCloseReturn(
         return state
     }
 
-    // Settlement: Hero lifecycle
+    // Settlement: Hero lifecycle (same for ACCEPT and REJECT)
     val updatedRoster = HeroLifecycle.computeManualCloseUpdate(
         ret.heroIds,
         state.heroes.roster
@@ -324,15 +332,26 @@ internal fun handleCloseReturn(
         if (it.id.value.toLong() == cmd.activeContractId) it.copy(status = ActiveStatus.CLOSED) else it
     }
 
-    // Settlement: Economy
-    val economyDelta = EconomySettlement.computeManualCloseDelta(
-        ret.outcome,
-        board,
-        ret.trophiesCount,
-        ret.trophiesQuality,
-        ret.suspectedTheft,
-        state.economy
-    )
+    // Settlement: Economy (differs based on decision)
+    val economyDelta = if (effectiveDecision == ReturnDecision.REJECT) {
+        // REJECT: no payment, no trophies, but release escrow
+        val clientDeposit = board?.clientDeposit ?: 0
+        EconomyDelta(
+            moneyDelta = 0,          // no fee payment
+            reservedDelta = -clientDeposit,  // release escrow
+            trophiesDelta = 0        // no trophies awarded
+        )
+    } else {
+        // ACCEPT: normal closure logic
+        EconomySettlement.computeManualCloseDelta(
+            ret.outcome,
+            board,
+            ret.trophiesCount,
+            ret.trophiesQuality,
+            ret.suspectedTheft,
+            state.economy
+        )
+    }
 
     // Settlement: Board status -> complete and archive if eligible
     val (updatedBoard, newlyArchived) = BoardStatusModel.completeBoardAndExtract(
@@ -341,11 +360,23 @@ internal fun handleCloseReturn(
         activeContracts = updatedActives
     )
 
-    // Settlement: Guild progression
-    val guildResult = GuildProgression.computeAfterCompletion(
-        state.guild.completedContractsTotal,
-        state.guild.guildRank
-    )
+    // Settlement: Guild progression (count completion only for ACCEPT, not REJECT)
+    val shouldCountCompletion = (effectiveDecision == ReturnDecision.ACCEPT)
+    val guildResult = if (shouldCountCompletion) {
+        GuildProgression.computeAfterCompletion(
+            state.guild.completedContractsTotal,
+            state.guild.guildRank
+        )
+    } else {
+        // REJECT: treat as FAIL-like, no completion increment
+        GuildProgressionResult(
+            newCompletedContractsTotal = state.guild.completedContractsTotal,
+            contractsForNextRank = state.guild.contractsForNextRank,
+            newGuildRank = state.guild.guildRank,
+            oldRank = state.guild.guildRank,
+            rankChanged = false
+        )
+    }
 
     if (guildResult.rankChanged) {
         ctx.emit(
@@ -378,15 +409,28 @@ internal fun handleCloseReturn(
         )
     )
 
-    ctx.emit(
-        ReturnClosed(
-            day = newState.meta.dayIndex,
-            revision = newState.meta.revision,
-            cmdId = cmd.cmdId,
-            seq = 0L,
-            activeContractId = cmd.activeContractId.toInt()
+    // Emit appropriate event based on decision
+    if (effectiveDecision == ReturnDecision.REJECT) {
+        ctx.emit(
+            ReturnRejected(
+                day = newState.meta.dayIndex,
+                revision = newState.meta.revision,
+                cmdId = cmd.cmdId,
+                seq = 0L,
+                activeContractId = cmd.activeContractId.toInt()
+            )
         )
-    )
+    } else {
+        ctx.emit(
+            ReturnClosed(
+                day = newState.meta.dayIndex,
+                revision = newState.meta.revision,
+                cmdId = cmd.cmdId,
+                seq = 0L,
+                activeContractId = cmd.activeContractId.toInt()
+            )
+        )
+    }
 
     return newState
 }

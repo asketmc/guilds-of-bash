@@ -28,6 +28,7 @@ Generated: 2026-01-31
 | PoCManifestCoverageTest.kt          | 175    | 5      | PoC manifest coverage: commands/events exist, no scope creep                             | P1                   |
 | PoCScenarioTest.kt                  | 89     | 1      | End-to-end PoC scenario: contract flow from post to resolve                              | P1                   |
 | ReducerCriticalTest.kt              | 40     | 2      | Reducer critical: invariants preserved, invalid cmdId rejected                           | P0, Smoke            |
+| ReturnClosureDecisionTest.kt        | 502    | 19     | Return closure accept/reject: STRICT unblocking, escrow, counters, events, determinism   | P1, Smoke (ADR-004)  |
 | RngContractTest.kt                  | 49     | 2      | RNG contract: draws counter, bounded methods                                             | P1                   |
 | RngDrawOrderGoldenTest.kt           | 205    | 5      | RNG draw order: stability, determinism per-seed, documented draws                        | P1                   |
 | RngSeedFinder.kt                    | 42     | 1      | Utility: find seeds for GOOD/NEUTRAL/BAD buckets                                         | Utility              |
@@ -118,7 +119,7 @@ All test files serve distinct purposes. However, there is some **functional over
 | Priority  | Count  | Description                                                  |
 |-----------|--------|--------------------------------------------------------------|
 | P0        | 2      | Critical startup (GameStateInitialization, ReducerCritical)  |
-| P1        | 15     | Core functionality (hashing, invariants, serialization, RNG) |
+| P1        | 16     | Core functionality (hashing, invariants, serialization, RNG, return closure decisions) |
 | P2        | 11     | Feature-level tests (commands, escrow, pricing)              |
 | P3/Perf   | 1      | Performance (manual only)                                    |
 | Utility   | 1      | RngSeedFinder                                                |
@@ -127,4 +128,4 @@ All test files serve distinct purposes. However, there is some **functional over
 
 ## Total Test Count
 
-**~120+ unit tests** across 30 test files.
+**~140+ unit tests** across 31 test files.

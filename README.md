@@ -81,9 +81,9 @@ PoC / feature-freeze at the “M0” scope:
 # -> build/reports/kover/html/index.html
 ```
 
-### Prebuilt CLI jar (latest release)
+### Prebuilt jar
 
-Download the `adapter-console-cli-*.jar` and its `.sha256` from the latest GitHub Release:
+Download the `adapter-console-all.jar` and its `.sha256` from the latest GitHub Release:
 
 * [https://github.com/asketmc/guilds-of-bash/releases/latest](https://github.com/asketmc/guilds-of-bash/releases/latest)
 * Verify checksum (optionally)

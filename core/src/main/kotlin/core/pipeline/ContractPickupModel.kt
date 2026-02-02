@@ -17,6 +17,11 @@ import core.state.*
  * ## Semantic Ownership
  * Answers: **Which contract should a hero pick?**
  *
+ * ## Contract
+ * - Banned heroes (effective status BANNED) are skipped during pickup.
+ * - Warned heroes can still take contracts.
+ * - Only heroes with status AVAILABLE (and not banned) participate in pickup.
+ *
  * ## Stability Gradient
  * STABLE: Pure decision logic with explicit rules.
  *
@@ -32,6 +37,10 @@ object ContractPickupModel {
 
     /**
      * Computes contract pickup decisions for arriving heroes.
+     *
+     * ## Contract
+     * - Heroes with effective BANNED status are skipped (no decision emitted).
+     * - Uses [FraudInvestigationModel.isBanActive] to check ban status.
      *
      * @param arrivingHeroIds Heroes arriving today (sorted by ID).
      * @param roster Current hero roster.
@@ -68,6 +77,12 @@ object ContractPickupModel {
         for (heroId in sortedHeroIds) {
             val heroIndex = rosterIndexById[heroId.value] ?: continue
             val hero = mutableRoster[heroIndex]
+
+            // Skip banned heroes - they cannot take contracts
+            if (FraudInvestigationModel.isBanActive(hero, currentDay)) {
+                // No decision emitted for banned heroes (they're not participating)
+                continue
+            }
 
             var bestBoardIndex = -1
             var bestScore = Int.MIN_VALUE

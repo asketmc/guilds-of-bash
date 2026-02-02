@@ -3,6 +3,7 @@ package core
 
 import core.primitives.ActiveStatus
 import core.primitives.BoardStatus
+import core.primitives.ProofPolicy
 import core.state.GameState
 
 /**
@@ -121,11 +122,15 @@ private fun validatePostContract(state: GameState, cmd: PostContract): Validatio
  * - cmd.activeContractId must reference an existing active contract.
  * - Referenced contract must have status RETURN_READY.
  * - A return record must exist with requiresPlayerClose=true.
+ * - Under STRICT policy, decision must be explicit (not null).
+ * - For ACCEPT decision, guild must have sufficient funds to pay fee.
+ * - For REJECT decision, no money check required.
  *
  * Output contract:
  * - Returns Valid if all checks pass.
  * - Returns Rejected(NOT_FOUND) if contract or return not found.
- * - Returns Rejected(INVALID_STATE) if status != RETURN_READY.
+ * - Returns Rejected(INVALID_ARG) if STRICT policy and decision is null.
+ * - Returns Rejected(INVALID_STATE) if ACCEPT and insufficient funds.
  *
  * Side effects: None.
  */
@@ -147,6 +152,21 @@ private fun validateCloseReturn(state: GameState, cmd: CloseReturn): ValidationR
             detail = "return for activeContractId=${cmd.activeContractId} not found"
         )
 
+    // Under STRICT policy, decision must be explicit
+    if (state.guild.proofPolicy == ProofPolicy.STRICT && cmd.decision == null) {
+        return ValidationResult.Rejected(
+            reason = RejectReason.INVALID_ARG,
+            detail = "STRICT policy requires explicit decision (accept or reject)"
+        )
+    }
+
+    // For REJECT, no money check needed (no payment will be made)
+    val effectiveDecision = cmd.decision ?: ReturnDecision.ACCEPT
+    if (effectiveDecision == ReturnDecision.REJECT) {
+        return ValidationResult.Valid
+    }
+
+    // For ACCEPT, check if guild has enough money to pay the fee
     val board = state.contracts.board.firstOrNull { it.id == ret.boardContractId }
     val fee = board?.fee ?: 0
     // Guild needs enough money to pay hero the fee

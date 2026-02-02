@@ -189,8 +189,8 @@ fun main() {
             "close" -> {
                 printCmdInput(trimmed, state, rng)
                 if (parts.size < 2) {
-                    printCmdVars("error" to "missing activeId", "usage" to "close <activeId>")
-                    ConsoleIO.writeln("Usage: close <activeId>")
+                    printCmdVars("error" to "missing activeId", "usage" to "close <activeId> [accept|reject]")
+                    ConsoleIO.writeln("Usage: close <activeId> [accept|reject]")
                     continue
                 }
 
@@ -202,11 +202,27 @@ fun main() {
                     continue
                 }
 
+                // Parse optional decision argument
+                val decision: ReturnDecision? = if (parts.size >= 3) {
+                    when (parts[2].lowercase()) {
+                        "accept" -> ReturnDecision.ACCEPT
+                        "reject" -> ReturnDecision.REJECT
+                        else -> {
+                            printCmdVars("error" to "invalid decision", "decisionRaw" to parts[2])
+                            ConsoleIO.writeln("Invalid decision: ${parts[2]}. Use 'accept' or 'reject'.")
+                            continue
+                        }
+                    }
+                } else {
+                    null  // No decision specified
+                }
+
                 val cmdId = nextCmdId++
-                printCmdVars("cmdId" to cmdId, "activeId" to activeId)
+                printCmdVars("cmdId" to cmdId, "activeId" to activeId, "decision" to (decision?.name ?: "null"))
 
                 val cmd = CloseReturn(
                     activeContractId = activeId,
+                    decision = decision,
                     cmdId = cmdId
                 )
                 state = applyAndPrint(state, cmd, rng)
@@ -752,6 +768,7 @@ private fun formatEvent(e: Event): String =
         is WipAdvanced -> "E#${e.seq} WipAdvanced day=${e.day} rev=${e.revision} cmdId=${e.cmdId} activeId=${e.activeContractId} daysRemaining=${e.daysRemaining}"
         is ContractResolved -> "E#${e.seq} ContractResolved day=${e.day} rev=${e.revision} cmdId=${e.cmdId} activeId=${e.activeContractId} outcome=${e.outcome} trophies=${e.trophiesCount} quality=${e.quality}"
         is ReturnClosed -> "E#${e.seq} ReturnClosed day=${e.day} rev=${e.revision} cmdId=${e.cmdId} activeId=${e.activeContractId}"
+        is ReturnRejected -> "E#${e.seq} ReturnRejected day=${e.day} rev=${e.revision} cmdId=${e.cmdId} activeId=${e.activeContractId}"
         is TrophySold -> "E#${e.seq} TrophySold day=${e.day} rev=${e.revision} cmdId=${e.cmdId} amount=${e.amount} earned=${e.moneyGained}"
         is StabilityUpdated -> "E#${e.seq} StabilityUpdated day=${e.day} rev=${e.revision} cmdId=${e.cmdId} stability=${e.oldStability}->${e.newStability}"
         is DayEnded -> "E#${e.seq} DayEnded day=${e.day} rev=${e.revision} cmdId=${e.cmdId}"

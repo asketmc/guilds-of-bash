@@ -654,8 +654,8 @@ All events listed in doc are present in code with matching field structures. Key
 
 **Payout Bands (gp/quest by rank)**:
 | Rank | Payout Range |
-|------|--------------|
-| F | 0..1 |
+|------|---------------|
+| F    | 0..1 |
 | E | 1..6 |
 | D | 6..25 |
 | C | 25..150 |
@@ -853,24 +853,25 @@ All output formats confirmed matching doc specifications.
 
 ## Doc→Code Alignment Table
 
-| Chapter                     | Status | Issues                                    |
-|-----------------------------|-------|-------------------------------------------|
-| 1. Product Concept          | MATCH | None                                      |
-| 2. Implementation Snapshot  | MATCH | Tax system fully implemented              |
-| 3. Architecture/Determinism | MATCH | None                                      |
-| 4. Terms/Vocabulary         | MATCH | Trophy model clarified                    |
-| 5. Game Cycle               | MATCH | None                                      |
-| 6. Data Schemas             | MATCH | Field names corrected                     |
-| 7. Commands                 | MATCH | None                                      |
-| 8. Events                   | MATCH | None                                      |
-| 9. Step Semantics           | MATCH | None                                      |
-| 10. Auto-Resolve/Trophies   | MATCH | Missing implemented (MvP = death outcome) |
-| 11. Returns/Economy/Taxes   | MATCH | Tax system fully implemented              |
-| 12. Region/Stability        | MATCH | None                                      |
-| 13. Errors/Validation       | MATCH | None                                      |
-| 14. Invariants              | MATCH | None                                      |
-| 15. Telemetry               | MATCH | None                                      |
-| 16. Console Output          | MATCH | S7 metric calculation documented          |
+| Chapter                      | Status | Issues                                    |
+|------------------------------|-------|-------------------------------------------|
+| 1. Product Concept           | MATCH | None                                      |
+| 2. Implementation Snapshot   | MATCH | Tax system fully implemented              |
+| 3. Architecture/Determinism  | MATCH | None                                      |
+| 4. Terms/Vocabulary          | MATCH | Trophy model clarified                    |
+| 5. Game Cycle                | MATCH | None                                      |
+| 6. Data Schemas              | MATCH | Field names corrected                     |
+| 7. Commands                  | MATCH | None                                      |
+| 8. Events                    | MATCH | New fraud events added                    |
+| 9. Step Semantics            | MATCH | None                                      |
+| 10. Auto-Resolve/Trophies    | MATCH | Missing implemented (MvP = death outcome) |
+| 11. Returns/Economy/Taxes    | MATCH | Tax system fully implemented              |
+| 12. Region/Stability         | MATCH | None                                      |
+| 13. Errors/Validation        | MATCH | None                                      |
+| 14. Invariants               | MATCH | None                                      |
+| 15. Telemetry                | MATCH | None                                      |
+| 16. Console Output           | MATCH | S7 metric calculation documented          |
+| 17. Fraud Handling v0        | MATCH | New feature (2026-02-01)                  |
 
 ## Mismatch Ledger
 
@@ -947,7 +948,139 @@ STRICT policy needs enhancement to be useful. Options:
 
 ---
 
+## 17) Fraud Handling v0 (Warn → Ban) + Linear Investigation Pipeline
+
+### 17.1 Overview
+**Status**: MATCH (Implemented 2026-02-01)
+
+**Code Anchors**:
+- `core/pipeline/FraudInvestigationModel.kt`: Investigation decision logic
+- `core/handlers/AdvanceDayHandler.kt`: Integration in phaseWipAndResolve
+- `core/Events.kt`: FraudInvestigated, HeroWarned, HeroBanned, RumorScheduled, WeeklyReportPublished
+- `core/BalanceSettings.kt`: WARN_DURATION_DAYS, BAN_DURATION_DAYS, CATCH_CHANCE_*, RUMOR_CHANCE_*, REP_PENALTY_ON_RUMOR
+- `core/state/HeroRosterWithArrivals.kt`: Hero.warnUntilDay, Hero.banUntilDay
+- `core/state/GuildState.kt`: GuildState.pendingReputationDelta
+- `core/primitives/ProofPolicy.kt`: Added SOFT policy
+- `core/primitives/HeroStatus.kt`: Added WARNED, BANNED statuses
+
+### 17.2 Design Goals
+
+Replace "silent no-op" behavior around fraud/STRICT with a **single linear pipeline**:
+```
+suspectedTheft → investigation_roll → (caught | got_away) → (warn/ban | rumorScheduled)
+```
+
+Reduce perceived unfairness by introducing **warn-first** semantics:
+- 1st caught fraud ⇒ WARN (time-limited, 7 days)
+- 2nd caught fraud while WARN active ⇒ BAN (time-limited, 90 days)
+
+### 17.3 Policy Behavior (SOFT vs STRICT vs FAST)
+
+| Policy     | pCatch | pRumor (on escape) | Return Closure           | Investigation   |
+|------------|--------|--------------------|--------------------------|-----------------|
+| **SOFT**   | 50%    | 50%                | Always allowed           | Yes             |
+| **STRICT** | 90%    | 10%                | Blocked on damaged/theft | Yes             |
+| **FAST**   | N/A    | N/A                | Always allowed           | **No** (legacy) |
+
+### 17.4 Linear Pipeline Mechanics
+
+**Trigger point**: during contract resolution / return creation, when `suspectedTheft == true`.
+
+**Pipeline steps (for each fraud candidate, deterministic order by activeContractId):**
+
+1. **Investigation roll**
+   - `caught = rng.rollPercent() < pCatch(policy)`
+
+2. If **caught**:
+   - if hero has active WARN (`dayIndex < warnUntilDay`):
+     - apply BAN for `BAN_DURATION_DAYS` (90)
+     - clear WARN
+     - emit `HeroBanned`
+   - else:
+     - apply WARN for `WARN_DURATION_DAYS` (7)
+     - emit `HeroWarned`
+
+3. If **got_away**:
+   - `rumorScheduled = rng.rollPercent() < pRumorOnEscape(policy)`
+   - if scheduled:
+     - add `-REP_PENALTY_ON_RUMOR` to `pendingReputationDelta`
+     - emit `RumorScheduled`
+
+**Weekly application (on day % TAX_INTERVAL_DAYS == 0):**
+- Apply `pendingReputationDelta` to `GuildState.reputation` (floor at 0)
+- Reset `pendingReputationDelta` to 0
+- Emit `WeeklyReportPublished` with summary
+
+### 17.5 Data Model Changes
+
+**Hero state** (new fields with defaults):
+- `warnUntilDay: Int?` - Day index when WARN expires (null = no warn)
+- `banUntilDay: Int?` - Day index when BAN expires (null = no ban)
+
+**Derived status rule** (implemented in `FraudInvestigationModel.getEffectiveStatus`):
+- `BANNED` if `dayIndex < banUntilDay`
+- else `WARNED` if `dayIndex < warnUntilDay`
+- else original status
+
+**Guild state** (new field with default):
+- `pendingReputationDelta: Int = 0` - Accumulated reputation delta from rumors
+
+**HeroStatus enum** (new values):
+- `WARNED` - Hero warned for suspected fraud (first offense)
+- `BANNED` - Hero banned from contracts due to repeated fraud
+
+**Pickup phase**:
+- Skip heroes with effective `BANNED` status (implemented in `ContractPickupModel.computePickups`)
+
+### 17.6 Balance Settings
+
+| Setting                                 | Value  | Description                           |
+|-----------------------------------------|--------|---------------------------------------|
+| `WARN_DURATION_DAYS`                    | 7      | Days until WARN expires               |
+| `BAN_DURATION_DAYS`                     | 90     | Days until BAN expires                |
+| `CATCH_CHANCE_STRICT_PERCENT`           | 90     | % chance to catch fraud under STRICT  |
+| `CATCH_CHANCE_SOFT_PERCENT`             | 50     | % chance to catch fraud under SOFT    |
+| `RUMOR_CHANCE_ON_ESCAPE_STRICT_PERCENT` | 10     | % rumor chance on escape under STRICT |
+| `RUMOR_CHANCE_ON_ESCAPE_SOFT_PERCENT`   | 50     | % rumor chance on escape under SOFT   |
+| `REP_PENALTY_ON_RUMOR`                  | 1      | Reputation penalty per rumor          |
+
+### 17.7 Event Contract
+
+**New events emitted**:
+
+| Event                   | Fields                                                     | When                                       |
+|-------------------------|------------------------------------------------------------|--------------------------------------------|
+| `FraudInvestigated`     | heroId, activeContractId, policy, caught, rumorScheduled   | After each fraud investigation             |
+| `HeroWarned`            | heroId, untilDay, reason="fraud"                           | On first caught fraud                      |
+| `HeroBanned`            | heroId, untilDay, reason="fraud_repeat"                    | On caught fraud while warned               |
+| `RumorScheduled`        | policy, repDeltaPlanned                                    | When fraud escapes and rumor rolls success |
+| `WeeklyReportPublished` | reputationDeltaApplied, rumorsCount, bansCount, warnsCount | On weekly boundary with pending changes    |
+
+### 17.8 Determinism Constraints
+
+- Investigation RNG draws are executed in a fixed pipeline segment (during `phaseWipAndResolve`)
+- Order: by `activeContractId` (ascending)
+- RNG draw order per investigation: catch roll (1), rumor roll (1 if not caught)
+- Events must reflect all outcomes (no silent no-ops)
+
+### 17.9 Acceptance Criteria
+
+- ✅ A hero caught once becomes WARNED for `WARN_DURATION_DAYS`
+- ✅ A hero caught again while WARN active becomes BANNED for `BAN_DURATION_DAYS`
+- ✅ BANNED heroes do not take contracts
+- ✅ Rumor scheduling occurs only on "got_away"
+- ✅ Reputation change is accumulated in `pendingReputationDelta` and applied on weekly boundary
+- ✅ Same seeds + same commands ⇒ identical event stream + identical `rngDraws`
+
+### 17.10 Deferred Follow-ups (TODO Hooks)
+
+1. Reputation affects hero arrivals count (replace hardcoded `2` heroes/day with function of `reputation`)
+2. NPC advisor hint event/text: "Consider tightening policy" when rumor damage occurs
+3. Full dispute workflow (separate feature)
+
+---
+
 **Document Status**: Code-validated and aligned  
-**Last Updated**: 2026-01-31  
+**Last Updated**: 2026-02-01  
 **Next Review**: When core implementation changes  
 **Validation Method**: Direct code inspection with concrete anchors

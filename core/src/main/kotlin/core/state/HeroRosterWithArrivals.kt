@@ -35,6 +35,13 @@ data class HeroState(
  * - [id] is stable and unique within a roster.
  * - [historyCompleted] is a completed-missions counter (expected >= 0).
  * - Trait values are expected to be bounded (see [Traits]).
+ * - [warnUntilDay] and [banUntilDay] are day indices (nullable, expected >= 0 when set).
+ *
+ * ## Fraud Status Derivation
+ * The effective disciplinary status is derived from [warnUntilDay] and [banUntilDay]:
+ * - If `dayIndex < banUntilDay` → BANNED (cannot take contracts)
+ * - Else if `dayIndex < warnUntilDay` → WARNED (can take contracts, repeat offense → ban)
+ * - Else → normal status (AVAILABLE or other)
  *
  * ## Determinism
  * Pure data container. Deterministic evolution requires deterministic reducer logic and RNG stream.
@@ -46,6 +53,8 @@ data class HeroState(
  * @property traits Personality/behavior traits influencing decisions.
  * @property status Current availability/mission status ([HeroStatus]).
  * @property historyCompleted Completed mission count (>= 0).
+ * @property warnUntilDay Day index until which WARN is active (null = no warn).
+ * @property banUntilDay Day index until which BAN is active (null = no ban).
  */
 data class Hero(
     val id: HeroId,
@@ -54,7 +63,9 @@ data class Hero(
     val klass: HeroClass,
     val traits: Traits,
     val status: HeroStatus,
-    val historyCompleted: Int
+    val historyCompleted: Int,
+    val warnUntilDay: Int? = null,
+    val banUntilDay: Int? = null
 )
 
 /**

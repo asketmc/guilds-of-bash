@@ -592,6 +592,26 @@ data class ReturnClosed(
 ) : Event
 
 /**
+ * Emitted when a return is rejected by the player.
+ *
+ * ## Purpose
+ * Player explicitly rejects the return (no payment, no trophies), but lifecycle
+ * is terminated (hero becomes AVAILABLE, active contract CLOSED, escrow released).
+ *
+ * ## Determinism
+ * - No RNG draws.
+ *
+ * @property activeContractId ID of the rejected active contract.
+ */
+data class ReturnRejected(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val activeContractId: Int
+) : Event
+
+/**
  * Emitted when the player sells trophies for copper.
  *
  * @property amount Number of trophies sold.
@@ -920,3 +940,143 @@ data class ReturnClosureBlocked(
     val policy: ProofPolicy,
     val reason: String
 ) : Event
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fraud Investigation Events (v0)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Emitted when a fraud candidate is investigated.
+ *
+ * ## Purpose
+ * Records the outcome of a fraud investigation triggered by `suspectedTheft == true`.
+ * This event makes the investigation pipeline observable and auditable.
+ *
+ * ## Pipeline Position
+ * Emitted during contract resolution phase when processing returns with suspected theft.
+ *
+ * ## Determinism
+ * - RNG draws: 1 for investigation roll, optionally 1 for rumor roll if not caught.
+ * - Order: by activeContractId (ascending).
+ *
+ * @property heroId ID of the investigated hero.
+ * @property activeContractId ID of the active contract that triggered investigation.
+ * @property policy Proof policy in effect during investigation.
+ * @property caught Whether the hero was caught (true = warn/ban applied).
+ * @property rumorScheduled Whether a rumor was scheduled (only when not caught).
+ */
+data class FraudInvestigated(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val heroId: Int,
+    val activeContractId: Int,
+    val policy: ProofPolicy,
+    val caught: Boolean,
+    val rumorScheduled: Boolean
+) : Event
+
+/**
+ * Emitted when a hero receives a WARN status for first-time fraud.
+ *
+ * ## Purpose
+ * Records the application of a WARN penalty to a hero caught for fraud.
+ * The hero can still take contracts but a repeat offense leads to BAN.
+ *
+ * ## Determinism
+ * - No RNG draws.
+ * - Purely derived from investigation outcome.
+ *
+ * @property heroId ID of the warned hero.
+ * @property untilDay Day index when the WARN expires.
+ * @property reason Machine-readable reason for the warning.
+ */
+data class HeroWarned(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val heroId: Int,
+    val untilDay: Int,
+    val reason: String
+) : Event
+
+/**
+ * Emitted when a hero receives a BAN status for repeated fraud.
+ *
+ * ## Purpose
+ * Records the application of a BAN penalty to a hero caught for fraud while already warned.
+ * Banned heroes cannot take contracts until the ban expires.
+ *
+ * ## Determinism
+ * - No RNG draws.
+ * - Purely derived from investigation outcome.
+ *
+ * @property heroId ID of the banned hero.
+ * @property untilDay Day index when the BAN expires.
+ * @property reason Machine-readable reason for the ban.
+ */
+data class HeroBanned(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val heroId: Int,
+    val untilDay: Int,
+    val reason: String
+) : Event
+
+/**
+ * Emitted when a fraud rumor is scheduled due to escaped fraud.
+ *
+ * ## Purpose
+ * Records the scheduling of a reputation penalty from a fraud rumor.
+ * The penalty is accumulated in `pendingReputationDelta` and applied on weekly boundary.
+ *
+ * ## Determinism
+ * - No RNG draws (the rumor roll is part of FraudInvestigated).
+ * - Purely derived from investigation outcome.
+ *
+ * @property policy Proof policy that allowed the fraud to escape.
+ * @property repDeltaPlanned Planned reputation penalty (negative).
+ */
+data class RumorScheduled(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val policy: ProofPolicy,
+    val repDeltaPlanned: Int
+) : Event
+
+/**
+ * Emitted when the weekly report is published and pending reputation changes are applied.
+ *
+ * ## Purpose
+ * Records the application of accumulated reputation changes from rumors and other sources.
+ * Provides a summary of fraud-related activity for the week.
+ *
+ * ## Pipeline Position
+ * Emitted on weekly boundary (when dayIndex is a multiple of TAX_INTERVAL_DAYS).
+ *
+ * ## Determinism
+ * - No RNG draws.
+ * - Purely derived from accumulated state.
+ *
+ * @property reputationDeltaApplied Total reputation change applied.
+ * @property rumorsCount Number of rumors that contributed to the delta.
+ * @property bansCount Number of bans issued this week.
+ * @property warnsCount Number of warns issued this week.
+ */
+data class WeeklyReportPublished(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val reputationDeltaApplied: Int,
+    val rumorsCount: Int,
+    val bansCount: Int,
+    val warnsCount: Int
+) : Event
+

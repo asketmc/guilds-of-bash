@@ -8,6 +8,23 @@ import core.primitives.SalvagePolicy
 import core.primitives.ProofPolicy
 
 /**
+ * Player decision for closing a return: accept or reject.
+ *
+ * ## Role
+ * - ACCEPT: Trust the hero, close normally with payment and trophy allocation.
+ * - REJECT: Do not trust, close without payment, zero trophies, terminate lifecycle.
+ *
+ * ## Stability
+ * - Stable API: yes; Audience: adapters/tests/internal
+ */
+enum class ReturnDecision {
+    /** Accept the return and process normally (payment + trophies). */
+    ACCEPT,
+    /** Reject the return (no payment, no trophies, lifecycle terminated). */
+    REJECT
+}
+
+/**
  * Player-issued instruction to mutate game state.
  *
  * ## Role
@@ -47,9 +64,14 @@ data class PostContract(
  * Required for PARTIAL outcomes; auto-closed returns do not need this command.
  *
  * @property activeContractId ID of the active contract whose return to close.
+ * @property decision Accept or reject the return (null = default accept under FAST policy only).
  * @property cmdId Unique command identifier (> 0).
  */
-data class CloseReturn(val activeContractId: Long, override val cmdId: Long): Command
+data class CloseReturn(
+    val activeContractId: Long,
+    val decision: ReturnDecision? = null,
+    override val cmdId: Long
+): Command
 
 /**
  * Advances the simulation by one day.

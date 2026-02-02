@@ -132,6 +132,7 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is WipAdvanced -> event.copy(seq = seq)
         is ContractResolved -> event.copy(seq = seq)
         is ReturnClosed -> event.copy(seq = seq)
+        is ReturnRejected -> event.copy(seq = seq)
         is TrophySold -> event.copy(seq = seq)
         is StabilityUpdated -> event.copy(seq = seq)
         is DayEnded -> event.copy(seq = seq)
@@ -151,6 +152,12 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is ContractAutoResolved -> event.copy(seq = seq)
         is HeroDied -> event.copy(seq = seq)
         is ReturnClosureBlocked -> event.copy(seq = seq)
+        // Fraud investigation events (v0)
+        is FraudInvestigated -> event.copy(seq = seq)
+        is HeroWarned -> event.copy(seq = seq)
+        is HeroBanned -> event.copy(seq = seq)
+        is RumorScheduled -> event.copy(seq = seq)
+        is WeeklyReportPublished -> event.copy(seq = seq)
     }
 }
 
