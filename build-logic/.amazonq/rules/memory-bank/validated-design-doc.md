@@ -654,8 +654,8 @@ All events listed in doc are present in code with matching field structures. Key
 
 **Payout Bands (gp/quest by rank)**:
 | Rank | Payout Range |
-|------|--------------|
-| F | 0..1 |
+|------|---------------|
+| F    | 0..1 |
 | E | 1..6 |
 | D | 6..25 |
 | C | 25..150 |
@@ -853,25 +853,25 @@ All output formats confirmed matching doc specifications.
 
 ## Doc→Code Alignment Table
 
-| Chapter                     | Status | Issues                                    |
-|-----------------------------|-------|-------------------------------------------|
-| 1. Product Concept          | MATCH | None                                      |
-| 2. Implementation Snapshot  | MATCH | Tax system fully implemented              |
-| 3. Architecture/Determinism | MATCH | None                                      |
-| 4. Terms/Vocabulary         | MATCH | Trophy model clarified                    |
-| 5. Game Cycle               | MATCH | None                                      |
-| 6. Data Schemas             | MATCH | Field names corrected                     |
-| 7. Commands                 | MATCH | None                                      |
-| 8. Events                   | MATCH | New fraud events added                    |
-| 9. Step Semantics           | MATCH | None                                      |
-| 10. Auto-Resolve/Trophies   | MATCH | Missing implemented (MvP = death outcome) |
-| 11. Returns/Economy/Taxes   | MATCH | Tax system fully implemented              |
-| 12. Region/Stability        | MATCH | None                                      |
-| 13. Errors/Validation       | MATCH | None                                      |
-| 14. Invariants              | MATCH | None                                      |
-| 15. Telemetry               | MATCH | None                                      |
-| 16. Console Output          | MATCH | S7 metric calculation documented          |
-| 17. Fraud Handling v0       | MATCH | New feature (2026-02-01)                  |
+| Chapter                      | Status | Issues                                    |
+|------------------------------|-------|-------------------------------------------|
+| 1. Product Concept           | MATCH | None                                      |
+| 2. Implementation Snapshot   | MATCH | Tax system fully implemented              |
+| 3. Architecture/Determinism  | MATCH | None                                      |
+| 4. Terms/Vocabulary          | MATCH | Trophy model clarified                    |
+| 5. Game Cycle                | MATCH | None                                      |
+| 6. Data Schemas              | MATCH | Field names corrected                     |
+| 7. Commands                  | MATCH | None                                      |
+| 8. Events                    | MATCH | New fraud events added                    |
+| 9. Step Semantics            | MATCH | None                                      |
+| 10. Auto-Resolve/Trophies    | MATCH | Missing implemented (MvP = death outcome) |
+| 11. Returns/Economy/Taxes    | MATCH | Tax system fully implemented              |
+| 12. Region/Stability         | MATCH | None                                      |
+| 13. Errors/Validation        | MATCH | None                                      |
+| 14. Invariants               | MATCH | None                                      |
+| 15. Telemetry                | MATCH | None                                      |
+| 16. Console Output           | MATCH | S7 metric calculation documented          |
+| 17. Fraud Handling v0        | MATCH | New feature (2026-02-01)                  |
 
 ## Mismatch Ledger
 
@@ -976,11 +976,11 @@ Reduce perceived unfairness by introducing **warn-first** semantics:
 
 ### 17.3 Policy Behavior (SOFT vs STRICT vs FAST)
 
-| Policy   | pCatch | pRumor (on escape) | Return Closure       | Investigation |
-|----------|--------|---------------------|---------------------|---------------|
-| **SOFT** | 50%    | 50%                 | Always allowed      | Yes           |
-| **STRICT** | 90%  | 10%                 | Blocked on damaged/theft | Yes       |
-| **FAST** | N/A    | N/A                 | Always allowed      | **No** (legacy) |
+| Policy     | pCatch | pRumor (on escape) | Return Closure           | Investigation   |
+|------------|--------|--------------------|--------------------------|-----------------|
+| **SOFT**   | 50%    | 50%                | Always allowed           | Yes             |
+| **STRICT** | 90%    | 10%                | Blocked on damaged/theft | Yes             |
+| **FAST**   | N/A    | N/A                | Always allowed           | **No** (legacy) |
 
 ### 17.4 Linear Pipeline Mechanics
 
@@ -1034,27 +1034,27 @@ Reduce perceived unfairness by introducing **warn-first** semantics:
 
 ### 17.6 Balance Settings
 
-| Setting | Value | Description |
-|---------|-------|-------------|
-| `WARN_DURATION_DAYS` | 7 | Days until WARN expires |
-| `BAN_DURATION_DAYS` | 90 | Days until BAN expires |
-| `CATCH_CHANCE_STRICT_PERCENT` | 90 | % chance to catch fraud under STRICT |
-| `CATCH_CHANCE_SOFT_PERCENT` | 50 | % chance to catch fraud under SOFT |
-| `RUMOR_CHANCE_ON_ESCAPE_STRICT_PERCENT` | 10 | % rumor chance on escape under STRICT |
-| `RUMOR_CHANCE_ON_ESCAPE_SOFT_PERCENT` | 50 | % rumor chance on escape under SOFT |
-| `REP_PENALTY_ON_RUMOR` | 1 | Reputation penalty per rumor |
+| Setting                                 | Value  | Description                           |
+|-----------------------------------------|--------|---------------------------------------|
+| `WARN_DURATION_DAYS`                    | 7      | Days until WARN expires               |
+| `BAN_DURATION_DAYS`                     | 90     | Days until BAN expires                |
+| `CATCH_CHANCE_STRICT_PERCENT`           | 90     | % chance to catch fraud under STRICT  |
+| `CATCH_CHANCE_SOFT_PERCENT`             | 50     | % chance to catch fraud under SOFT    |
+| `RUMOR_CHANCE_ON_ESCAPE_STRICT_PERCENT` | 10     | % rumor chance on escape under STRICT |
+| `RUMOR_CHANCE_ON_ESCAPE_SOFT_PERCENT`   | 50     | % rumor chance on escape under SOFT   |
+| `REP_PENALTY_ON_RUMOR`                  | 1      | Reputation penalty per rumor          |
 
 ### 17.7 Event Contract
 
 **New events emitted**:
 
-| Event | Fields | When |
-|-------|--------|------|
-| `FraudInvestigated` | heroId, activeContractId, policy, caught, rumorScheduled | After each fraud investigation |
-| `HeroWarned` | heroId, untilDay, reason="fraud" | On first caught fraud |
-| `HeroBanned` | heroId, untilDay, reason="fraud_repeat" | On caught fraud while warned |
-| `RumorScheduled` | policy, repDeltaPlanned | When fraud escapes and rumor rolls success |
-| `WeeklyReportPublished` | reputationDeltaApplied, rumorsCount, bansCount, warnsCount | On weekly boundary with pending changes |
+| Event                   | Fields                                                     | When                                       |
+|-------------------------|------------------------------------------------------------|--------------------------------------------|
+| `FraudInvestigated`     | heroId, activeContractId, policy, caught, rumorScheduled   | After each fraud investigation             |
+| `HeroWarned`            | heroId, untilDay, reason="fraud"                           | On first caught fraud                      |
+| `HeroBanned`            | heroId, untilDay, reason="fraud_repeat"                    | On caught fraud while warned               |
+| `RumorScheduled`        | policy, repDeltaPlanned                                    | When fraud escapes and rumor rolls success |
+| `WeeklyReportPublished` | reputationDeltaApplied, rumorsCount, bansCount, warnsCount | On weekly boundary with pending changes    |
 
 ### 17.8 Determinism Constraints
 

@@ -87,6 +87,7 @@ private fun serializeEvent(event: Event, sb: StringBuilder) {
         is WipAdvanced -> serializeWipAdvanced(event, sb)
         is ContractResolved -> serializeContractResolved(event, sb)
         is ReturnClosed -> serializeReturnClosed(event, sb)
+        is ReturnRejected -> serializeReturnRejected(event, sb)
         is TrophySold -> serializeTrophySold(event, sb)
         is StabilityUpdated -> serializeStabilityUpdated(event, sb)
         is DayEnded -> serializeDayEnded(event, sb)
@@ -509,6 +510,22 @@ private fun serializeContractResolved(event: ContractResolved, sb: StringBuilder
  */
 private fun serializeReturnClosed(event: ReturnClosed, sb: StringBuilder) {
     sb.appendCommonFields("ReturnClosed", event)
+    sb.appendIntField("activeContractId", event.activeContractId)
+    sb.append('}')
+}
+
+/**
+ * Serializes [ReturnRejected].
+ *
+ * Emitted additional fields (in order):
+ * - `activeContractId` (Int)
+ *
+ * ## Complexity
+ * - Time: O(1)
+ * - Memory: O(1)
+ */
+private fun serializeReturnRejected(event: ReturnRejected, sb: StringBuilder) {
+    sb.appendCommonFields("ReturnRejected", event)
     sb.appendIntField("activeContractId", event.activeContractId)
     sb.append('}')
 }

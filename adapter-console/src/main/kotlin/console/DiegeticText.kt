@@ -45,7 +45,7 @@ object DiegeticHelp {
             "                    ... Draft a new contract",
             "  update <id> [fee=N] [salvage=X] ... Modify posted terms",
             "  cancel <id> ....... Withdraw a contract",
-            "  close <id> ........ Process a returning party",
+            "  close <id> [accept|reject] ........ Process a returning party",
             "",
             "ECONOMY:",
             "  sell <amount> ..... Sell trophies to merchants",

@@ -592,6 +592,26 @@ data class ReturnClosed(
 ) : Event
 
 /**
+ * Emitted when a return is rejected by the player.
+ *
+ * ## Purpose
+ * Player explicitly rejects the return (no payment, no trophies), but lifecycle
+ * is terminated (hero becomes AVAILABLE, active contract CLOSED, escrow released).
+ *
+ * ## Determinism
+ * - No RNG draws.
+ *
+ * @property activeContractId ID of the rejected active contract.
+ */
+data class ReturnRejected(
+    override val day: Int,
+    override val revision: Long,
+    override val cmdId: Long,
+    override val seq: Long,
+    val activeContractId: Int
+) : Event
+
+/**
  * Emitted when the player sells trophies for copper.
  *
  * @property amount Number of trophies sold.

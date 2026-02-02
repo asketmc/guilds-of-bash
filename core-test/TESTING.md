@@ -26,6 +26,35 @@
 
 ---
 
+## Recent Changes
+
+### MVP: Accept/Reject Return Closure (2026-02-02)
+
+**Goal:** Eliminate permanent "stuck return" situations under `ProofPolicy.STRICT` by making manual return closure an explicit player decision.
+
+**Changes:**
+- Added `ReturnDecision` enum (`ACCEPT`, `REJECT`)
+- Extended `CloseReturn` command with optional `decision` parameter
+- Under `STRICT` policy, an explicit decision is now required
+- `REJECT` always allowed (terminates lifecycle, no payment, zero trophies)
+- `ACCEPT` may be denied under `STRICT` if proof is damaged or theft suspected
+- Console syntax: `close <id> accept` or `close <id> reject`
+- New event: `ReturnRejected` (emitted for reject decision)
+- Zero RNG draws in close path (deterministic)
+
+**Determinism:** Same seed + commands → same events, same rngDraws count.
+
+**Test Coverage:** `ReturnClosureDecisionTest` (19 tests, P1/Smoke)
+- Validation & Policy: STRICT requires explicit decision, REJECT bypasses money validation
+- Lifecycle: Both ACCEPT & REJECT terminate lifecycle correctly
+- Economy: REJECT releases escrow, pays no fee, awards 0 trophies
+- Progression: REJECT doesn't increment counters (FAIL-like), ACCEPT does
+- Events: Correct event emission (ReturnRejected vs ReturnClosed)
+- Determinism: Zero RNG draws for both paths, replay stability verified
+- Policy edge cases: STRICT + damaged/suspected behavior verified
+
+---
+
 ## Project Structure
 
 ```
@@ -49,7 +78,7 @@ core-test/
 | Domain      | Files                                                                                          |
 |-------------|------------------------------------------------------------------------------------------------|
 | Invariants  | `InvariantVerificationTest`, `LockedBoardInvariantTest`, `InvariantsAfterEachStepTest`         |
-| Contracts   | `CreateContractTest`, `UpdateContractTermsTest`, `CancelContractTest`, `ContractExpiryPoCTest` |
+| Contracts   | `CreateContractTest`, `UpdateContractTermsTest`, `CancelContractTest`, `ContractExpiryPoCTest`, `ReturnClosureDecisionTest` |
 | Economy     | `FeeEscrowTest`, `SellTrophiesTest`, `TrophyPipelineTest`                                      |
 | Determinism | `GoldenReplaysTest`, `RngDrawOrderGoldenTest`, `SerializationTest`, `HashingTest`              |
 | Validation  | `CommandValidationTest`                                                                        |

@@ -132,6 +132,7 @@ private fun assignSeq(event: Event, seq: Long): Event {
         is WipAdvanced -> event.copy(seq = seq)
         is ContractResolved -> event.copy(seq = seq)
         is ReturnClosed -> event.copy(seq = seq)
+        is ReturnRejected -> event.copy(seq = seq)
         is TrophySold -> event.copy(seq = seq)
         is StabilityUpdated -> event.copy(seq = seq)
         is DayEnded -> event.copy(seq = seq)
