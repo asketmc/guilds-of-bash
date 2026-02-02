@@ -4,7 +4,7 @@
 [![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
- **Testing strategy & scope:** see [`core-test/TESTING.md`](../core-test/TESTING.md)  
+ **Testing strategy & scope:** see [`core-test/TESTING.md`](core-test/TESTING.md)  
  **Coverage report (latest):** [https://asketmc.github.io/guilds-of-bash/kover/](https://asketmc.github.io/guilds-of-bash/kover/)  
  **Download coverage HTML (latest):** [https://asketmc.github.io/guilds-of-bash/kover-html.zip](https://asketmc.github.io/guilds-of-bash/kover-html.zip)  
 
