@@ -4,108 +4,73 @@
 [![CI](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml/badge.svg)](https://github.com/asketmc/guilds-of-bash/actions/workflows/ci.yml)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
- **Testing strategy & scope:** see [`core-test/TESTING.md`](core-test/TESTING.md)  
- **Coverage report (latest):** [https://asketmc.github.io/guilds-of-bash/kover/](https://asketmc.github.io/guilds-of-bash/kover/)  
- **Download coverage HTML (latest):** [https://asketmc.github.io/guilds-of-bash/kover-html.zip](https://asketmc.github.io/guilds-of-bash/kover-html.zip)  
-
 # Guilds of Bash
 
-Deterministic guild-management simulation prototype built around a **Command → simulation step → Events** boundary.
-The core is implemented as a pure reducer with explicit inputs (state, command, RNG), enabling reproducible execution and testability; adapters handle IO and presentation (currently: a console adapter).
+Deterministic guild-management simulation prototype with a `Command → step(state, rng) → Events` boundary.
 
-## Core Architecture (invariants)
+## Evidence
+- Testing: [`core-test/TESTING.md`](core-test/TESTING.md)
+- Coverage: https://asketmc.github.io/guilds-of-bash/kover/
+- CI: [`.github/workflows/`](.github/workflows/)
+- Docs: [`docs/`](docs/)
 
-* Single authoritative state, mutated only via explicit commands
-* Reducer-based processing: `Command → step(state, rng) → Events`
-* Events are the only observation channel for adapters
-* Core is pure: no IO, clocks, platform randomness, or side effects
-* Determinism is verified in tests via canonical serialization and state/event hashing
 
-## What it does (PoC)
+## Core model
+- Single authoritative state; changes only via commands.
+- Pure core (no IO, clocks, platform randomness, side effects).
+- Explicit RNG input; draw count is tracked.
+- Events are the only observation channel for adapters.
+- Invariants are checked after each step; violations are emitted as events.
+- Determinism is **test-enforced** via canonical serialization + hashing (golden replays).
 
-A minimal, console-driven loop:
+**Modules**
+- [`core/`](core/) — state, commands/events, reducer, invariants, serialization, RNG
+- [`core-test/`](core-test/) — deterministic unit/integration, golden replays, invariant checks
+- [`adapter-console/`](adapter-console/) — console adapter (IO/parsing/rendering)
 
-* create and post contract drafts (Inbox → Board) with simple terms
-* generate hero arrivals; heroes select and take contracts
-* advance time in explicit day ticks; contracts progress and resolve into results requiring closure
-* sell trophies to a single buyer; track basic economy and region state
-
-## Testing philosophy
-
-Testing is risk-driven.
-Core logic is covered by deterministic unit and in-process integration tests.
-No jar-level or black-box tests are used at PoC stage, as the current packaging layer does not introduce additional behavior beyond the core.
-New test levels are added only when they increase confidence, not by default.
+## Run
+```bash
+./gradlew :adapter-console:run
+./gradlew test
+./gradlew koverHtmlReport
+# -> build/reports/kover/html/index.html
+````
 
 <details>
-  <summary><strong>Coverage details</strong> (from CI / Kover)</summary>
+  <summary><strong>Implemented features</strong></summary>
 
-* The CI workflow uploads the merged Kover HTML report as an artifact (`kover-html`).
-* For PRs, a coverage summary comment is posted automatically.
-* For `master`, the latest Kover HTML report is also published to GitHub Pages (links above).
-
-Quick local check:
-
-```
-./gradlew test koverHtmlReport
-```
+* Console loop: create/post contracts, day ticks, resolve outcomes, close returns.
+* Autonomous hero pickup/refusal and contract execution.
+* Economy: trophies, fee escrow, sales; rank progression; stability/threat scaling; weekly tax cycle.
+* Fraud pipeline (warn/ban + rumor/reputation scheduling) as deterministic segment.
 
 </details>
 
-## Quality & CI intent
+<details>
+  <summary><strong>Prebuilt jar</strong></summary>
 
-CI is used as a quality gate and as evidence of correctness, not as a development environment.
-The focus is on reproducibility, regression detection, and coverage visibility.
-Artifacts are treated as a delivery format, not as a separate test target.
-
-## Status
-
-PoC / feature-freeze at the “M0” scope:
-
-* priority: correctness, reproducibility, and testability; supported by CI and coverage visibility
-* gameplay depth/content: intentionally minimal at this stage
-
-## Running
-
-### Local (from source)
-
-```
-# Console app
-./gradlew :adapter-console:run
-
-# Unit tests
-./gradlew test
-
-# Merged HTML coverage report
-./gradlew koverHtmlReport
-# -> build/reports/kover/html/index.html
-```
-
-### Prebuilt jar
-
-Download the `adapter-console-all.jar` and its `.sha256` from the latest GitHub Release:
-
-* [https://github.com/asketmc/guilds-of-bash/releases/latest](https://github.com/asketmc/guilds-of-bash/releases/latest)
-* Verify checksum (optionally)
-* Run:
+Latest release artifacts: [https://github.com/asketmc/guilds-of-bash/releases/latest](https://github.com/asketmc/guilds-of-bash/releases/latest)
 
 ```bash
 java -jar adapter-console-all.jar
 ```
 
-## Tests (scope)
+</details>
 
-Tests are oriented toward:
+<details>
+  <summary><strong>Quality automation</strong></summary>
 
-* deterministic behavior under fixed inputs
-* state validity across command processing
-* persistence roundtrips (serialize/deserialize) where applicable
+Workflows: [`.github/workflows/`](.github/workflows/)
 
-Non-goals at PoC stage:
+* unit tests: [`ci2_unit_tests.yml`](.github/workflows/ci2_unit_tests.yml)
+* mutation baseline: [`ci3_pitest.yml`](.github/workflows/ci3_pitest.yml)
+* fast flaky detection: [`ci4_fast_flaky.yml`](.github/workflows/ci4_fast_flaky.yml)
+* full/nightly + quarantine: [`ci8_nightly_full_quarantine.yml`](.github/workflows/ci8_nightly_full_quarantine.yml)
+* static analysis: [`ci6_detekt.yml`](.github/workflows/ci6_detekt.yml), [`config/detekt/`](config/detekt/)
+* build artifact / release: [`ci7_build_artifact.yml`](.github/workflows/ci7_build_artifact.yml), [`ci9_release.yml`](.github/workflows/ci9_release.yml)
+* merged coverage + publication: [`ci5_full_tests_coverage_badge.yml`](.github/workflows/ci5_full_tests_coverage_badge.yml), [`ci1_docs.yml`](.github/workflows/ci1_docs.yml)
 
-* UI/UX testing beyond the console adapter
-* performance tuning/benchmarking
-* content/balance tuning
+</details>
 
 ## License
 
